@@ -33,7 +33,7 @@ llm:
   endpoint: "https://api.openai.com/v1" # OpenAI example
   
   api_key: "${OPENAI_API_KEY}"   # From environment
-  model: "gpt-4.1-nano"          # or "gpt-4o-mini"
+  model: "gpt-5-nano"            # or "gpt-4o-mini"
   temperature: 0.3               # Lower = more consistent
   max_tokens: 2000               # Increased for summaries
   timeout: "30s"

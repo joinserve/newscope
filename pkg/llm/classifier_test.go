@@ -907,6 +907,135 @@ func TestClassifier_BatchConfiguration(t *testing.T) {
 	})
 }
 
+func TestIsReasoningModel(t *testing.T) {
+	tests := []struct {
+		model string
+		want  bool
+	}{
+		{"gpt-5-preview", true},
+		{"gpt-5-nano", true},
+		{"GPT-5-NANO", true}, // case insensitive
+		{"gpt-5", true},
+		{"o1-preview", true},
+		{"o1", true},
+		{"O1-PREVIEW", true}, // case insensitive
+		{"o3-mini", true},
+		{"o4-turbo", true},
+		{"gpt-4", false},
+		{"gpt-4o", false},
+		{"gpt-4o-mini", false},
+		{"claude-3", false},
+		{"llama3", false},
+		{"custom-model-with-gpt-5-in-name", true}, // contains gpt-5
+		{"", false}, // empty model
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			assert.Equal(t, tt.want, isReasoningModel(tt.model))
+		})
+	}
+}
+
+func TestClassifier_GPT5_MaxCompletionTokens(t *testing.T) {
+	// create test server that verifies correct token parameter
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&reqBody)
+		
+		// for gpt-5 models, should use max_completion_tokens, not max_tokens
+		assert.NotContains(t, reqBody, "max_tokens", "GPT-5 should not use max_tokens")
+		assert.Contains(t, reqBody, "max_completion_tokens", "GPT-5 should use max_completion_tokens")
+		assert.InDelta(t, 500, reqBody["max_completion_tokens"], 0.01)
+		
+		// reasoning models should not have temperature set
+		assert.NotContains(t, reqBody, "temperature", "GPT-5 should not have temperature set")
+		
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: `{"classifications":[{"guid":"item1","score":8.0,"explanation":"Test","topics":["tech"],"summary":"Test summary"}]}`,
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	// test with GPT-5 model
+	cfg := config.LLMConfig{
+		Endpoint:    server.URL + "/v1",
+		APIKey:      "test-key",
+		Model:       "gpt-5-preview",
+		Temperature: 0.7, // should be ignored
+		MaxTokens:   500,
+		Classification: config.ClassificationConfig{
+			UseJSONMode: true,
+		},
+	}
+	classifier := NewClassifier(cfg)
+
+	articles := []domain.Item{{GUID: "item1", Title: "Test"}}
+	
+	ctx := context.Background()
+	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{Articles: articles})
+	require.NoError(t, err)
+	require.Len(t, classifications, 1)
+}
+
+func TestClassifier_RegularModel_MaxTokens(t *testing.T) {
+	// create test server that verifies correct token parameter for regular models
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&reqBody)
+		
+		// for regular models, should use max_tokens, not max_completion_tokens
+		assert.Contains(t, reqBody, "max_tokens", "Regular models should use max_tokens")
+		assert.NotContains(t, reqBody, "max_completion_tokens", "Regular models should not use max_completion_tokens")
+		assert.InDelta(t, 500, reqBody["max_tokens"], 0.01)
+		
+		// regular models should have temperature set
+		assert.Contains(t, reqBody, "temperature", "Regular models should have temperature set")
+		assert.InDelta(t, 0.7, reqBody["temperature"], 0.01)
+		
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: `{"classifications":[{"guid":"item1","score":8.0,"explanation":"Test","topics":["tech"],"summary":"Test summary"}]}`,
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	// test with regular GPT-4 model
+	cfg := config.LLMConfig{
+		Endpoint:    server.URL + "/v1",
+		APIKey:      "test-key",
+		Model:       "gpt-4",
+		Temperature: 0.7,
+		MaxTokens:   500,
+		Classification: config.ClassificationConfig{
+			UseJSONMode: true,
+		},
+	}
+	classifier := NewClassifier(cfg)
+
+	articles := []domain.Item{{GUID: "item1", Title: "Test"}}
+	
+	ctx := context.Background()
+	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{Articles: articles})
+	require.NoError(t, err)
+	require.Len(t, classifications, 1)
+}
+
 func TestClassifier_ForbiddenPrefixHandling(t *testing.T) {
 	callCount := 0
 	// create test server that returns bad summaries on first call

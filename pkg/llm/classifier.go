@@ -105,6 +105,23 @@ type ClassifyRequest struct {
 	AvoidedTopics     []string
 }
 
+// isReasoningModel checks if the model is a reasoning model that requires MaxCompletionTokens
+// instead of MaxTokens parameter (gpt-5, o1, o3, o4 models)
+func isReasoningModel(model string) bool {
+	modelLower := strings.ToLower(model)
+	
+	// check for o-series reasoning models
+	reasoningPrefixes := []string{"o1", "o3", "o4"}
+	for _, prefix := range reasoningPrefixes {
+		if strings.HasPrefix(modelLower, prefix) {
+			return true
+		}
+	}
+	
+	// check for gpt-5 models
+	return strings.Contains(modelLower, "gpt-5")
+}
+
 // classify classifies articles using the provided request parameters (internal implementation)
 func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
 	if len(req.Articles) == 0 {
@@ -131,9 +148,7 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 		).Do(ctx, func() error {
 			// create the chat completion request
 			chatReq := openai.ChatCompletionRequest{
-				Model:       c.config.Model,
-				Temperature: float32(c.config.Temperature),
-				MaxTokens:   c.config.MaxTokens,
+				Model: c.config.Model,
 				Messages: []openai.ChatCompletionMessage{
 					{
 						Role:    openai.ChatMessageRoleSystem,
@@ -144,6 +159,18 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 						Content: prompt,
 					},
 				},
+			}
+
+			// use MaxCompletionTokens for reasoning models (o1, o3, o4) and gpt-5 models
+			// these models require the new parameter instead of MaxTokens
+			// also, these models only support temperature=1 (default)
+			if isReasoningModel(c.config.Model) {
+				chatReq.MaxCompletionTokens = c.config.MaxTokens
+				// reasoning models only support temperature=1, don't set it explicitly
+				// the API will use the default value
+			} else {
+				chatReq.MaxTokens = c.config.MaxTokens
+				chatReq.Temperature = float32(c.config.Temperature)
 			}
 
 			// add JSON response format if enabled
