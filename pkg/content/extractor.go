@@ -29,13 +29,17 @@ func (e *clientError) Error() string {
 
 // HTTPExtractor extracts article content from URLs using trafilatura
 type HTTPExtractor struct {
-	timeout       time.Duration
-	userAgent     string
-	fallbackURL   string
-	minTextLength int
-	includeImages bool
-	includeLinks  bool
-	client        *http.Client
+	timeout           time.Duration
+	userAgent         string
+	fallbackURL       string
+	minTextLength     int
+	includeImages     bool
+	includeLinks      bool
+	client            *http.Client
+	retryAttempts     int
+	retryInitialDelay time.Duration
+	retryMaxDelay     time.Duration
+	retryJitter       float64
 }
 
 // ExtractResult contains the result of content extraction
@@ -50,9 +54,13 @@ type ExtractResult struct {
 // NewHTTPExtractor creates a new content extractor
 func NewHTTPExtractor(timeout time.Duration, userAgent string) *HTTPExtractor {
 	return &HTTPExtractor{
-		timeout:       timeout,
-		userAgent:     userAgent,
-		minTextLength: 100,
+		timeout:           timeout,
+		userAgent:         userAgent,
+		minTextLength:     100,
+		retryAttempts:     3,
+		retryInitialDelay: time.Second,
+		retryMaxDelay:     10 * time.Second,
+		retryJitter:       0.1,
 		client: &http.Client{
 			Timeout: timeout,
 		},
@@ -69,6 +77,14 @@ func (e *HTTPExtractor) SetOptions(minTextLength int, includeImages, includeLink
 	e.minTextLength = minTextLength
 	e.includeImages = includeImages
 	e.includeLinks = includeLinks
+}
+
+// SetRetryConfig configures retry parameters for HTTP requests
+func (e *HTTPExtractor) SetRetryConfig(attempts int, initialDelay, maxDelay time.Duration, jitter float64) {
+	e.retryAttempts = attempts
+	e.retryInitialDelay = initialDelay
+	e.retryMaxDelay = maxDelay
+	e.retryJitter = jitter
 }
 
 // Extract retrieves and extracts text content from the given URL
@@ -90,8 +106,10 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 	termErr := &clientError{} // terminal error for client errors
 
 	// retry with exponential backoff for network/server errors
-	err = repeater.NewBackoff(3, time.Second, repeater.WithMaxDelay(10*time.Second)).
-		Do(ctx, func() error {
+	err = repeater.NewBackoff(e.retryAttempts, e.retryInitialDelay,
+		repeater.WithMaxDelay(e.retryMaxDelay),
+		repeater.WithJitter(e.retryJitter),
+	).Do(ctx, func() error {
 			// create request with context
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
 			if err != nil {

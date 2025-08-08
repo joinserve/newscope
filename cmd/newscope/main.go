@@ -106,6 +106,13 @@ func run(ctx context.Context, opts Opts) error {
 			contentExtractor.SetFallbackURL(cfg.Extraction.FallbackURL)
 		}
 		contentExtractor.SetOptions(cfg.Extraction.MinTextLength, cfg.Extraction.IncludeImages, cfg.Extraction.IncludeLinks)
+		// use retry config from schedule settings
+		contentExtractor.SetRetryConfig(
+			cfg.Schedule.RetryAttempts,
+			cfg.Schedule.RetryInitialDelay,
+			cfg.Schedule.RetryMaxDelay,
+			cfg.Schedule.RetryJitter,
+		)
 	}
 	classifier := llm.NewClassifier(cfg.LLM)
 	log.Printf("[INFO] LLM classifier enabled with model: %s", cfg.LLM.Model)
