@@ -51,6 +51,8 @@ type ClassificationConfig struct {
 	SummaryRetryAttempts       int                   `yaml:"summary_retry_attempts" json:"summary_retry_attempts" jsonschema:"default=3,minimum=0,maximum=5,description=Number of retries if summary contains forbidden phrases"`
 	ForbiddenSummaryPrefixes   []string              `yaml:"forbidden_summary_prefixes" json:"forbidden_summary_prefixes" jsonschema:"description=List of forbidden prefixes for article summaries"`
 	Prompts                    ClassificationPrompts `yaml:"prompts" json:"prompts" jsonschema:"description=Custom prompts for classification and preference summaries"`
+	BatchSize                  int                   `yaml:"batch_size" json:"batch_size" jsonschema:"default=10,minimum=1,maximum=20,description=Number of articles to classify in a single API call"`
+	BatchTimeout               time.Duration         `yaml:"batch_timeout" json:"batch_timeout" jsonschema:"default=5s,description=Timeout for collecting articles into a batch"`
 }
 
 // ClassificationPrompts holds customizable prompts for the LLM classifier

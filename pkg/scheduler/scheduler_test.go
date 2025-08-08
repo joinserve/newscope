@@ -15,6 +15,17 @@ import (
 	"github.com/umputun/newscope/pkg/scheduler/mocks"
 )
 
+// setupBasicItemManagerMocks sets up common mock implementations for ItemManager
+func setupBasicItemManagerMocks(itemManager *mocks.ItemManagerMock) {
+	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
+		return nil
+	}
+
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
+		return nil
+	}
+}
+
 func TestNewScheduler(t *testing.T) {
 	feedManager := &mocks.FeedManagerMock{}
 	itemManager := &mocks.ItemManagerMock{}
@@ -193,13 +204,7 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		}}, nil
 	}
 
-	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
-		return nil
-	}
-
-	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
-		return nil
-	}
+	setupBasicItemManagerMocks(itemManager)
 
 	// execute
 	err := scheduler.UpdateFeedNow(context.Background(), 1)
@@ -305,10 +310,17 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return []domain.Classification{*classification}, nil
 	}
 
-	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, class *domain.Classification) error {
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
 		assert.Equal(t, testItem.ID, itemID)
 		assert.Equal(t, extractResult.Content, extraction.PlainText)
 		assert.Equal(t, extractResult.RichContent, extraction.RichHTML)
+		assert.False(t, extraction.ExtractedAt.IsZero())
+		return nil
+	}
+
+	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, class *domain.Classification) error {
+		assert.Equal(t, testItem.ID, itemID)
+		assert.Nil(t, extraction) // extraction is nil in batch processing since it's saved separately
 		assert.Equal(t, classification.GUID, class.GUID)
 		assert.InEpsilon(t, classification.Score, class.Score, 0.001)
 		assert.Equal(t, classification.Explanation, class.Explanation)
@@ -495,6 +507,11 @@ func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
 		return nil, assert.AnError
 	}
 
+	// setup missing mock for extraction update
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
+		return nil
+	}
+
 	// execute - processItem is private, so we use ExtractContentNow
 	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
 		return testItem, nil
@@ -563,6 +580,11 @@ func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
 	// setup classification to return empty results
 	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{}, nil // empty results
+	}
+
+	// setup missing mock for extraction update
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
+		return nil
 	}
 
 	// execute - processItem is private, so we use ExtractContentNow
@@ -742,13 +764,7 @@ func TestScheduler_UpdateFeed_DuplicateItems(t *testing.T) {
 		}}, nil
 	}
 
-	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
-		return nil
-	}
-
-	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
-		return nil
-	}
+	setupBasicItemManagerMocks(itemManager)
 
 	// execute
 	err := scheduler.UpdateFeedNow(context.Background(), 1)
@@ -812,13 +828,7 @@ func TestScheduler_UpdateAllFeeds_GetFeedsError(t *testing.T) {
 		return []domain.Classification{}, nil
 	}
 
-	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
-		return nil
-	}
-
-	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
-		return nil
-	}
+	setupBasicItemManagerMocks(itemManager)
 
 	// setup cleanup mock to prevent panic
 	itemManager.DeleteOldItemsFunc = func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
@@ -907,13 +917,7 @@ func TestScheduler_UpdateAllFeeds_MultipleFeeds(t *testing.T) {
 		return []domain.Classification{}, nil // empty results for quick test
 	}
 
-	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
-		return nil
-	}
-
-	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
-		return nil
-	}
+	setupBasicItemManagerMocks(itemManager)
 
 	// setup cleanup mock to prevent panic
 	itemManager.DeleteOldItemsFunc = func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
@@ -1023,13 +1027,7 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 		return []domain.Classification{}, nil // empty results for quick test
 	}
 
-	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
-		return nil
-	}
-
-	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
-		return nil
-	}
+	setupBasicItemManagerMocks(itemManager)
 
 	// execute
 	err := scheduler.UpdateFeedNow(context.Background(), 1)
@@ -1362,9 +1360,7 @@ func TestScheduler_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 		}, nil
 	}
 
-	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
-		return nil
-	}
+	setupBasicItemManagerMocks(itemManager)
 
 	// execute
 	err := scheduler.UpdateFeedNow(context.Background(), 1)

@@ -72,33 +72,70 @@ func NewFeedProcessor(cfg FeedProcessorConfig) *FeedProcessor {
 // for content extraction and classification. This method blocks until the
 // channel is closed or the context is canceled.
 func (fp *FeedProcessor) ProcessingWorker(ctx context.Context, items <-chan domain.Item) {
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(fp.maxWorkers)
-
-	for item := range items {
-		g.Go(func() error {
-			fp.ProcessItem(ctx, &item)
-			return nil
-		})
+	// get batch configuration with defaults
+	batchSize := 10
+	batchTimeout := 5 * time.Second
+	if fp.classifier != nil {
+		if cfg, ok := fp.classifier.(*llm.Classifier); ok && cfg.GetBatchSize() > 0 {
+			batchSize = cfg.GetBatchSize()
+		}
+		if cfg, ok := fp.classifier.(*llm.Classifier); ok && cfg.GetBatchTimeout() > 0 {
+			batchTimeout = cfg.GetBatchTimeout()
+		}
 	}
 
-	if err := g.Wait(); err != nil {
-		lgr.Printf("[ERROR] processing worker error: %v", err)
+	// create batch collector
+	batch := make([]domain.Item, 0, batchSize)
+	batchTimer := time.NewTimer(batchTimeout)
+	defer batchTimer.Stop()
+
+	// process items in batches
+	for {
+		select {
+		case item, ok := <-items:
+			if !ok {
+				// channel closed, process remaining batch
+				if len(batch) > 0 {
+					fp.ProcessBatch(ctx, batch)
+				}
+				return
+			}
+
+			// extract content for the item first
+			fp.extractContent(ctx, &item)
+			batch = append(batch, item)
+
+			// process batch if full
+			if len(batch) >= batchSize {
+				fp.ProcessBatch(ctx, batch)
+				batch = make([]domain.Item, 0, batchSize)
+				batchTimer.Reset(batchTimeout)
+			}
+
+		case <-batchTimer.C:
+			// timeout reached, process current batch
+			if len(batch) > 0 {
+				fp.ProcessBatch(ctx, batch)
+				batch = make([]domain.Item, 0, batchSize)
+			}
+			batchTimer.Reset(batchTimeout)
+
+		case <-ctx.Done():
+			// context canceled, process remaining batch
+			if len(batch) > 0 {
+				fp.ProcessBatch(ctx, batch)
+			}
+			return
+		}
 	}
 }
 
-// ProcessItem handles extraction and classification for a single item.
-// The processing pipeline includes:
-// 1. Extracting full content from the item's URL
-// 2. Gathering context (feedback, topics, preferences) for classification
-// 3. Classifying the item using the LLM with user preferences
-// 4. Persisting both extraction and classification results
-// Errors at any stage are logged but don't stop the overall process.
-func (fp *FeedProcessor) ProcessItem(ctx context.Context, item *domain.Item) {
+// extractContent extracts content for a single item and updates it in the database
+func (fp *FeedProcessor) extractContent(ctx context.Context, item *domain.Item) {
 	itemID := fp.getItemIdentifier(item)
-	lgr.Printf("[DEBUG] processing item: %s", itemID)
+	lgr.Printf("[DEBUG] extracting content for: %s", itemID)
 
-	// 1. Extract content
+	// extract content
 	extracted, err := fp.extractor.Extract(ctx, item.Link)
 	if err != nil {
 		// check if error indicates unsupported content type (PDF, images, etc)
@@ -131,70 +168,116 @@ func (fp *FeedProcessor) ProcessItem(ctx context.Context, item *domain.Item) {
 		return
 	}
 
-	// 2. Get context for classification
-	feedbacks, err := fp.classificationManager.GetRecentFeedback(ctx, "", 50)
-	if err != nil {
-		lgr.Printf("[WARN] item %d: failed to get feedback examples: %v", item.ID, err)
-		feedbacks = []domain.FeedbackExample{}
-	}
-
-	topics, err := fp.classificationManager.GetTopics(ctx)
-	if err != nil {
-		lgr.Printf("[WARN] item %d: failed to get canonical topics: %v", item.ID, err)
-		topics = []string{}
-	}
-
-	preferenceSummary, err := fp.settingManager.GetSetting(ctx, "preference_summary")
-	if err != nil {
-		lgr.Printf("[WARN] item %d: failed to get preference summary: %v", item.ID, err)
-		preferenceSummary = ""
-	}
-
-	// get topic preferences
-	preferredTopics, avoidedTopics := fp.getTopicPreferences(ctx, itemID)
-
-	// set extracted content for classification
+	// update item with extracted content for classification
 	item.Content = extracted.Content
 
-	// 3. Classify the item
-	req := llm.ClassifyRequest{
-		Articles:          []domain.Item{*item},
-		Feedbacks:         feedbacks,
-		CanonicalTopics:   topics,
-		PreferenceSummary: preferenceSummary,
-		PreferredTopics:   preferredTopics,
-		AvoidedTopics:     avoidedTopics,
-	}
-	classifications, err := fp.classifier.ClassifyItems(ctx, req)
-	if err != nil {
-		lgr.Printf("[WARN] failed to classify item: %v", err)
-		return
-	}
-
-	if len(classifications) == 0 {
-		lgr.Printf("[WARN] no classification returned for item: %s", item.Title)
-		return
-	}
-
-	// 4. Update item with both extraction and classification results
+	// store extraction in database
 	extraction := &domain.ExtractedContent{
 		PlainText:   extracted.Content,
 		RichHTML:    extracted.RichContent,
 		ExtractedAt: time.Now(),
 	}
 
-	classification := classifications[0]
-	classification.ClassifiedAt = time.Now()
-
 	err = fp.retryFunc(ctx, func() error {
-		return fp.itemManager.UpdateItemProcessed(ctx, item.ID, extraction, &classification)
+		return fp.itemManager.UpdateItemExtraction(ctx, item.ID, extraction)
 	})
 	if err != nil {
-		lgr.Printf("[WARN] failed to update item %d processing after retries: %v", item.ID, err)
+		lgr.Printf("[WARN] failed to update extraction for item %d after retries: %v", item.ID, err)
+	}
+}
+
+// ProcessBatch classifies multiple items in a single API call
+func (fp *FeedProcessor) ProcessBatch(ctx context.Context, items []domain.Item) {
+	if len(items) == 0 {
 		return
 	}
 
-	lgr.Printf("[DEBUG] processed item %d: %s (score: %.1f, topics: %s)", item.ID, item.Title, classification.Score, strings.Join(classification.Topics, ", "))
+	lgr.Printf("[INFO] processing batch of %d items", len(items))
+
+	// get context for classification
+	feedbacks, err := fp.classificationManager.GetRecentFeedback(ctx, "", 50)
+	if err != nil {
+		lgr.Printf("[WARN] batch: failed to get feedback examples: %v", err)
+		feedbacks = []domain.FeedbackExample{}
+	}
+
+	topics, err := fp.classificationManager.GetTopics(ctx)
+	if err != nil {
+		lgr.Printf("[WARN] batch: failed to get canonical topics: %v", err)
+		topics = []string{}
+	}
+
+	preferenceSummary, err := fp.settingManager.GetSetting(ctx, "preference_summary")
+	if err != nil {
+		lgr.Printf("[WARN] batch: failed to get preference summary: %v", err)
+		preferenceSummary = ""
+	}
+
+	// get topic preferences
+	preferredTopics, avoidedTopics := fp.getTopicPreferences(ctx, "batch")
+
+	// classify all items in a single API call
+	req := llm.ClassifyRequest{
+		Articles:          items,
+		Feedbacks:         feedbacks,
+		CanonicalTopics:   topics,
+		PreferenceSummary: preferenceSummary,
+		PreferredTopics:   preferredTopics,
+		AvoidedTopics:     avoidedTopics,
+	}
+
+	classifications, err := fp.classifier.ClassifyItems(ctx, req)
+	if err != nil {
+		lgr.Printf("[WARN] failed to classify batch: %v", err)
+		return
+	}
+
+	// map classifications by GUID for quick lookup
+	classMap := make(map[string]domain.Classification)
+	for _, class := range classifications {
+		classMap[class.GUID] = class
+	}
+
+	// update each item with its classification
+	for _, item := range items {
+		classification, found := classMap[item.GUID]
+		if !found {
+			lgr.Printf("[WARN] no classification returned for item: %s", item.Title)
+			continue
+		}
+
+		classification.ClassifiedAt = time.Now()
+
+		// update classification in database (use empty extraction since it's already saved)
+		err = fp.retryFunc(ctx, func() error {
+			return fp.itemManager.UpdateItemProcessed(ctx, item.ID, nil, &classification)
+		})
+		if err != nil {
+			lgr.Printf("[WARN] failed to update item %d classification after retries: %v", item.ID, err)
+			continue
+		}
+
+		lgr.Printf("[DEBUG] classified item %d: %s (score: %.1f, topics: %s)",
+			item.ID, item.Title, classification.Score, strings.Join(classification.Topics, ", "))
+	}
+
+	lgr.Printf("[INFO] batch processing completed: %d/%d items classified", len(classifications), len(items))
+}
+
+// ProcessItem handles extraction and classification for a single item.
+// This is used for manual triggers and backward compatibility.
+func (fp *FeedProcessor) ProcessItem(ctx context.Context, item *domain.Item) {
+	// extract content
+	fp.extractContent(ctx, item)
+
+	// skip classification if extraction failed
+	if item.Content == "" {
+		lgr.Printf("[WARN] skipping classification for item %d: no content extracted", item.ID)
+		return
+	}
+
+	// process as single-item batch
+	fp.ProcessBatch(ctx, []domain.Item{*item})
 }
 
 // UpdateAllFeeds fetches and updates all enabled feeds concurrently.

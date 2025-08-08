@@ -43,6 +43,22 @@ func NewClassifier(cfg config.LLMConfig) *Classifier {
 	}
 }
 
+// GetBatchSize returns the configured batch size for classification
+func (c *Classifier) GetBatchSize() int {
+	if c.config.Classification.BatchSize > 0 {
+		return c.config.Classification.BatchSize
+	}
+	return 10 // default
+}
+
+// GetBatchTimeout returns the configured batch timeout for classification
+func (c *Classifier) GetBatchTimeout() time.Duration {
+	if c.config.Classification.BatchTimeout > 0 {
+		return c.config.Classification.BatchTimeout
+	}
+	return 5 * time.Second // default
+}
+
 // default system prompt for article classification
 const defaultSystemPrompt = `You are an AI assistant that evaluates articles for relevance to the user's interests.
 Rate each article from 0-10 where:
@@ -147,6 +163,13 @@ func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domai
 			if len(resp.Choices) == 0 {
 				// this is an unexpected response, but we'll retry it
 				return fmt.Errorf("no response from llm")
+			}
+
+			// log token usage for monitoring
+			if resp.Usage.TotalTokens > 0 {
+				tokensPerArticle := float64(resp.Usage.PromptTokens) / float64(len(req.Articles))
+				log.Printf("[INFO] token usage - batch size: %d, prompt: %d, completion: %d, total: %d (avg %.0f tokens/article)",
+					len(req.Articles), resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens, tokensPerArticle)
 			}
 
 			// parse the response
@@ -262,13 +285,8 @@ func (c *Classifier) buildPromptWithSummary(articles []domain.Item, feedbackExam
 			sb.WriteString(fmt.Sprintf("   Description: %s\n", article.Description))
 		}
 		if article.Content != "" {
-			// limit content to first 500 chars (rune-safe)
-			content := article.Content
-			runes := []rune(content)
-			if len(runes) > 500 {
-				content = string(runes[:500]) + "..."
-			}
-			sb.WriteString(fmt.Sprintf("   Content: %s\n", content))
+			// use full extracted content for better classification accuracy
+			sb.WriteString(fmt.Sprintf("   Content: %s\n", article.Content))
 		}
 		sb.WriteString("\n")
 	}

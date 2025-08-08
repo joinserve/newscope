@@ -220,12 +220,13 @@ schedule:
 llm:
   endpoint: "https://api.openai.com/v1"
   api_key: "${OPENAI_API_KEY}"  # From environment
-  model: "gpt-4o-mini"
+  model: "gpt-5"  # or "gpt-4o-mini" for lower cost
   temperature: 0.3
-  
   classification:
     feedback_examples: 50
     preference_summary_threshold: 10  # Number of new feedbacks before updating preference summary
+    batch_size: 10  # Process up to 10 articles in one API call
+    batch_timeout: 5s  # Process batch after this timeout even if not full
     summary_retry_attempts: 3         # Retry if summary contains forbidden phrases (default: 3)
     # Optional: Custom forbidden prefixes (defaults provided if not specified)
     # forbidden_summary_prefixes: ["The article discusses", "Article analyzes", "Discusses"]
