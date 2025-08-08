@@ -71,7 +71,15 @@ Each classification should contain:
 - guid: the article's GUID
 - score: relevance score (0-10). Adjust based on topic preferences if provided.
 - explanation: brief explanation (max 100 chars)
-- topics: array of 1-3 relevant topic keywords. IMPORTANT: ALWAYS provide topics for EVERY article, regardless of relevance score. Use topics from the provided canonical list when applicable. Only create new topics if absolutely necessary. Even articles with score 0 must have topics that describe their content.
+- topics: array of 1-3 relevant topic keywords. IMPORTANT: ALWAYS provide topics for EVERY article, regardless of relevance score. 
+  Rules for topics:
+  * Use concise, meaningful terms that capture the essence
+  * Prefer established technology names (kubernetes, golang, react, docker)
+  * Avoid redundant specificity (use "load-balancing" not "load-balancing-algorithms")
+  * Don't create minor variations (use "ai" not "ai-models", use "devops" not "devops-tools")
+  * For similar concepts, pick the most common term
+  * Maximum 3 topics per article - choose the most relevant ones
+  The canonical list shows commonly used topics - expand it thoughtfully when truly needed.
 - summary: comprehensive summary that captures the key points, findings, main story, and important details (300-500 chars). RULE: Start DIRECTLY with the facts. NO meta-language. BAD: "The article discusses X". GOOD: "X happens/exists/works". Write the summary in the same language as the article content.
 
 Examples of good summaries:
@@ -88,10 +96,17 @@ Examples of BAD summaries (NEVER write like this):
 
 Remember: Write as if you ARE presenting the information, not describing someone else's writing.
 
-IMPORTANT: Even low-relevance articles (score 0-3) MUST have topics assigned. Examples:
+IMPORTANT: Even low-relevance articles (score 0-3) MUST have topics assigned. Use clear, concise topics. Examples:
 - Article about "3D sneaker visualizer" (score: 0) should have topics: ["design", "3d", "fashion"]
 - Article about "Tunisia travel notes" (score: 2) should have topics: ["travel", "tunisia", "culture"]
 - Article about "Music piano rolls" (score: 2) should have topics: ["music", "history", "technology"]
+- Article about "Go generics implementation" (score: 9) should have topics: ["golang", "programming"]
+- Article about "React 19 features" (score: 8) should have topics: ["react", "javascript", "frontend"]
+- Article about "Kubernetes autoscaling" (score: 7) should have topics: ["kubernetes", "devops"]
+- Article about "PostgreSQL indexing" (score: 8) should have topics: ["postgresql", "database"]
+- Article about "Rust memory safety" (score: 9) should have topics: ["rust", "programming"]
+- Article about "Load balancing algorithms" (score: 7) should have topics: ["load-balancing", "distributed-systems"]
+- Article about "Prometheus monitoring" (score: 8) should have topics: ["prometheus", "observability", "devops"]
 
 Consider the user's previous feedback when provided.`
 
@@ -274,7 +289,7 @@ func (c *Classifier) buildPromptWithSummary(articles []domain.Item, feedbackExam
 
 	// add canonical topics if available
 	if len(canonicalTopics) > 0 {
-		sb.WriteString("Available topics (use one of these when applicable):\n")
+		sb.WriteString("Commonly used topics (use as reference, but create new specific topics when needed):\n")
 		sb.WriteString(strings.Join(canonicalTopics, ", "))
 		sb.WriteString("\n\n")
 	}

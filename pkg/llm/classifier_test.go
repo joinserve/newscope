@@ -209,7 +209,7 @@ func TestClassifier_buildPrompt(t *testing.T) {
 	prompt := classifier.buildPrompt(articles, feedback, canonicalTopics)
 
 	// check canonical topics section
-	assert.Contains(t, prompt, "Available topics (use one of these when applicable):")
+	assert.Contains(t, prompt, "Commonly used topics (use as reference, but create new specific topics when needed):")
 	assert.Contains(t, prompt, "tech, ai, programming")
 
 	// check feedback section
