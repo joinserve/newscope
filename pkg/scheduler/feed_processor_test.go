@@ -230,6 +230,14 @@ func TestFeedProcessor_ExtractContentNow(t *testing.T) {
 		}
 	}
 
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
+		assert.Equal(t, testItem.ID, itemID)
+		assert.Equal(t, extractResult.Content, extraction.PlainText)
+		assert.Equal(t, extractResult.RichContent, extraction.RichHTML)
+		assert.False(t, extraction.ExtractedAt.IsZero())
+		return nil
+	}
+
 	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		assert.Len(t, req.Articles, 1)
 		assert.Equal(t, extractResult.Content, req.Articles[0].Content)
@@ -241,8 +249,7 @@ func TestFeedProcessor_ExtractContentNow(t *testing.T) {
 
 	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, class *domain.Classification) error {
 		assert.Equal(t, testItem.ID, itemID)
-		assert.Equal(t, extractResult.Content, extraction.PlainText)
-		assert.Equal(t, extractResult.RichContent, extraction.RichHTML)
+		assert.Nil(t, extraction) // extraction is nil in batch processing since it's saved separately
 		assert.Equal(t, classification.GUID, class.GUID)
 		assert.InEpsilon(t, classification.Score, class.Score, 0.001)
 		assert.Equal(t, classification.Explanation, class.Explanation)
@@ -717,6 +724,10 @@ func TestFeedProcessor_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 		return []domain.Classification{
 			{GUID: "item1", Score: 8, Explanation: "Good", Topics: []string{"tech"}},
 		}, nil
+	}
+
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
+		return nil
 	}
 
 	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {

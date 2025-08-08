@@ -242,7 +242,13 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 
 	// verify items were processed (extraction and classification)
 	assert.GreaterOrEqual(t, len(extractor.ExtractCalls()), 2)
-	assert.GreaterOrEqual(t, len(classifier.ClassifyItemsCalls()), 2)
+
+	// with batch processing, classification is asynchronous and may not happen immediately
+	// if batch isn't full (2 items < default batch size 10), classification occurs after timeout
+	require.Eventually(t, func() bool {
+		return len(classifier.ClassifyItemsCalls()) >= 1
+	}, 6*time.Second, 100*time.Millisecond,
+		"classifier should be called after batch timeout expires")
 
 	// preference summary is only updated when explicitly triggered
 	// assert.GreaterOrEqual(t, len(classificationManager.GetFeedbackCountCalls()), 1)

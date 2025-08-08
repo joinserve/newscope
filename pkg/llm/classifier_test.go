@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sashabaranov/go-openai"
 	"github.com/stretchr/testify/assert"
@@ -188,7 +189,7 @@ func TestClassifier_buildPrompt(t *testing.T) {
 			GUID:        "item1",
 			Title:       "Test Article",
 			Description: "Test description",
-			Content:     "Long content that should be truncated " + strings.Repeat("x", 500),
+			Content:     "Long content that is now included in full " + strings.Repeat("x", 500),
 		},
 	}
 
@@ -222,8 +223,8 @@ func TestClassifier_buildPrompt(t *testing.T) {
 	assert.Contains(t, prompt, "GUID: item1")
 	assert.Contains(t, prompt, "Title: Test Article")
 	assert.Contains(t, prompt, "Description: Test description")
-	assert.Contains(t, prompt, "Content: Long content")
-	assert.Contains(t, prompt, "...")
+	assert.Contains(t, prompt, "Content: Long content that is now included in full")
+	assert.Contains(t, prompt, strings.Repeat("x", 500)) // ensure full content is included
 
 	// check instruction
 	assert.Contains(t, prompt, "Respond with a JSON array")
@@ -687,7 +688,7 @@ func TestClassifier_CustomPrompts(t *testing.T) {
 	})
 }
 
-func TestClassifier_RuneSafeTruncation(t *testing.T) {
+func TestClassifier_FullContentHandling(t *testing.T) {
 	// create test server that captures the request
 	var capturedPrompt string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -730,9 +731,9 @@ func TestClassifier_RuneSafeTruncation(t *testing.T) {
 	}
 	classifier := NewClassifier(cfg)
 
-	t.Run("truncate multi-byte characters correctly", func(t *testing.T) {
-		// create article with content that has multi-byte characters after the 500 char boundary
-		content := strings.Repeat("a", 498) + "你好世界" // 498 ASCII + 4 Chinese chars (502 runes total)
+	t.Run("handle full content with multi-byte characters", func(t *testing.T) {
+		// create article with long content including multi-byte characters
+		content := strings.Repeat("a", 498) + "你好世界" + strings.Repeat("b", 1000) // long content with Chinese chars
 		articles := []domain.Item{
 			{
 				GUID:        "item1",
@@ -747,18 +748,14 @@ func TestClassifier_RuneSafeTruncation(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// verify the content was truncated at a proper boundary
+		// verify the full content is included (no truncation)
 		assert.Contains(t, capturedPrompt, "Content: ")
-
-		// the content should be truncated to 500 runes + "..."
-		// with 498 'a' + 2 Chinese chars to make exactly 500 runes
-		expectedContent := strings.Repeat("a", 498) + "你好" + "..."
-		assert.Contains(t, capturedPrompt, "Content: "+expectedContent)
+		assert.Contains(t, capturedPrompt, content) // full content should be present
 	})
 
-	t.Run("handle emoji truncation correctly", func(t *testing.T) {
-		// create content with emojis after the boundary
-		content := strings.Repeat("x", 499) + "🚀🎉" // 499 chars + 2 emojis (501 runes total)
+	t.Run("handle emojis in full content", func(t *testing.T) {
+		// create content with emojis
+		content := strings.Repeat("x", 499) + "🚀🎉" + strings.Repeat("y", 1000) // long content with emojis
 		articles := []domain.Item{
 			{
 				GUID:        "item1",
@@ -773,13 +770,140 @@ func TestClassifier_RuneSafeTruncation(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// verify the content was truncated properly
+		// verify the full content with emojis is included
 		assert.Contains(t, capturedPrompt, "Content: ")
+		assert.Contains(t, capturedPrompt, content) // full content including emojis should be present
+	})
+}
 
-		// with 499 'x' + 2 emojis (501 total), it should truncate to 500 runes
-		// only the first emoji should be included
-		expectedContent := strings.Repeat("x", 499) + "🚀" + "..."
-		assert.Contains(t, capturedPrompt, "Content: "+expectedContent)
+func TestClassifier_BatchProcessing(t *testing.T) {
+	// create test server that returns batch classification response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/chat/completions", r.URL.Path)
+
+		// return mock batch response
+		resp := openai.ChatCompletionResponse{
+			Choices: []openai.ChatCompletionChoice{
+				{
+					Message: openai.ChatCompletionMessage{
+						Content: `[
+  {
+    "guid": "batch1",
+    "score": 8.5,
+    "explanation": "Relevant Go content",
+    "topics": ["golang", "programming"],
+    "summary": "Go 1.22 introduces range-over-function iterators and performance improvements."
+  },
+  {
+    "guid": "batch2", 
+    "score": 3.0,
+    "explanation": "Not tech related",
+    "topics": ["sports", "news"],
+    "summary": "Football match results and player statistics from weekend games."
+  },
+  {
+    "guid": "batch3",
+    "score": 9.0,
+    "explanation": "Excellent technical article",
+    "topics": ["ai", "machine-learning"],
+    "summary": "New transformer architecture achieves state-of-the-art results on language understanding benchmarks."
+  }
+]`,
+					},
+				},
+			},
+			Usage: openai.Usage{
+				PromptTokens:     2500,
+				CompletionTokens: 350,
+				TotalTokens:      2850,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	// create classifier with test server and batch configuration
+	cfg := config.LLMConfig{
+		Endpoint:    server.URL + "/v1",
+		APIKey:      "test-key",
+		Model:       "gpt-5",
+		Temperature: 0.3,
+		MaxTokens:   500,
+		Classification: config.ClassificationConfig{
+			BatchSize:    3,
+			BatchTimeout: 5 * time.Second,
+		},
+	}
+	classifier := NewClassifier(cfg)
+
+	// test batch of articles
+	articles := []domain.Item{
+		{
+			GUID:        "batch1",
+			Title:       "Go 1.22 Released",
+			Description: "New Go features",
+			Content:     "Go 1.22 introduces exciting new features including range-over-function iterators and performance improvements...",
+		},
+		{
+			GUID:        "batch2",
+			Title:       "Sports News",
+			Description: "Football results",
+			Content:     "Manchester United vs Chelsea match results and statistics...",
+		},
+		{
+			GUID:        "batch3",
+			Title:       "AI Breakthrough",
+			Description: "New transformer model",
+			Content:     "Researchers develop new transformer architecture with improved performance on language understanding tasks...",
+		},
+	}
+
+	// classify batch of articles
+	ctx := context.Background()
+	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{
+		Articles: articles,
+	})
+	require.NoError(t, err)
+
+	// verify batch results
+	assert.Len(t, classifications, 3)
+
+	// check individual classifications
+	classMap := make(map[string]domain.Classification)
+	for _, class := range classifications {
+		classMap[class.GUID] = class
+	}
+
+	assert.InEpsilon(t, 8.5, classMap["batch1"].Score, 0.001)
+	assert.Contains(t, classMap["batch1"].Topics, "golang")
+	assert.InEpsilon(t, 3.0, classMap["batch2"].Score, 0.001)
+	assert.Contains(t, classMap["batch2"].Topics, "sports")
+	assert.InEpsilon(t, 9.0, classMap["batch3"].Score, 0.001)
+	assert.Contains(t, classMap["batch3"].Topics, "ai")
+}
+
+func TestClassifier_BatchConfiguration(t *testing.T) {
+	t.Run("default batch configuration", func(t *testing.T) {
+		cfg := config.LLMConfig{}
+		classifier := NewClassifier(cfg)
+
+		assert.Equal(t, 10, classifier.GetBatchSize())               // default
+		assert.Equal(t, 5*time.Second, classifier.GetBatchTimeout()) // default
+	})
+
+	t.Run("custom batch configuration", func(t *testing.T) {
+		cfg := config.LLMConfig{
+			Classification: config.ClassificationConfig{
+				BatchSize:    15,
+				BatchTimeout: 10 * time.Second,
+			},
+		}
+		classifier := NewClassifier(cfg)
+
+		assert.Equal(t, 15, classifier.GetBatchSize())
+		assert.Equal(t, 10*time.Second, classifier.GetBatchTimeout())
 	})
 }
 
