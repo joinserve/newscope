@@ -395,6 +395,66 @@ func TestItemRepository_UpdateItemProcessed(t *testing.T) {
 		assert.Empty(t, summary)
 	})
 
+	t.Run("update item with nil extraction (batch processing case)", func(t *testing.T) {
+		// create another test item
+		testItem3 := &domain.Item{
+			FeedID:      testFeed.ID,
+			GUID:        "batch-item",
+			Title:       "Batch Processed Article",
+			Link:        "https://example.com/batch",
+			Description: "Batch description",
+			Published:   time.Now(),
+		}
+		err := repos.Item.CreateItem(context.Background(), testItem3)
+		require.NoError(t, err)
+
+		// first update extraction separately 
+		extraction := &domain.ExtractedContent{
+			PlainText: "Previously extracted content",
+			RichHTML:  "<p>Previously extracted HTML</p>",
+			Error:     "",
+		}
+		err = repos.Item.UpdateItemExtraction(context.Background(), testItem3.ID, extraction)
+		require.NoError(t, err)
+
+		// now update with classification only (nil extraction) - this simulates batch processing
+		classification := &domain.Classification{
+			GUID:        testItem3.GUID,
+			Score:       9.0,
+			Explanation: "Excellent batch processed article",
+			Topics:      []string{"batch", "processing"},
+			Summary:     "Batch processing summary",
+		}
+
+		err = repos.Item.UpdateItemProcessed(context.Background(), testItem3.ID, nil, classification)
+		require.NoError(t, err)
+
+		// verify classification was updated but extraction remains unchanged
+		var result struct {
+			ExtractedContent     string  `db:"extracted_content"`
+			ExtractedRichContent string  `db:"extracted_rich_content"`
+			RelevanceScore       float64 `db:"relevance_score"`
+			Explanation          string  `db:"explanation"`
+			Topics               string  `db:"topics"`
+			Summary              string  `db:"summary"`
+		}
+
+		err = repos.DB.GetContext(context.Background(), &result,
+			"SELECT extracted_content, extracted_rich_content, relevance_score, explanation, topics, summary FROM items WHERE id = ?",
+			testItem3.ID)
+		require.NoError(t, err)
+
+		// extraction content should remain unchanged
+		assert.Equal(t, "Previously extracted content", result.ExtractedContent)
+		assert.Equal(t, "<p>Previously extracted HTML</p>", result.ExtractedRichContent)
+		
+		// classification should be updated
+		assert.InEpsilon(t, 9.0, result.RelevanceScore, 0.001)
+		assert.Equal(t, "Excellent batch processed article", result.Explanation)
+		assert.Equal(t, `["batch","processing"]`, result.Topics)
+		assert.Equal(t, "Batch processing summary", result.Summary)
+	})
+
 	t.Run("update non-existent item", func(t *testing.T) {
 		extraction := &domain.ExtractedContent{
 			PlainText: "Some text",

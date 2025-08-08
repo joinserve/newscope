@@ -258,20 +258,36 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 		var query string
 		var args []interface{}
 
-		query = `
-			UPDATE items 
-			SET extracted_content = ?, 
-			    extracted_rich_content = ?, 
-			    extracted_at = datetime('now'),
-			    relevance_score = ?, 
-			    explanation = ?,
-			    topics = ?,
-			    summary = ?,
-			    classified_at = datetime('now')
-			WHERE id = ?
-		`
-		args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
-			classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID}
+		if extraction != nil {
+			// update both extraction and classification
+			query = `
+				UPDATE items 
+				SET extracted_content = ?, 
+				    extracted_rich_content = ?, 
+				    extracted_at = datetime('now'),
+				    relevance_score = ?, 
+				    explanation = ?,
+				    topics = ?,
+				    summary = ?,
+				    classified_at = datetime('now')
+				WHERE id = ?
+			`
+			args = []interface{}{extraction.PlainText, extraction.RichHTML, classification.Score,
+				classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID}
+		} else {
+			// update only classification (extraction was saved separately)
+			query = `
+				UPDATE items 
+				SET relevance_score = ?, 
+				    explanation = ?,
+				    topics = ?,
+				    summary = ?,
+				    classified_at = datetime('now')
+				WHERE id = ?
+			`
+			args = []interface{}{classification.Score, classification.Explanation, 
+				topicsSQL(classification.Topics), classification.Summary, itemID}
+		}
 
 		_, err := r.db.ExecContext(ctx, query, args...)
 		if err != nil {
