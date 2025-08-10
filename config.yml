@@ -35,7 +35,7 @@ llm:
   api_key: "${OPENAI_API_KEY}"   # From environment
   model: "gpt-5-nano"            # or "gpt-4o-mini"
   temperature: 0.3               # Lower = more consistent
-  max_tokens: 2000               # Increased for summaries
+  max_tokens: 10000               # Increased for summaries
   timeout: "30s"
   
   # Optional: Custom system prompt for classification
@@ -58,6 +58,8 @@ llm:
     use_json_mode: true        # Use JSON mode for classification
     preference_summary_threshold: 25  # Number of new feedbacks before updating preference summary
     summary_retry_attempts: 3  # Retry if summary contains forbidden phrases
+    batch_size: 5              # Reduce batch size to avoid token limits
+    batch_timeout: "10s"       # Wait longer to accumulate items
     forbidden_summary_prefixes: [
       "The article discusses", "The article introduces", "The article analyzes", "The article explores",
       "The article examines", "The article explains", "The article details", "The article critiques",
