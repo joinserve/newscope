@@ -18,6 +18,11 @@ type ItemRepository struct {
 	db *sqlx.DB
 }
 
+const (
+	// SQLiteDateFormat is the standard format for storing dates in SQLite
+	SQLiteDateFormat = "2006-01-02 15:04:05"
+)
+
 // itemSQL represents an item for SQL operations
 type itemSQL struct {
 	ID          int64     `db:"id"`
@@ -110,11 +115,14 @@ func (r *ItemRepository) CreateItem(ctx context.Context, item *domain.Item) erro
 			feed_id, guid, title, link, description, content, 
 			author, published
 		) VALUES (
-			:feed_id, :guid, :title, :link, :description, :content,
-			:author, :published
+			?, ?, ?, ?, ?, ?,
+			?, ?
 		)
 	`
-	result, err := r.db.NamedExecContext(ctx, query, sqlItem)
+	result, err := r.db.ExecContext(ctx, query,
+		sqlItem.FeedID, sqlItem.GUID, sqlItem.Title, sqlItem.Link,
+		sqlItem.Description, sqlItem.Content, sqlItem.Author,
+		sqlItem.Published.UTC().Format(SQLiteDateFormat))
 	if err != nil {
 		return fmt.Errorf("create item: %w", err)
 	}
@@ -346,6 +354,23 @@ func (r *ItemRepository) DeleteOldItems(ctx context.Context, age time.Duration, 
 	}
 
 	return rowsAffected, nil
+}
+
+// GetItemWithExtractedContent retrieves an item with its extracted content replacing the original content
+// This is specifically for classification purposes where extracted content is preferred
+func (r *ItemRepository) GetItemWithExtractedContent(ctx context.Context, id int64) (*domain.Item, error) {
+	var sqlItem itemSQL
+	err := r.db.GetContext(ctx, &sqlItem, "SELECT * FROM items WHERE id = ?", id)
+	if err != nil {
+		return nil, fmt.Errorf("get item with extracted content: %w", err)
+	}
+
+	item := r.toDomainItem(&sqlItem)
+	// for classification, use extracted content if available
+	if sqlItem.ExtractedContent != "" {
+		item.Content = sqlItem.ExtractedContent
+	}
+	return item, nil
 }
 
 // toDomainItem converts itemSQL to domain.Item

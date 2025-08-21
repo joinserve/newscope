@@ -46,6 +46,7 @@ type Scheduler struct {
 const (
 	defaultChannelBufferSize = 100
 	defaultUpdateFeedBuffer  = 10
+	startupBatchSize         = 100 // number of items to process per batch on startup
 )
 
 // FeedManager handles feed operations for scheduler
@@ -65,6 +66,9 @@ type ItemManager interface {
 	UpdateItemProcessed(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error
 	UpdateItemExtraction(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error
 	DeleteOldItems(ctx context.Context, age time.Duration, minScore float64) (int64, error)
+	GetUnclassifiedItems(ctx context.Context, limit int) ([]domain.Item, error)
+	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]domain.Item, error)
+	GetItemWithExtractedContent(ctx context.Context, id int64) (*domain.Item, error)
 }
 
 // ClassificationManager handles classification operations for scheduler
@@ -187,6 +191,10 @@ func (s *Scheduler) Start(ctx context.Context) {
 	s.wg.Add(1)
 	go s.feedUpdateWorker(ctx, processCh)
 
+	// process existing unclassified items on startup
+	s.wg.Add(1)
+	go s.processExistingItems(ctx, processCh)
+
 	// start preference update worker
 	s.wg.Add(1)
 	go func() {
@@ -301,6 +309,97 @@ func (s *Scheduler) performCleanup(ctx context.Context) {
 		lgr.Printf("[INFO] cleanup completed: removed %d old articles", deleted)
 	} else {
 		lgr.Printf("[DEBUG] cleanup completed: no articles to remove")
+	}
+}
+
+// processExistingItems processes items that were created but not yet classified
+func (s *Scheduler) processExistingItems(ctx context.Context, processCh chan<- domain.Item) {
+	defer s.wg.Done()
+
+	// helper function to send items to channel
+	sendItems := func(items []domain.Item) bool {
+		for _, item := range items {
+			select {
+			case processCh <- item:
+			case <-ctx.Done():
+				return false
+			}
+		}
+		return true
+	}
+
+	// process all items needing extraction in batches
+	totalExtraction := 0
+	for {
+		items, err := s.itemManager.GetItemsNeedingExtraction(ctx, startupBatchSize)
+		if err != nil {
+			lgr.Printf("[ERROR] failed to get items needing extraction: %v", err)
+			break
+		}
+		if len(items) == 0 {
+			break
+		}
+
+		totalExtraction += len(items)
+		if totalExtraction == len(items) { // first batch
+			lgr.Printf("[INFO] processing %d items needing extraction on startup", len(items))
+		}
+
+		if !sendItems(items) {
+			return // context canceled
+		}
+
+		// if we got fewer items than the batch size, we're done
+		if len(items) < startupBatchSize {
+			break
+		}
+	}
+
+	if totalExtraction > startupBatchSize {
+		lgr.Printf("[INFO] processed total of %d items needing extraction", totalExtraction)
+	}
+
+	// process all unclassified items that have been extracted in batches
+	totalUnclassified := 0
+	for {
+		items, err := s.itemManager.GetUnclassifiedItems(ctx, startupBatchSize)
+		if err != nil {
+			lgr.Printf("[ERROR] failed to get unclassified items: %v", err)
+			break
+		}
+		if len(items) == 0 {
+			break
+		}
+
+		// for unclassified items, we need to get the version with extracted content
+		// this properly separates concerns - repository doesn't decide what content to use
+		var itemsWithContent []domain.Item
+		for _, item := range items {
+			itemWithContent, err := s.itemManager.GetItemWithExtractedContent(ctx, item.ID)
+			if err != nil {
+				lgr.Printf("[WARN] failed to get item %d with extracted content: %v", item.ID, err)
+				continue
+			}
+			itemsWithContent = append(itemsWithContent, *itemWithContent)
+		}
+
+		totalUnclassified += len(itemsWithContent)
+		if totalUnclassified == len(itemsWithContent) { // first batch
+			lgr.Printf("[INFO] processing %d unclassified items on startup", len(itemsWithContent))
+		}
+
+		if !sendItems(itemsWithContent) {
+			return // context canceled
+		}
+
+		// if we got fewer items than the batch size, we're done
+		if len(items) < startupBatchSize {
+			break
+		}
+	}
+
+	if totalUnclassified > startupBatchSize {
+		lgr.Printf("[INFO] processed total of %d unclassified items", totalUnclassified)
 	}
 }
 

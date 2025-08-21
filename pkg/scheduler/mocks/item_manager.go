@@ -26,6 +26,15 @@ import (
 //			GetItemFunc: func(ctx context.Context, id int64) (*domain.Item, error) {
 //				panic("mock out the GetItem method")
 //			},
+//			GetItemWithExtractedContentFunc: func(ctx context.Context, id int64) (*domain.Item, error) {
+//				panic("mock out the GetItemWithExtractedContent method")
+//			},
+//			GetItemsNeedingExtractionFunc: func(ctx context.Context, limit int) ([]domain.Item, error) {
+//				panic("mock out the GetItemsNeedingExtraction method")
+//			},
+//			GetUnclassifiedItemsFunc: func(ctx context.Context, limit int) ([]domain.Item, error) {
+//				panic("mock out the GetUnclassifiedItems method")
+//			},
 //			ItemExistsFunc: func(ctx context.Context, feedID int64, guid string) (bool, error) {
 //				panic("mock out the ItemExists method")
 //			},
@@ -53,6 +62,15 @@ type ItemManagerMock struct {
 
 	// GetItemFunc mocks the GetItem method.
 	GetItemFunc func(ctx context.Context, id int64) (*domain.Item, error)
+
+	// GetItemWithExtractedContentFunc mocks the GetItemWithExtractedContent method.
+	GetItemWithExtractedContentFunc func(ctx context.Context, id int64) (*domain.Item, error)
+
+	// GetItemsNeedingExtractionFunc mocks the GetItemsNeedingExtraction method.
+	GetItemsNeedingExtractionFunc func(ctx context.Context, limit int) ([]domain.Item, error)
+
+	// GetUnclassifiedItemsFunc mocks the GetUnclassifiedItems method.
+	GetUnclassifiedItemsFunc func(ctx context.Context, limit int) ([]domain.Item, error)
 
 	// ItemExistsFunc mocks the ItemExists method.
 	ItemExistsFunc func(ctx context.Context, feedID int64, guid string) (bool, error)
@@ -90,6 +108,27 @@ type ItemManagerMock struct {
 			Ctx context.Context
 			// ID is the id argument value.
 			ID int64
+		}
+		// GetItemWithExtractedContent holds details about calls to the GetItemWithExtractedContent method.
+		GetItemWithExtractedContent []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ID is the id argument value.
+			ID int64
+		}
+		// GetItemsNeedingExtraction holds details about calls to the GetItemsNeedingExtraction method.
+		GetItemsNeedingExtraction []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Limit is the limit argument value.
+			Limit int
+		}
+		// GetUnclassifiedItems holds details about calls to the GetUnclassifiedItems method.
+		GetUnclassifiedItems []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Limit is the limit argument value.
+			Limit int
 		}
 		// ItemExists holds details about calls to the ItemExists method.
 		ItemExists []struct {
@@ -130,13 +169,16 @@ type ItemManagerMock struct {
 			Classification *domain.Classification
 		}
 	}
-	lockCreateItem             sync.RWMutex
-	lockDeleteOldItems         sync.RWMutex
-	lockGetItem                sync.RWMutex
-	lockItemExists             sync.RWMutex
-	lockItemExistsByTitleOrURL sync.RWMutex
-	lockUpdateItemExtraction   sync.RWMutex
-	lockUpdateItemProcessed    sync.RWMutex
+	lockCreateItem                  sync.RWMutex
+	lockDeleteOldItems              sync.RWMutex
+	lockGetItem                     sync.RWMutex
+	lockGetItemWithExtractedContent sync.RWMutex
+	lockGetItemsNeedingExtraction   sync.RWMutex
+	lockGetUnclassifiedItems        sync.RWMutex
+	lockItemExists                  sync.RWMutex
+	lockItemExistsByTitleOrURL      sync.RWMutex
+	lockUpdateItemExtraction        sync.RWMutex
+	lockUpdateItemProcessed         sync.RWMutex
 }
 
 // CreateItem calls CreateItemFunc.
@@ -248,6 +290,114 @@ func (mock *ItemManagerMock) GetItemCalls() []struct {
 	mock.lockGetItem.RLock()
 	calls = mock.calls.GetItem
 	mock.lockGetItem.RUnlock()
+	return calls
+}
+
+// GetItemWithExtractedContent calls GetItemWithExtractedContentFunc.
+func (mock *ItemManagerMock) GetItemWithExtractedContent(ctx context.Context, id int64) (*domain.Item, error) {
+	if mock.GetItemWithExtractedContentFunc == nil {
+		panic("ItemManagerMock.GetItemWithExtractedContentFunc: method is nil but ItemManager.GetItemWithExtractedContent was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		ID  int64
+	}{
+		Ctx: ctx,
+		ID:  id,
+	}
+	mock.lockGetItemWithExtractedContent.Lock()
+	mock.calls.GetItemWithExtractedContent = append(mock.calls.GetItemWithExtractedContent, callInfo)
+	mock.lockGetItemWithExtractedContent.Unlock()
+	return mock.GetItemWithExtractedContentFunc(ctx, id)
+}
+
+// GetItemWithExtractedContentCalls gets all the calls that were made to GetItemWithExtractedContent.
+// Check the length with:
+//
+//	len(mockedItemManager.GetItemWithExtractedContentCalls())
+func (mock *ItemManagerMock) GetItemWithExtractedContentCalls() []struct {
+	Ctx context.Context
+	ID  int64
+} {
+	var calls []struct {
+		Ctx context.Context
+		ID  int64
+	}
+	mock.lockGetItemWithExtractedContent.RLock()
+	calls = mock.calls.GetItemWithExtractedContent
+	mock.lockGetItemWithExtractedContent.RUnlock()
+	return calls
+}
+
+// GetItemsNeedingExtraction calls GetItemsNeedingExtractionFunc.
+func (mock *ItemManagerMock) GetItemsNeedingExtraction(ctx context.Context, limit int) ([]domain.Item, error) {
+	if mock.GetItemsNeedingExtractionFunc == nil {
+		panic("ItemManagerMock.GetItemsNeedingExtractionFunc: method is nil but ItemManager.GetItemsNeedingExtraction was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Limit int
+	}{
+		Ctx:   ctx,
+		Limit: limit,
+	}
+	mock.lockGetItemsNeedingExtraction.Lock()
+	mock.calls.GetItemsNeedingExtraction = append(mock.calls.GetItemsNeedingExtraction, callInfo)
+	mock.lockGetItemsNeedingExtraction.Unlock()
+	return mock.GetItemsNeedingExtractionFunc(ctx, limit)
+}
+
+// GetItemsNeedingExtractionCalls gets all the calls that were made to GetItemsNeedingExtraction.
+// Check the length with:
+//
+//	len(mockedItemManager.GetItemsNeedingExtractionCalls())
+func (mock *ItemManagerMock) GetItemsNeedingExtractionCalls() []struct {
+	Ctx   context.Context
+	Limit int
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Limit int
+	}
+	mock.lockGetItemsNeedingExtraction.RLock()
+	calls = mock.calls.GetItemsNeedingExtraction
+	mock.lockGetItemsNeedingExtraction.RUnlock()
+	return calls
+}
+
+// GetUnclassifiedItems calls GetUnclassifiedItemsFunc.
+func (mock *ItemManagerMock) GetUnclassifiedItems(ctx context.Context, limit int) ([]domain.Item, error) {
+	if mock.GetUnclassifiedItemsFunc == nil {
+		panic("ItemManagerMock.GetUnclassifiedItemsFunc: method is nil but ItemManager.GetUnclassifiedItems was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Limit int
+	}{
+		Ctx:   ctx,
+		Limit: limit,
+	}
+	mock.lockGetUnclassifiedItems.Lock()
+	mock.calls.GetUnclassifiedItems = append(mock.calls.GetUnclassifiedItems, callInfo)
+	mock.lockGetUnclassifiedItems.Unlock()
+	return mock.GetUnclassifiedItemsFunc(ctx, limit)
+}
+
+// GetUnclassifiedItemsCalls gets all the calls that were made to GetUnclassifiedItems.
+// Check the length with:
+//
+//	len(mockedItemManager.GetUnclassifiedItemsCalls())
+func (mock *ItemManagerMock) GetUnclassifiedItemsCalls() []struct {
+	Ctx   context.Context
+	Limit int
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Limit int
+	}
+	mock.lockGetUnclassifiedItems.RLock()
+	calls = mock.calls.GetUnclassifiedItems
+	mock.lockGetUnclassifiedItems.RUnlock()
 	return calls
 }
 

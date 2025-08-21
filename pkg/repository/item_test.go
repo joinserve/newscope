@@ -12,6 +12,45 @@ import (
 	"github.com/umputun/newscope/pkg/domain"
 )
 
+func TestItemRepository_CreateItem_DateFormatting(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	testFeed := createTestFeed(t, repos, "Test Feed")
+
+	// test item with date that includes timezone info
+	publishedTime := time.Date(2025, 8, 21, 14, 30, 45, 0, time.UTC)
+	item := &domain.Item{
+		FeedID:      testFeed.ID,
+		GUID:        "test-date-formatting",
+		Title:       "Test Date Formatting",
+		Link:        "https://example.com/test",
+		Description: "Test description",
+		Published:   publishedTime,
+	}
+
+	// create the item
+	err := repos.Item.CreateItem(context.Background(), item)
+	require.NoError(t, err)
+	assert.NotZero(t, item.ID)
+
+	// verify the date is stored correctly in the database
+	var storedDate string
+	err = repos.DB.Get(&storedDate, "SELECT published FROM items WHERE id = ?", item.ID)
+	require.NoError(t, err)
+
+	// the date is stored in a SQLite-compatible format
+	// verify it doesn't have timezone info appended like "+0000 UTC"
+	assert.NotContains(t, storedDate, "+0000")
+	assert.NotContains(t, storedDate, "UTC")
+
+	// verify we can query using date functions
+	var count int
+	err = repos.DB.Get(&count, "SELECT COUNT(*) FROM items WHERE date(published) = '2025-08-21'")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
 func TestItemRepository_GetItems(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()

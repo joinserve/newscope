@@ -24,6 +24,23 @@ func setupBasicItemManagerMocks(itemManager *mocks.ItemManagerMock) {
 	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
 		return nil
 	}
+
+	itemManager.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+		return []domain.Item{}, nil
+	}
+
+	itemManager.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+		return []domain.Item{}, nil
+	}
+
+	itemManager.GetItemWithExtractedContentFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
+		// return a basic item with extracted content populated
+		return &domain.Item{
+			ID:      id,
+			Content: "extracted content for classification",
+			Title:   fmt.Sprintf("Item %d", id),
+		}, nil
+	}
 }
 
 func TestNewScheduler(t *testing.T) {
@@ -352,6 +369,9 @@ func TestScheduler_StartStop(t *testing.T) {
 	parser := &mocks.ParserMock{}
 	extractor := &mocks.ExtractorMock{}
 	classifier := &mocks.ClassifierMock{}
+
+	// setup basic mocks to prevent panics
+	setupBasicItemManagerMocks(itemManager)
 
 	params := Params{
 		FeedManager:           feedManager,
@@ -1166,6 +1186,7 @@ func TestScheduler_CleanupWorker(t *testing.T) {
 			return 5, nil
 		},
 	}
+	setupBasicItemManagerMocks(itemManager)
 
 	feedManager := &mocks.FeedManagerMock{
 		GetFeedsFunc: func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
@@ -1420,4 +1441,165 @@ func TestIsLockError(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestScheduler_ProcessExistingItems(t *testing.T) {
+	t.Run("processes unclassified items on startup", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		itemManager := &mocks.ItemManagerMock{}
+
+		// items needing extraction
+		itemsNeedingExtraction := []domain.Item{
+			{ID: 1, Title: "Item 1", Link: "http://example.com/1"},
+			{ID: 2, Title: "Item 2", Link: "http://example.com/2"},
+		}
+
+		// unclassified items with extracted content
+		unclassifiedItems := []domain.Item{
+			{ID: 3, Title: "Item 3", Link: "http://example.com/3", Content: "Extracted content 3"},
+			{ID: 4, Title: "Item 4", Link: "http://example.com/4", Content: "Extracted content 4"},
+			{ID: 5, Title: "Item 5", Link: "http://example.com/5", Content: "Extracted content 5"},
+		}
+
+		itemManager.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return itemsNeedingExtraction, nil
+		}
+
+		itemManager.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return unclassifiedItems, nil
+		}
+
+		itemManager.GetItemWithExtractedContentFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
+			// return the item with its extracted content
+			for _, item := range unclassifiedItems {
+				if item.ID == id {
+					return &item, nil
+				}
+			}
+			return nil, fmt.Errorf("item not found")
+		}
+
+		scheduler := &Scheduler{
+			itemManager: itemManager,
+		}
+
+		processCh := make(chan domain.Item, 10)
+		scheduler.wg.Add(1)
+
+		go scheduler.processExistingItems(ctx, processCh)
+
+		// collect all items sent to processing channel
+		var processedItems []domain.Item
+		done := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case item := <-processCh:
+					processedItems = append(processedItems, item)
+					if len(processedItems) == 5 { // expecting 5 items total
+						close(done)
+						return
+					}
+				case <-time.After(100 * time.Millisecond):
+					close(done)
+					return
+				}
+			}
+		}()
+
+		<-done
+		cancel()
+		scheduler.wg.Wait()
+
+		// verify all items were sent for processing
+		assert.Len(t, processedItems, 5)
+
+		// verify items needing extraction were sent first
+		assert.Equal(t, int64(1), processedItems[0].ID)
+		assert.Equal(t, int64(2), processedItems[1].ID)
+
+		// verify unclassified items were sent after
+		assert.Equal(t, int64(3), processedItems[2].ID)
+		assert.Equal(t, int64(4), processedItems[3].ID)
+		assert.Equal(t, int64(5), processedItems[4].ID)
+
+		// verify content is preserved for unclassified items
+		assert.Equal(t, "Extracted content 3", processedItems[2].Content)
+	})
+
+	t.Run("handles errors when getting items", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		itemManager := &mocks.ItemManagerMock{}
+
+		itemManager.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return nil, fmt.Errorf("database error")
+		}
+
+		itemManager.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return nil, fmt.Errorf("database error")
+		}
+
+		scheduler := &Scheduler{
+			itemManager: itemManager,
+		}
+
+		processCh := make(chan domain.Item, 10)
+		scheduler.wg.Add(1)
+
+		go scheduler.processExistingItems(ctx, processCh)
+
+		// wait briefly for function to complete
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+		scheduler.wg.Wait()
+
+		// verify no items were sent for processing
+		select {
+		case <-processCh:
+			t.Fatal("no items should have been sent for processing")
+		default:
+			// expected - no items sent
+		}
+	})
+
+	t.Run("handles empty result sets", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		itemManager := &mocks.ItemManagerMock{}
+
+		itemManager.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return []domain.Item{}, nil
+		}
+
+		itemManager.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+			return []domain.Item{}, nil
+		}
+
+		scheduler := &Scheduler{
+			itemManager: itemManager,
+		}
+
+		processCh := make(chan domain.Item, 10)
+		scheduler.wg.Add(1)
+
+		go scheduler.processExistingItems(ctx, processCh)
+
+		// wait briefly for function to complete
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+		scheduler.wg.Wait()
+
+		// verify no items were sent for processing
+		select {
+		case <-processCh:
+			t.Fatal("no items should have been sent for processing")
+		default:
+			// expected - no items sent
+		}
+	})
 }

@@ -130,6 +130,31 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 		return nil, assert.AnError
 	}
 
+	// add new mocks for startup processing
+	itemManager.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+		return []domain.Item{}, nil
+	}
+
+	itemManager.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+		return []domain.Item{}, nil
+	}
+
+	itemManager.GetItemWithExtractedContentFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, item := range createdItems {
+			if item.ID == id {
+				// return item with extracted content populated
+				itemCopy := item
+				if itemCopy.Content == "" {
+					itemCopy.Content = "Extracted content for " + item.Link
+				}
+				return &itemCopy, nil
+			}
+		}
+		return nil, assert.AnError
+	}
+
 	feedManager.UpdateFeedFetchedFunc = func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 		return nil
 	}
@@ -344,6 +369,15 @@ func TestScheduler_Integration_ErrorHandling(t *testing.T) {
 
 	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
 		return nil
+	}
+
+	// add new mocks for startup processing
+	itemManager.GetItemsNeedingExtractionFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+		return []domain.Item{}, nil
+	}
+
+	itemManager.GetUnclassifiedItemsFunc = func(ctx context.Context, limit int) ([]domain.Item, error) {
+		return []domain.Item{}, nil
 	}
 
 	// create scheduler
