@@ -110,101 +110,101 @@ func (e *HTTPExtractor) Extract(ctx context.Context, urlStr string) (*ExtractRes
 		repeater.WithMaxDelay(e.retryMaxDelay),
 		repeater.WithJitter(e.retryJitter),
 	).Do(ctx, func() error {
-			// create request with context
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
-			if err != nil {
-				return fmt.Errorf("create request: %w", err)
-			}
+		// create request with context
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, http.NoBody)
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
 
-			// set user agent
-			req.Header.Set("User-Agent", e.userAgent)
+		// set user agent
+		req.Header.Set("User-Agent", e.userAgent)
 
-			// add browser-like headers with randomization
-			addBrowserHeaders(req)
+		// add browser-like headers with randomization
+		addBrowserHeaders(req)
 
-			// fetch content
-			resp, err := e.client.Do(req)
-			if err != nil {
-				// network errors are retryable
-				return fmt.Errorf("fetch URL %s: %w", urlStr, err)
-			}
-			defer resp.Body.Close()
+		// fetch content
+		resp, err := e.client.Do(req)
+		if err != nil {
+			// network errors are retryable
+			return fmt.Errorf("fetch URL %s: %w", urlStr, err)
+		}
+		defer resp.Body.Close()
 
-			// handle status codes
-			switch {
-			case resp.StatusCode == http.StatusOK:
-				// success, continue to extraction
-			case resp.StatusCode >= 500 || resp.StatusCode == 429:
-				// server errors and rate limiting are retryable
-				return fmt.Errorf("server error: %d", resp.StatusCode)
-			default:
-				// client errors (4xx) are not retryable
-				termErr.code = resp.StatusCode
-				return termErr
-			}
+		// handle status codes
+		switch {
+		case resp.StatusCode == http.StatusOK:
+			// success, continue to extraction
+		case resp.StatusCode >= 500 || resp.StatusCode == 429:
+			// server errors and rate limiting are retryable
+			return fmt.Errorf("server error: %d", resp.StatusCode)
+		default:
+			// client errors (4xx) are not retryable
+			termErr.code = resp.StatusCode
+			return termErr
+		}
 
-			// check content type - only process HTML/text content
-			contentType := resp.Header.Get("Content-Type")
-			if contentType != "" && !strings.Contains(strings.ToLower(contentType), "text/html") &&
-				!strings.Contains(strings.ToLower(contentType), "application/xhtml") &&
-				!strings.Contains(strings.ToLower(contentType), "text/plain") {
-				// non-HTML content (PDF, images, etc) - not retryable
-				termErr.code = resp.StatusCode
-				termErr.message = fmt.Sprintf("unsupported content type: %s", contentType)
-				return termErr
-			}
+		// check content type - only process HTML/text content
+		contentType := resp.Header.Get("Content-Type")
+		if contentType != "" && !strings.Contains(strings.ToLower(contentType), "text/html") &&
+			!strings.Contains(strings.ToLower(contentType), "application/xhtml") &&
+			!strings.Contains(strings.ToLower(contentType), "text/plain") {
+			// non-HTML content (PDF, images, etc) - not retryable
+			termErr.code = resp.StatusCode
+			termErr.message = fmt.Sprintf("unsupported content type: %s", contentType)
+			return termErr
+		}
 
-			// configure trafilatura options
-			opts := trafilatura.Options{
-				EnableFallback:  true,
-				ExcludeComments: true,
-				ExcludeTables:   false,
-				IncludeImages:   e.includeImages,
-				IncludeLinks:    e.includeLinks,
-				Deduplicate:     true,
-				OriginalURL:     parsedURL,
-			}
+		// configure trafilatura options
+		opts := trafilatura.Options{
+			EnableFallback:  true,
+			ExcludeComments: true,
+			ExcludeTables:   false,
+			IncludeImages:   e.includeImages,
+			IncludeLinks:    e.includeLinks,
+			Deduplicate:     true,
+			OriginalURL:     parsedURL,
+		}
 
-			// extract content
-			extracted, err := trafilatura.Extract(resp.Body, opts)
-			if err != nil {
-				return fmt.Errorf("extract content: %w", err)
-			}
+		// extract content
+		extracted, err := trafilatura.Extract(resp.Body, opts)
+		if err != nil {
+			return fmt.Errorf("extract content: %w", err)
+		}
 
-			if extracted == nil || extracted.ContentText == "" {
-				return fmt.Errorf("no content extracted")
-			}
+		if extracted == nil || extracted.ContentText == "" {
+			return fmt.Errorf("no content extracted")
+		}
 
-			// clean up content
-			content := strings.TrimSpace(extracted.ContentText)
+		// clean up content
+		content := strings.TrimSpace(extracted.ContentText)
 
-			// check minimum text length
-			if len(content) < e.minTextLength {
-				// too short content is not retryable
-				return fmt.Errorf("content too short: %d chars", len(content))
-			}
+		// check minimum text length
+		if len(content) < e.minTextLength {
+			// too short content is not retryable
+			return fmt.Errorf("content too short: %d chars", len(content))
+		}
 
-			// extract rich content with simplified HTML if available
-			richContent := ""
-			if extracted.ContentNode != nil {
-				richContent = extractRichContent(extracted.ContentNode)
-			}
+		// extract rich content with simplified HTML if available
+		richContent := ""
+		if extracted.ContentNode != nil {
+			richContent = extractRichContent(extracted.ContentNode)
+		}
 
-			// build result
-			result = &ExtractResult{
-				Content:     content,
-				RichContent: richContent,
-				Title:       extracted.Metadata.Title,
-				URL:         urlStr,
-			}
+		// build result
+		result = &ExtractResult{
+			Content:     content,
+			RichContent: richContent,
+			Title:       extracted.Metadata.Title,
+			URL:         urlStr,
+		}
 
-			// use metadata date if available
-			if !extracted.Metadata.Date.IsZero() {
-				result.Date = extracted.Metadata.Date
-			}
+		// use metadata date if available
+		if !extracted.Metadata.Date.IsZero() {
+			result.Date = extracted.Metadata.Date
+		}
 
-			return nil
-		}, termErr) // pass termErr to stop on client errors
+		return nil
+	}, termErr) // pass termErr to stop on client errors
 
 	if err != nil {
 		return nil, err

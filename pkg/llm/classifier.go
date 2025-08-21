@@ -124,7 +124,7 @@ type ClassifyRequest struct {
 // instead of MaxTokens parameter (gpt-5, o1, o3, o4 models)
 func isReasoningModel(model string) bool {
 	modelLower := strings.ToLower(model)
-	
+
 	// check for o-series reasoning models
 	reasoningPrefixes := []string{"o1", "o3", "o4"}
 	for _, prefix := range reasoningPrefixes {
@@ -132,7 +132,7 @@ func isReasoningModel(model string) bool {
 			return true
 		}
 	}
-	
+
 	// check for gpt-5 models
 	return strings.Contains(modelLower, "gpt-5")
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"regexp"
@@ -41,7 +42,7 @@ const (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-//go:embed static
+//go:embed static/css/* static/img/*
 var staticFS embed.FS
 
 // Server represents HTTP server instance
@@ -305,15 +306,12 @@ func (s *Server) respondWithError(w http.ResponseWriter, code int, message strin
 
 // setupRoutes configures application routes
 func (s *Server) setupRoutes() {
-	// serve static files
-	s.router.HandleFunc("GET /static/{path...}", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/static/")
-		if path == "" {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFileFS(w, r, staticFS, "static/"+path)
-	})
+	// serve static files using embedded filesystem
+	fsys, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		log.Fatalf("[ERROR] can't create embedded file server: %v", err)
+	}
+	s.router.HandleFiles("/static", http.FS(fsys))
 
 	// web UI routes
 	s.router.HandleFunc("GET /", s.articlesHandler)

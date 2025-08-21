@@ -408,7 +408,7 @@ func TestItemRepository_UpdateItemProcessed(t *testing.T) {
 		err := repos.Item.CreateItem(context.Background(), testItem3)
 		require.NoError(t, err)
 
-		// first update extraction separately 
+		// first update extraction separately
 		extraction := &domain.ExtractedContent{
 			PlainText: "Previously extracted content",
 			RichHTML:  "<p>Previously extracted HTML</p>",
@@ -447,7 +447,7 @@ func TestItemRepository_UpdateItemProcessed(t *testing.T) {
 		// extraction content should remain unchanged
 		assert.Equal(t, "Previously extracted content", result.ExtractedContent)
 		assert.Equal(t, "<p>Previously extracted HTML</p>", result.ExtractedRichContent)
-		
+
 		// classification should be updated
 		assert.InEpsilon(t, 9.0, result.RelevanceScore, 0.001)
 		assert.Equal(t, "Excellent batch processed article", result.Explanation)

@@ -285,7 +285,7 @@ func (r *ItemRepository) UpdateItemProcessed(ctx context.Context, itemID int64, 
 				    classified_at = datetime('now')
 				WHERE id = ?
 			`
-			args = []interface{}{classification.Score, classification.Explanation, 
+			args = []interface{}{classification.Score, classification.Explanation,
 				topicsSQL(classification.Topics), classification.Summary, itemID}
 		}
 

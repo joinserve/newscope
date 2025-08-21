@@ -927,9 +927,9 @@ func TestIsReasoningModel(t *testing.T) {
 		{"claude-3", false},
 		{"llama3", false},
 		{"custom-model-with-gpt-5-in-name", true}, // contains gpt-5
-		{"", false}, // empty model
+		{"", false},                               // empty model
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
 			assert.Equal(t, tt.want, isReasoningModel(tt.model))
@@ -942,15 +942,15 @@ func TestClassifier_GPT5_MaxCompletionTokens(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var reqBody map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&reqBody)
-		
+
 		// for gpt-5 models, should use max_completion_tokens, not max_tokens
 		assert.NotContains(t, reqBody, "max_tokens", "GPT-5 should not use max_tokens")
 		assert.Contains(t, reqBody, "max_completion_tokens", "GPT-5 should use max_completion_tokens")
 		assert.InDelta(t, 500, reqBody["max_completion_tokens"], 0.01)
-		
+
 		// reasoning models should not have temperature set
 		assert.NotContains(t, reqBody, "temperature", "GPT-5 should not have temperature set")
-		
+
 		resp := openai.ChatCompletionResponse{
 			Choices: []openai.ChatCompletionChoice{
 				{
@@ -979,7 +979,7 @@ func TestClassifier_GPT5_MaxCompletionTokens(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	articles := []domain.Item{{GUID: "item1", Title: "Test"}}
-	
+
 	ctx := context.Background()
 	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{Articles: articles})
 	require.NoError(t, err)
@@ -991,16 +991,16 @@ func TestClassifier_RegularModel_MaxTokens(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var reqBody map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&reqBody)
-		
+
 		// for regular models, should use max_tokens, not max_completion_tokens
 		assert.Contains(t, reqBody, "max_tokens", "Regular models should use max_tokens")
 		assert.NotContains(t, reqBody, "max_completion_tokens", "Regular models should not use max_completion_tokens")
 		assert.InDelta(t, 500, reqBody["max_tokens"], 0.01)
-		
+
 		// regular models should have temperature set
 		assert.Contains(t, reqBody, "temperature", "Regular models should have temperature set")
 		assert.InDelta(t, 0.7, reqBody["temperature"], 0.01)
-		
+
 		resp := openai.ChatCompletionResponse{
 			Choices: []openai.ChatCompletionChoice{
 				{
@@ -1029,7 +1029,7 @@ func TestClassifier_RegularModel_MaxTokens(t *testing.T) {
 	classifier := NewClassifier(cfg)
 
 	articles := []domain.Item{{GUID: "item1", Title: "Test"}}
-	
+
 	ctx := context.Background()
 	classifications, err := classifier.ClassifyItems(ctx, ClassifyRequest{Articles: articles})
 	require.NoError(t, err)
