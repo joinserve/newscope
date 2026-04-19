@@ -173,7 +173,7 @@ func TestServer_articlesHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w4.Code)
 	assert.Contains(t, w4.Body.String(), "Liked Article")
-	assert.Contains(t, w4.Body.String(), "★ Liked") // check that button is rendered
+	assert.Contains(t, w4.Body.String(), `id="liked-toggle"`) // liked toggle pill is rendered
 
 	// test with liked filter using "true" value
 	req5 := httptest.NewRequest("GET", "/articles?liked=true", http.NoBody)

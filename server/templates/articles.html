@@ -15,20 +15,27 @@
     <input type="hidden" id="liked-state" name="liked" value="{{if .ShowLikedOnly}}true{{else}}false{{end}}">
     <input type="hidden" id="processed-state" name="show_processed" value="{{if .ShowProcessed}}true{{else}}false{{end}}">
 
-    <!-- Score filter -->
+    <!-- Threads-style pill filter bar -->
     <div class="filters">
-        <label for="score-filter">Min Score:</label>
-        <input type="range" id="score-filter" name="score" min="0" max="10" value="{{.MinScore}}" step="0.5"
-               hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-               hx-trigger="change"
-               hx-target="#articles-with-pagination"
-               hx-swap="innerHTML show:body:top"
-               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
-        <span id="score-value">{{.MinScore}}</span>
+        <div class="filter-pill filter-pill-range">
+            <span class="pill-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+            </span>
+            <input type="range" id="score-filter" name="score" min="0" max="10" value="{{.MinScore}}" step="0.5"
+                   aria-label="Minimum score"
+                   hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                   hx-trigger="change"
+                   hx-target="#articles-with-pagination"
+                   hx-swap="innerHTML show:body:top"
+                   hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
+            <span id="score-value" class="pill-value">{{.MinScore}}</span>
+        </div>
 
-        <!-- Topic filter -->
-        <label for="topic-filter">Topic:</label>
-        <select id="topic-filter" name="topic"
+        <select id="topic-filter" name="topic" class="filter-pill"
+                aria-label="Topic"
                 hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
@@ -40,9 +47,8 @@
             {{end}}
         </select>
 
-        <!-- Feed filter -->
-        <label for="feed-filter">Feed:</label>
-        <select id="feed-filter" name="feed"
+        <select id="feed-filter" name="feed" class="filter-pill"
+                aria-label="Feed"
                 hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
@@ -54,9 +60,8 @@
             {{end}}
         </select>
 
-        <!-- Sort filter -->
-        <label for="sort-filter">Sort:</label>
-        <select id="sort-filter" name="sort"
+        <select id="sort-filter" name="sort" class="filter-pill"
+                aria-label="Sort order"
                 hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
@@ -68,9 +73,8 @@
             <option value="source+score" {{if eq .SelectedSort "source+score"}}selected{{end}}>Source + Score</option>
         </select>
 
-        <!-- Date range filter -->
-        <label for="date-range-filter">Published:</label>
-        <select id="date-range-filter" name="date_range"
+        <select id="date-range-filter" name="date_range" class="filter-pill"
+                aria-label="Published"
                 hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
@@ -83,27 +87,34 @@
             <option value="all" {{if eq .DateRange "all"}}selected{{end}}>All</option>
         </select>
 
-        <!-- Toggle buttons group -->
-        <div class="toggle-buttons-group">
-            <button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}"
-                    title="Show liked articles only"
+        <div class="filter-actions">
+            <button id="liked-toggle" class="pill-toggle {{if .ShowLikedOnly}}active{{end}}"
+                    type="button"
+                    aria-label="Liked only"
+                    title="Show liked only"
                     hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
                     hx-swap="innerHTML show:body:top"
                     hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter{{if .IsSearch}}, #search-query{{end}}"
                     hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}", "show_processed": "false"}'>
-                ★ Liked
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path>
+                </svg>
             </button>
-            <button id="processed-toggle" class="btn-toggle {{if .ShowProcessed}}active{{end}}"
-                    title="Show processed articles"
+            <button id="processed-toggle" class="pill-toggle {{if .ShowProcessed}}active{{end}}"
+                    type="button"
+                    aria-label="Show processed"
+                    title="Show processed"
                     hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
                     hx-swap="innerHTML show:body:top"
                     hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter{{if .IsSearch}}, #search-query{{end}}"
                     hx-vals='{"show_processed": "{{if .ShowProcessed}}false{{else}}true{{end}}", "liked": "false"}'>
-                ✓ Processed
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M20 6 9 17l-5-5"></path>
+                </svg>
             </button>
             <div class="view-toggle-buttons">
                 <button id="view-threads" class="btn-view-toggle active" title="Threads view" type="button" aria-label="Threads view">
