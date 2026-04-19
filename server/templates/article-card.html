@@ -42,7 +42,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
                 👍
             </button>
             <button class="btn-feedback btn-dislike-small {{if eq .GetUserFeedback "dislike"}}active{{end}}"
@@ -50,8 +50,16 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
                 👎
+            </button>
+            <button class="btn-feedback btn-done-small {{if eq .GetUserFeedback "done"}}active{{end}}"
+                    hx-post="/api/v1/feedback/{{.ID}}/done"
+                    hx-swap="outerHTML"
+                    hx-target="closest .article-card"
+                    hx-trigger="click"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                ✓
             </button>
         </div>
     </div>
@@ -95,7 +103,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
                 👍 Like
             </button>
             <button class="btn-feedback btn-dislike {{if eq .GetUserFeedback "dislike"}}active{{end}}"
@@ -103,8 +111,16 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
                 👎 Dislike
+            </button>
+            <button class="btn-feedback btn-done {{if eq .GetUserFeedback "done"}}active{{end}}"
+                    hx-post="/api/v1/feedback/{{.ID}}/done"
+                    hx-swap="outerHTML"
+                    hx-target="closest .article-card"
+                    hx-trigger="click"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                ✓ Done
             </button>
             {{if .GetExtractedContent}}
             <span id="content-toggle-{{.ID}}">

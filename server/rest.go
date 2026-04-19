@@ -23,7 +23,10 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, r, http.StatusOK, status)
 }
 
-// feedbackHandler handles user feedback (like/dislike)
+// feedbackHandler handles user feedback (like/dislike/done). Any action
+// marks the item processed so it leaves the main board. In the inbox view
+// the card is removed; in the processed / liked view it is re-rendered
+// so the user sees the updated feedback state.
 func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -37,7 +40,7 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// validate action
-	if action != "like" && action != "dislike" {
+	if action != "like" && action != "dislike" && action != "done" {
 		renderError(w, r, fmt.Errorf("invalid action"), http.StatusBadRequest)
 		return
 	}
@@ -49,36 +52,29 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// trigger preference summary update in background
-	s.scheduler.TriggerPreferenceUpdate()
+	// trigger preference summary update for scoring feedback only.
+	// done is neutral so it doesn't need to bump the summary work.
+	if action != "done" {
+		s.scheduler.TriggerPreferenceUpdate()
+	}
 
-	// get the updated article
+	// in inbox view, any action dismisses the card from the list
+	if r.Header.Get("HX-Request") == "true" {
+		showProcessed := r.FormValue("show_processed") == "true" || r.FormValue("show_processed") == "on"
+		showLikedOnly := r.FormValue("liked") == "true" || r.FormValue("liked") == "on"
+		if !showProcessed && !showLikedOnly {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
+	// processed / liked view: re-render the card to reflect the new state
 	article, err := s.db.GetClassifiedItem(ctx, id)
 	if err != nil {
 		log.Printf("[ERROR] failed to get article after feedback: %v", err)
 		http.Error(w, "Failed to reload article", http.StatusInternalServerError)
 		return
 	}
-
-	// check if this is an HTMX request
-	if r.Header.Get("HX-Request") == "true" {
-		// get current filter parameters from form data (included by hx-include)
-		minScore := 0.0
-		if scoreStr := r.FormValue("score"); scoreStr != "" {
-			if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
-				minScore = score
-			}
-		}
-
-		// if article no longer meets score threshold after feedback, remove it
-		if article.GetRelevanceScore() < minScore {
-			// return empty response to remove the article from the list
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-	}
-
-	// return the updated article card HTML
 	s.renderArticleCard(w, article)
 }
 

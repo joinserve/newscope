@@ -19,7 +19,7 @@
                hx-trigger="change"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"
-               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
+               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
         <span id="score-value">{{.MinScore}}</span>
         
         <!-- Topic filter -->
@@ -29,7 +29,7 @@
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
+                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
             <option value="">All Topics</option>
             {{range .Topics}}
             <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
@@ -43,7 +43,7 @@
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
+                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
             <option value="">All Feeds</option>
             {{range .Feeds}}
             <option value="{{.}}" {{if eq $.SelectedFeed .}}selected{{end}}>{{.}}</option>
@@ -57,7 +57,7 @@
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-toggle{{if .IsSearch}}, #search-query{{end}}">
+                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
             <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
             <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
             <option value="source+date" {{if eq .SelectedSort "source+date"}}selected{{end}}>Source + Date</option>
@@ -66,15 +66,25 @@
         
         <!-- Toggle buttons group -->
         <div class="toggle-buttons-group">
-            <button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}" 
+            <button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}"
                     title="Show liked articles only"
                     hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
                     hx-swap="innerHTML show:body:top"
                     hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter{{if .IsSearch}}, #search-query{{end}}"
-                    hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}"}'>
+                    hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}", "show_processed": "false"}'>
                 ★ Liked
+            </button>
+            <button id="processed-toggle" class="btn-toggle {{if .ShowProcessed}}active{{end}}"
+                    title="Show processed articles"
+                    hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                    hx-trigger="click"
+                    hx-target="#articles-with-pagination"
+                    hx-swap="innerHTML show:body:top"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter{{if .IsSearch}}, #search-query{{end}}"
+                    hx-vals='{"show_processed": "{{if .ShowProcessed}}false{{else}}true{{end}}", "liked": "false"}'>
+                ✓ Processed
             </button>
             <div class="view-toggle-buttons">
                 <button id="view-expanded" class="btn-view-toggle active" title="Expanded view">⊞</button>

@@ -52,6 +52,9 @@ type itemSQL struct {
 	UserFeedback string     `db:"user_feedback"`
 	FeedbackAt   *time.Time `db:"feedback_at"`
 
+	// processing state
+	ProcessedAt *time.Time `db:"processed_at"`
+
 	// metadata
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`

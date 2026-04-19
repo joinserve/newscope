@@ -49,6 +49,9 @@ type itemWithFeedSQL struct {
 	UserFeedback string     `db:"user_feedback"`
 	FeedbackAt   *time.Time `db:"feedback_at"`
 
+	// processing state: set when the user dismisses from the main board
+	ProcessedAt *time.Time `db:"processed_at"`
+
 	// metadata
 	CreatedAt time.Time `db:"created_at"`
 	UpdatedAt time.Time `db:"updated_at"`
@@ -123,9 +126,15 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 		args = append(args, filter.FeedName, filter.FeedName)
 	}
 
-	// add liked only filter if specified
-	if filter.ShowLikedOnly {
+	// processed-state / liked filter. liked implies processed (any feedback
+	// marks the item processed), so ShowLikedOnly takes precedence.
+	switch {
+	case filter.ShowLikedOnly:
 		query += ` AND i.user_feedback = 'like'`
+	case filter.ShowProcessed:
+		query += ` AND i.processed_at IS NOT NULL`
+	default:
+		query += ` AND i.processed_at IS NULL`
 	}
 
 	// add sorting
@@ -252,7 +261,11 @@ func (r *ClassificationRepository) GetTopTopicsByScore(ctx context.Context, minS
 	return topics, nil
 }
 
-// UpdateItemFeedback updates user feedback on an item and adjusts its score
+// UpdateItemFeedback updates user feedback on an item, adjusts its score,
+// and marks it as processed (dismissed from the main board). Any feedback
+// action — like, dislike, or done — sets processed_at so the item leaves
+// the inbox. Score adjustments apply only to like (+1) and dislike (-2);
+// done is neutral and does not influence the preference model.
 func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemID int64, feedback *domain.Feedback) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -260,10 +273,10 @@ func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemI
 	}
 	defer tx.Rollback()
 
-	// update feedback
+	// update feedback and mark as processed in one go
 	query := `
-		UPDATE items 
-		SET user_feedback = ?, feedback_at = datetime('now')
+		UPDATE items
+		SET user_feedback = ?, feedback_at = datetime('now'), processed_at = datetime('now')
 		WHERE id = ?
 	`
 	if _, err := tx.ExecContext(ctx, query, string(feedback.Type), itemID); err != nil {
@@ -278,13 +291,13 @@ func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemI
 	case domain.FeedbackDislike:
 		scoreAdjustment = -2.0 // decrease score by 2 (stronger signal)
 	default:
-		// no score adjustment for other feedback types
+		// done and any other type: mark processed but leave score untouched
 		return tx.Commit()
 	}
 
 	// update score, ensuring it stays within 0-10 range
 	scoreQuery := `
-		UPDATE items 
+		UPDATE items
 		SET relevance_score = MAX(0, MIN(10, relevance_score + ?))
 		WHERE id = ?
 	`
@@ -453,6 +466,8 @@ func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedS
 		}
 	}
 
+	item.ProcessedAt = sqlItem.ProcessedAt
+
 	return item
 }
 
@@ -482,9 +497,14 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 		args = append(args, filter.FeedName, filter.FeedName)
 	}
 
-	// add liked only filter if specified
-	if filter.ShowLikedOnly {
+	// processed-state / liked filter (see GetClassifiedItems for the ordering rationale)
+	switch {
+	case filter.ShowLikedOnly:
 		query += ` AND i.user_feedback = 'like'`
+	case filter.ShowProcessed:
+		query += ` AND i.processed_at IS NOT NULL`
+	default:
+		query += ` AND i.processed_at IS NULL`
 	}
 
 	var count int
@@ -560,9 +580,14 @@ func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, fi
 		args = append(args, filter.FeedName, filter.FeedName)
 	}
 
-	// add liked only filter if specified
-	if filter.ShowLikedOnly {
+	// processed-state / liked filter (see GetClassifiedItems for the ordering rationale)
+	switch {
+	case filter.ShowLikedOnly:
 		whereClause += ` AND i.user_feedback = 'like'`
+	case filter.ShowProcessed:
+		whereClause += ` AND i.processed_at IS NOT NULL`
+	default:
+		whereClause += ` AND i.processed_at IS NULL`
 	}
 
 	return whereClause, args

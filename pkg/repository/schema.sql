@@ -41,9 +41,13 @@ CREATE TABLE IF NOT EXISTS items (
     classified_at DATETIME,
     
     -- User feedback
-    user_feedback TEXT DEFAULT '',      -- 'like', 'dislike', 'spam', empty
+    user_feedback TEXT DEFAULT '',      -- 'like', 'dislike', 'done', 'spam', empty
     feedback_at DATETIME,
-    
+
+    -- Processing state: when the user dismissed the article from the main board
+    -- (any of like / dislike / done sets this). Null = still in inbox.
+    processed_at DATETIME,
+
     -- Metadata
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -70,6 +74,8 @@ CREATE INDEX IF NOT EXISTS idx_items_feed_published ON items(feed_id, published 
 CREATE INDEX IF NOT EXISTS idx_items_classification ON items(classified_at, relevance_score DESC);
 CREATE INDEX IF NOT EXISTS idx_items_extraction ON items(extracted_at);
 CREATE INDEX IF NOT EXISTS idx_items_score_feedback ON items(relevance_score DESC) WHERE user_feedback = '';
+CREATE INDEX IF NOT EXISTS idx_items_processed ON items(processed_at);
+CREATE INDEX IF NOT EXISTS idx_items_inbox_score ON items(relevance_score DESC) WHERE processed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_feeds_enabled_next ON feeds(enabled, next_fetch) WHERE enabled = 1;
 
 -- Topic-related indexes for JSON column
