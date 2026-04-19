@@ -333,63 +333,7 @@ main {
     box-shadow: var(--shadow-md);
 }
 
-/* View Mode Visibility */
-.view-expanded .condensed-only {
-    display: none;
-}
-
-.view-condensed .expanded-only {
-    display: none;
-}
-
-/* Condensed View Styles */
-.view-condensed .article-card {
-    padding: 0.75rem 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.article-header-condensed {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 1rem;
-}
-
-.condensed-main {
-    flex: 1;
-    min-width: 0;
-}
-
-.condensed-main h3 {
-    font-size: 1rem;
-    margin: 0 0 0.25rem 0;
-    line-height: 1.3;
-}
-
-.condensed-main h3 a {
-    color: var(--text-primary);
-    text-decoration: none;
-    transition: color 0.2s;
-}
-
-.condensed-main h3 a:hover {
-    color: var(--primary-color);
-}
-
-.condensed-meta {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    font-size: 0.8rem;
-    color: var(--text-tertiary);
-}
-
-.condensed-meta .feed-name {
-    font-weight: 500;
-    color: var(--text-secondary);
-    text-decoration: none;
-}
-
+/* Score badge (shared across views) */
 .score-badge {
     background-color: var(--primary-color);
     color: white;
@@ -401,74 +345,117 @@ main {
 }
 
 .score-badge.score-low {
-    background-color: #6b7280; /* gray */
+    background-color: #6b7280;
 }
 
 .score-badge.score-medium {
-    background-color: #eab308; /* yellow */
+    background-color: #eab308;
 }
 
 .score-badge.score-high {
-    background-color: #22c55e; /* green */
+    background-color: #22c55e;
 }
 
-.condensed-actions {
+/* Article card: shared structure */
+.card-head {
     display: flex;
-    gap: 0.25rem;
     align-items: center;
-}
-
-.btn-like-small,
-.btn-dislike-small {
-    padding: 0.25rem 0.5rem;
-    border: 1px solid var(--border-secondary);
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-    border-radius: 0.25rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    min-width: 2rem;
-}
-
-.btn-like-small:hover,
-.btn-dislike-small:hover {
-    background-color: var(--bg-hover);
-}
-
-.btn-like-small.active {
-    background-color: var(--success-color);
-    color: white;
-    border-color: var(--success-color);
-}
-
-.btn-dislike-small.active {
-    background-color: var(--danger-color);
-    color: white;
-    border-color: var(--danger-color);
-}
-
-.article-header h3 {
-    font-size: 1.25rem;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-tertiary);
     margin-bottom: 0.5rem;
 }
 
-.article-header h3 a {
+.card-head .feed-name {
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.card-head .feed-name.clickable-feed:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.card-head .card-time {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.card-head .score-badge {
+    white-space: nowrap;
+}
+
+.card-title {
+    font-size: 1.15rem;
+    line-height: 1.4;
+    margin: 0 0 0.5rem 0;
+}
+
+.card-title a {
     color: var(--text-primary);
     text-decoration: none;
     transition: color 0.2s;
 }
 
-.article-header h3 a:hover {
+.card-title a:hover {
     color: var(--primary-color);
 }
 
-.article-meta {
+.card-summary {
+    color: var(--text-primary);
+    line-height: 1.55;
+    margin-bottom: 0.75rem;
+}
+
+.card-summary p {
+    margin: 0;
+}
+
+.card-extras {
+    margin-top: 0.75rem;
+}
+
+.card-extras .content-actions {
     display: flex;
-    gap: 1rem;
-    font-size: 0.875rem;
-    color: var(--text-tertiary);
-    margin-bottom: 1rem;
+    gap: 0.5rem;
+    margin: 0.75rem 0 0.25rem;
+    flex-wrap: wrap;
+}
+
+/* Threads + condensed hide extras; expanded view shows them */
+.view-threads .expanded-only,
+.view-condensed .expanded-only {
+    display: none;
+}
+
+/* Condensed: title-only row */
+.view-condensed .article-card {
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.view-condensed .card-summary {
+    display: none;
+}
+
+.view-condensed .card-title {
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+
+.view-condensed .card-head {
+    margin-bottom: 0.25rem;
+    font-size: 0.8rem;
+}
+
+.view-condensed .card-actions {
+    margin-top: 0.25rem;
+}
+
+.view-condensed .card-actions .action-label {
+    display: none;
 }
 
 .feed-name {
@@ -481,17 +468,6 @@ main {
 .feed-name.clickable-feed:hover {
     color: var(--primary-color);
     text-decoration: underline;
-}
-
-.article-description {
-    color: var(--text-secondary);
-    margin-bottom: 1rem;
-}
-
-.article-summary {
-    color: var(--text-primary);
-    margin-bottom: 1rem;
-    line-height: 1.6;
 }
 
 /* Classification Section */
@@ -581,14 +557,7 @@ main {
     color: white;
 }
 
-/* Article Actions */
-.article-actions {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-
-.btn-feedback,
+/* Content action buttons (inside expanded extras) */
 .btn-content,
 .btn-extract {
     padding: 0.375rem 0.75rem;
@@ -601,20 +570,63 @@ main {
     transition: all 0.2s;
 }
 
-.btn-feedback:hover {
+.btn-content:hover,
+.btn-extract:hover {
     background-color: var(--bg-hover);
 }
 
-.btn-like.active {
-    background-color: var(--success-color);
-    color: white;
-    border-color: var(--success-color);
+/* Threads-style action row (used in all views; density tuned per view) */
+.card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.75rem;
+    user-select: none;
 }
 
-.btn-dislike.active {
-    background-color: var(--danger-color);
-    color: white;
-    border-color: var(--danger-color);
+.card-actions .action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.7rem;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, transform 0.1s;
+}
+
+.card-actions .action:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.card-actions .action:active {
+    transform: scale(0.96);
+}
+
+.card-actions .action .icon {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+}
+
+.card-actions .action-label {
+    font-weight: 500;
+}
+
+.card-actions .action.action-like.active {
+    color: var(--success-color);
+}
+
+.card-actions .action.action-dislike.active {
+    color: var(--danger-color);
+}
+
+.card-actions .action.action-done.active {
+    color: var(--primary-color);
 }
 
 .article-content {
@@ -1309,43 +1321,27 @@ footer p {
         width: 100%;
     }
     
-    .article-meta {
-        flex-direction: column;
-        gap: 0.25rem;
+    .card-head {
+        flex-wrap: wrap;
+        gap: 0.5rem;
     }
-    
-    .article-actions {
+
+    .card-actions {
         flex-wrap: wrap;
     }
-    
+
     .feed-meta {
         flex-direction: column;
         gap: 0.25rem;
     }
-    
+
     .feed-actions {
         flex-wrap: wrap;
     }
-    
+
     /* View toggle responsive */
     .view-toggle-buttons {
         order: 1; /* Put view toggle at the end on mobile */
-    }
-    
-    /* Condensed view responsive */
-    .article-header-condensed {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.5rem;
-    }
-    
-    .condensed-meta {
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-    
-    .condensed-actions {
-        align-self: flex-end;
     }
 }
 
@@ -2234,4 +2230,105 @@ html.dark-theme .theme-toggle .moon-icon {
     }
 }
 
+/* Threads view: single-column vertical feed */
+.view-threads #articles-list {
+    max-width: 640px;
+    margin: 0 auto;
+}
 
+.view-threads .article-card {
+    background-color: transparent;
+    box-shadow: none;
+    border-bottom: 1px solid var(--border-primary);
+    border-radius: 0;
+    padding: 1rem 0.25rem;
+    margin-bottom: 0;
+    transition: transform 0.15s ease, opacity 0.2s ease;
+    touch-action: pan-y;
+}
+
+.view-threads .article-card:last-child {
+    border-bottom: none;
+}
+
+.view-threads .article-card:hover {
+    box-shadow: none;
+}
+
+.view-threads .card-actions {
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.view-threads .card-actions .action-label {
+    display: none;
+}
+
+.view-threads .card-actions .action {
+    padding: 0.4rem;
+}
+
+.view-threads .card-actions .action .icon {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+
+/* Swipe feedback */
+.article-card.swipe-fired {
+    transition: transform 0.2s ease, opacity 0.2s ease;
+    opacity: 0.4;
+}
+
+.article-card.swipe-fired.swipe-left {
+    transform: translateX(-120%) !important;
+}
+
+.article-card.swipe-fired.swipe-right {
+    transform: translateX(120%) !important;
+}
+
+/* Toast notifications */
+#toast-host {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+    padding: 0.6rem 1rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast.visible {
+    opacity: 0.95;
+    transform: translateY(0);
+}
+
+.toast.toast-error {
+    background: var(--danger-color);
+    color: white;
+}
+
+/* Threads view mobile */
+@media (max-width: 768px) {
+    .view-threads #articles-list {
+        padding: 0 0.5rem;
+    }
+
+    .view-threads .card-title {
+        font-size: 1.05rem;
+    }
+}

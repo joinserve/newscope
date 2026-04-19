@@ -25,6 +25,7 @@ const (
 	templateTopicDropdowns = "topic-dropdowns.html"
 
 	// view modes
+	viewModeThreads   = "threads"
 	viewModeExpanded  = "expanded"
 	viewModeCondensed = "condensed"
 )
@@ -78,13 +79,17 @@ func parseDateRange(raw string) (string, time.Time) {
 	}
 }
 
-// getViewMode reads and validates the view mode from request header
+// getViewMode reads and validates the view mode from request header,
+// defaulting to the threads layout when the header is missing or unknown.
 func getViewMode(r *http.Request) string {
-	viewMode := r.Header.Get("X-View-Mode")
-	if viewMode != viewModeCondensed {
-		return viewModeExpanded // default to expanded
+	switch r.Header.Get("X-View-Mode") {
+	case viewModeExpanded:
+		return viewModeExpanded
+	case viewModeCondensed:
+		return viewModeCondensed
+	default:
+		return viewModeThreads
 	}
-	return viewModeCondensed
 }
 
 // articlesPageRequest holds data for rendering articles page

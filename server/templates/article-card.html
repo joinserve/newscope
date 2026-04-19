@@ -1,127 +1,63 @@
-<article class="article-card" data-score="{{.GetRelevanceScore}}">
-    <!-- Expanded view header -->
-    <div class="article-header expanded-only">
-        <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{unescapeHTML .Title}}</a></h3>
-        <div class="article-meta">
-            <a href="#" class="feed-name clickable-feed"
-               data-feed="{{.FeedName}}"
-               hx-get="/articles"
-               hx-vals='{"feed":"{{.FeedName}}"}'
-               hx-trigger="click"
-               hx-target="#articles-with-pagination"
-               hx-swap="innerHTML show:body:top"
-               hx-include="#score-filter, #topic-filter, #sort-filter">{{.FeedName}}</a>
-            <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
-                {{.Published.Local.Format "Jan 2, 2006 15:04 MST"}}
-            </time>
-        </div>
-    </div>
-    
-    <!-- Condensed view header -->
-    <div class="article-header-condensed condensed-only">
-        <div class="condensed-main">
-            <h3><a href="{{.Link}}" target="_blank" rel="noopener">{{unescapeHTML .Title}}</a></h3>
-            <div class="condensed-meta">
-                <a href="#" class="feed-name clickable-feed"
-                   data-feed="{{.FeedName}}"
-                   hx-get="/articles"
-                   hx-vals='{"feed":"{{.FeedName}}"}'
-                   hx-trigger="click"
-                   hx-target="#articles-with-pagination"
-                   hx-swap="innerHTML show:body:top"
-                   hx-include="#score-filter, #topic-filter, #sort-filter">{{.FeedName}}</a>
-                <time datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}">
-                    {{.Published.Local.Format "Jan 2, 15:04"}}
-                </time>
-                <span class="score-badge {{if le .GetRelevanceScore 5.0}}score-low{{else if le .GetRelevanceScore 7.0}}score-medium{{else}}score-high{{end}}">{{printf "%.1f" .GetRelevanceScore}}</span>
-            </div>
-        </div>
-        <div class="condensed-actions">
-            <button class="btn-feedback btn-like-small {{if eq .GetUserFeedback "like"}}active{{end}}"
-                    hx-post="/api/v1/feedback/{{.ID}}/like"
-                    hx-swap="outerHTML"
-                    hx-target="closest .article-card"
-                    hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
-                👍
-            </button>
-            <button class="btn-feedback btn-dislike-small {{if eq .GetUserFeedback "dislike"}}active{{end}}"
-                    hx-post="/api/v1/feedback/{{.ID}}/dislike"
-                    hx-swap="outerHTML"
-                    hx-target="closest .article-card"
-                    hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
-                👎
-            </button>
-            <button class="btn-feedback btn-done-small {{if eq .GetUserFeedback "done"}}active{{end}}"
-                    hx-post="/api/v1/feedback/{{.ID}}/done"
-                    hx-swap="outerHTML"
-                    hx-target="closest .article-card"
-                    hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
-                ✓
-            </button>
-        </div>
-    </div>
-    
-    <!-- Expanded view content -->
-    <div class="expanded-only">
+<article class="article-card"
+         data-article-id="{{.ID}}"
+         data-share-url="{{.Link}}"
+         data-share-title="{{unescapeHTML .Title}}"
+         data-user-feedback="{{.GetUserFeedback}}">
+    <header class="card-head">
+        <a href="#" class="feed-name clickable-feed"
+           data-feed="{{.FeedName}}"
+           hx-get="/articles"
+           hx-vals='{"feed":"{{.FeedName}}"}'
+           hx-trigger="click"
+           hx-target="#articles-with-pagination"
+           hx-swap="innerHTML show:body:top"
+           hx-include="#score-filter, #topic-filter, #sort-filter, #date-range-filter">{{.FeedName}}</a>
+        <time class="card-time" datetime="{{.Published.Format "2006-01-02T15:04:05Z07:00"}}"
+              data-full-date="{{.Published.Local.Format "Jan 2, 2006 15:04 MST"}}">
+            {{.Published.Local.Format "Jan 2, 15:04"}}
+        </time>
+        <span class="score-badge {{if le .GetRelevanceScore 5.0}}score-low{{else if le .GetRelevanceScore 7.0}}score-medium{{else}}score-high{{end}}">{{printf "%.1f" .GetRelevanceScore}}</span>
+    </header>
+
+    <h3 class="card-title">
+        <a href="{{.Link}}" target="_blank" rel="noopener">{{unescapeHTML .Title}}</a>
+    </h3>
+
+    <div class="card-summary">
         {{if .GetSummary}}
-        <p class="article-summary">{{.GetSummary}}</p>
+        <p>{{.GetSummary}}</p>
         {{else if .Description}}
-        <p class="article-description">{{unescapeHTML .Description}}</p>
+        <p>{{unescapeHTML .Description}}</p>
         {{end}}
-        
+    </div>
+
+    <div class="card-extras expanded-only">
         <div class="classification">
             <div class="score-bar {{if le .GetRelevanceScore 5.0}}score-low{{else if le .GetRelevanceScore 7.0}}score-medium{{else}}score-high{{end}}" style="width: {{printf "%.0f" (mul .GetRelevanceScore 10)}}%">
                 <span class="score-text">Score: {{printf "%.1f" .GetRelevanceScore}}/10</span>
             </div>
         </div>
-        
+
         {{if .GetExplanation}}
         <p class="explanation">{{.GetExplanation}}</p>
         {{end}}
-        
+
         {{if .GetTopics}}
         <div class="topics">
             {{range .GetTopics}}
-            <a href="#" class="topic-tag clickable-topic" 
+            <a href="#" class="topic-tag clickable-topic"
                data-topic="{{.}}"
                hx-get="/articles"
                hx-vals='{"topic":"{{.}}"}'
                hx-trigger="click"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"
-               hx-include="#score-filter, #feed-filter, #sort-filter">{{.}}</a>
+               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{.}}</a>
             {{end}}
         </div>
         {{end}}
-        
-        <div class="article-actions">
-            <button class="btn-feedback btn-like {{if eq .GetUserFeedback "like"}}active{{end}}"
-                    hx-post="/api/v1/feedback/{{.ID}}/like"
-                    hx-swap="outerHTML"
-                    hx-target="closest .article-card"
-                    hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
-                👍 Like
-            </button>
-            <button class="btn-feedback btn-dislike {{if eq .GetUserFeedback "dislike"}}active{{end}}"
-                    hx-post="/api/v1/feedback/{{.ID}}/dislike"
-                    hx-swap="outerHTML"
-                    hx-target="closest .article-card"
-                    hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
-                👎 Dislike
-            </button>
-            <button class="btn-feedback btn-done {{if eq .GetUserFeedback "done"}}active{{end}}"
-                    hx-post="/api/v1/feedback/{{.ID}}/done"
-                    hx-swap="outerHTML"
-                    hx-target="closest .article-card"
-                    hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
-                ✓ Done
-            </button>
+
+        <div class="content-actions">
             {{if .GetExtractedContent}}
             <span id="content-toggle-{{.ID}}">
                 <button class="btn-content"
@@ -140,7 +76,84 @@
             </button>
             {{end}}
         </div>
-        
+
         <div id="content-{{.ID}}"></div>
+    </div>
+
+    <div class="card-actions" role="toolbar" aria-label="Article actions">
+        <button class="action action-like {{if eq .GetUserFeedback "like"}}active{{end}}"
+                type="button"
+                data-action="like"
+                aria-label="Like"
+                title="Like (L)"
+                hx-post="/api/v1/feedback/{{.ID}}/like"
+                hx-swap="outerHTML"
+                hx-target="closest .article-card"
+                hx-trigger="click"
+                hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M7 10v12"></path>
+                <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7"></path>
+                <path d="M7 10V4a2 2 0 0 1 2-2h.25a.75.75 0 0 1 .74.65l.41 2.85A4.5 4.5 0 0 0 15 5.88"></path>
+            </svg>
+            <span class="action-label">Like</span>
+        </button>
+
+        <button class="action action-comment"
+                type="button"
+                data-action="comment"
+                aria-label="Comment (coming soon)"
+                title="Comment (coming soon)">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+            </svg>
+            <span class="action-label">Comment</span>
+        </button>
+
+        <button class="action action-share"
+                type="button"
+                data-action="share"
+                aria-label="Share"
+                title="Share (S)">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 2 11 13"></path>
+                <path d="M22 2 15 22l-4-9-9-4 20-7z"></path>
+            </svg>
+            <span class="action-label">Share</span>
+        </button>
+
+        <button class="action action-dislike {{if eq .GetUserFeedback "dislike"}}active{{end}}"
+                type="button"
+                data-action="dislike"
+                aria-label="Dislike"
+                title="Dislike (D)"
+                hx-post="/api/v1/feedback/{{.ID}}/dislike"
+                hx-swap="outerHTML"
+                hx-target="closest .article-card"
+                hx-trigger="click"
+                hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M17 14V2"></path>
+                <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H17"></path>
+                <path d="M17 14v6a2 2 0 0 1-2 2h-.25a.75.75 0 0 1-.74-.65l-.41-2.85A4.5 4.5 0 0 0 9 18.12"></path>
+            </svg>
+            <span class="action-label">Dislike</span>
+        </button>
+
+        <button class="action action-done {{if eq .GetUserFeedback "done"}}active{{end}}"
+                type="button"
+                data-action="done"
+                aria-label="Mark as done"
+                title="Done (Space)"
+                hx-post="/api/v1/feedback/{{.ID}}/done"
+                hx-swap="outerHTML"
+                hx-target="closest .article-card"
+                hx-trigger="click"
+                hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5"></path>
+            </svg>
+            <span class="action-label">Done</span>
+        </button>
     </div>
 </article>

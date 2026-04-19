@@ -110,7 +110,7 @@ func TestServer_feedbackHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, feedbackCalled)
 	assert.Contains(t, w.Body.String(), "Test Article")
-	assert.Contains(t, w.Body.String(), "btn-like active") // button should be active
+	assert.Contains(t, w.Body.String(), "action action-like active") // like button should be active
 }
 
 func TestServer_extractHandler(t *testing.T) {
