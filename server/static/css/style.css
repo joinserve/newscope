@@ -211,40 +211,43 @@ main {
 
 /* View Toggle in Filters */
 .view-toggle-buttons {
-    display: flex;
-    border: 1px solid var(--border-secondary);
-    border-radius: 0.25rem;
-    overflow: hidden;
+    display: inline-flex;
+    background-color: var(--bg-secondary);
+    border-radius: 9999px;
+    padding: 2px;
+    gap: 2px;
+    margin-left: 0.25rem;
 }
 
 .btn-view-toggle {
-    padding: 0.5rem;
-    background-color: var(--bg-primary);
-    color: var(--text-secondary);
-    border: none;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    border-right: 1px solid var(--border-secondary);
-    min-width: 36px;
-    height: 36px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    background-color: transparent;
+    color: var(--text-secondary);
+    border-radius: 9999px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
 }
 
-.btn-view-toggle:last-child {
-    border-right: none;
+.btn-view-toggle svg {
+    width: 16px;
+    height: 16px;
 }
 
 .btn-view-toggle:hover {
-    background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 
 .btn-view-toggle.active {
-    background-color: var(--primary-color);
-    color: white;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
 }
 
 .article-count {
@@ -255,68 +258,121 @@ main {
     opacity: 0.7;
 }
 
-/* Filters */
+/* Threads-style pill filter bar */
 .filters {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    padding: 1rem;
-    background-color: var(--bg-primary);
-    border-radius: 0.5rem;
-    box-shadow: var(--shadow-sm);
-    transition: background-color 0.3s ease;
-}
-
-.filters label {
-    font-weight: 500;
-    color: var(--text-secondary);
-}
-
-.filters input[type="range"] {
-    width: 150px;
-}
-
-.filters select {
-    padding: 0.5rem;
-    border: 1px solid var(--border-secondary);
-    border-radius: 0.25rem;
-    background-color: var(--bg-primary);
-    color: var(--text-primary);
-    transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-.toggle-buttons-group {
-    display: flex;
     gap: 0.5rem;
-    align-items: center;
+    flex-wrap: wrap;
+    padding: 0.5rem 0.75rem;
+    background-color: transparent;
+    border: 1px solid var(--border-primary);
+    border-radius: 9999px;
+    box-shadow: none;
+    transition: border-color 0.3s ease;
 }
 
-.btn-toggle {
-    padding: 0.5rem 0.75rem;
-    background-color: var(--bg-primary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-secondary);
-    border-radius: 0.25rem;
-    font-weight: 500;
+.filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 34px;
+    padding: 0 0.85rem;
+    background-color: var(--bg-secondary);
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    color: var(--text-primary);
     font-size: 0.875rem;
     cursor: pointer;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    height: 36px;
+    transition: background-color 0.2s, border-color 0.2s;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
-.btn-toggle:hover {
+.filter-pill:hover {
+    background-color: var(--bg-hover);
+}
+
+.filter-pill:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+select.filter-pill {
+    padding-right: 1.75rem;
+    background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    color: var(--text-primary);
+}
+
+.filter-pill-range {
+    gap: 0.5rem;
+}
+
+.filter-pill-range input[type="range"] {
+    width: 110px;
+    accent-color: var(--primary-color);
+}
+
+.filter-pill-range .pill-icon {
+    display: inline-flex;
+    color: var(--text-tertiary);
+}
+
+.filter-pill-range .pill-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.filter-pill-range .pill-value {
+    min-width: 1.5rem;
+    text-align: right;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+    margin-left: auto;
+}
+
+.pill-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.pill-toggle svg {
+    width: 18px;
+    height: 18px;
+}
+
+.pill-toggle:hover {
     background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 
-.btn-toggle.active {
-    background-color: var(--danger-color);
-    color: white;
-    border-color: var(--danger-color);
+.pill-toggle.active {
+    color: var(--primary-color);
+    background-color: var(--bg-hover);
+}
+
+#liked-toggle.active svg {
+    fill: currentColor;
 }
 
 /* Article Cards */
@@ -373,6 +429,23 @@ main {
 }
 
 .card-head .feed-name.clickable-feed:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.card-head .card-head-sep {
+    color: var(--text-tertiary);
+    margin: 0 0.1rem;
+}
+
+.card-head .card-topic {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.card-head .card-topic:hover {
     color: var(--primary-color);
     text-decoration: underline;
     cursor: pointer;
@@ -617,8 +690,21 @@ main {
     font-weight: 500;
 }
 
+.card-actions .action.action-like {
+    color: var(--text-secondary);
+}
+
+.card-actions .action.action-like .icon-heart {
+    fill: none;
+    transition: fill 0.15s;
+}
+
 .card-actions .action.action-like.active {
-    color: var(--success-color);
+    color: var(--danger-color);
+}
+
+.card-actions .action.action-like.active .icon-heart {
+    fill: currentColor;
 }
 
 .card-actions .action.action-dislike.active {
@@ -626,7 +712,7 @@ main {
 }
 
 .card-actions .action.action-done.active {
-    color: var(--primary-color);
+    color: var(--success-color);
 }
 
 .article-content {
@@ -1313,12 +1399,17 @@ footer p {
 /* Responsive Design */
 @media (max-width: 768px) {
     .filters {
-        flex-direction: column;
-        align-items: stretch;
+        border-radius: 1rem;
+        flex-wrap: wrap;
+        padding: 0.5rem;
     }
-    
-    .filters input[type="range"] {
-        width: 100%;
+
+    .filter-pill-range input[type="range"] {
+        width: 90px;
+    }
+
+    .filter-actions {
+        margin-left: 0;
     }
     
     .card-head {
