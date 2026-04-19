@@ -55,6 +55,7 @@ type FeedbackType string
 const (
 	FeedbackLike    FeedbackType = "like"
 	FeedbackDislike FeedbackType = "dislike"
+	FeedbackDone    FeedbackType = "done"
 )
 
 // ClassifiedItem represents an item with all processing completed
@@ -65,6 +66,9 @@ type ClassifiedItem struct {
 	Extraction     *ExtractedContent
 	Classification *Classification
 	UserFeedback   *Feedback
+	// ProcessedAt is set once the user dismisses the item from the main board
+	// (via like, dislike, or done). Nil means the item is still in the inbox.
+	ProcessedAt *time.Time
 }
 
 // GetRelevanceScore returns the relevance score or 0 if not classified.
@@ -151,6 +155,9 @@ type ItemFilter struct {
 	Offset         int
 	OnlyClassified bool
 	ShowLikedOnly  bool
+	// ShowProcessed, when true, shows items the user has already dismissed
+	// (processed_at IS NOT NULL). When false (default), only the inbox is shown.
+	ShowProcessed bool
 }
 
 // ArticlesRequest holds parameters for fetching articles
@@ -162,6 +169,7 @@ type ArticlesRequest struct {
 	Limit         int
 	Page          int
 	ShowLikedOnly bool
+	ShowProcessed bool
 }
 
 // PaginatedResponse represents a paginated response with metadata

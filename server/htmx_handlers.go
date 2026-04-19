@@ -76,6 +76,7 @@ type articlesPageRequest struct {
 	selectedFeed  string
 	selectedSort  string
 	showLikedOnly bool
+	showProcessed bool
 	// pagination
 	currentPage int
 	totalPages  int
@@ -116,6 +117,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		sortBy = "published" // default sort
 	}
 	showLikedOnly := r.URL.Query().Get("liked") == "true" || r.URL.Query().Get("liked") == "on"
+	showProcessed := r.URL.Query().Get("show_processed") == "true" || r.URL.Query().Get("show_processed") == "on"
 
 	// get page parameter
 	page := 1
@@ -135,6 +137,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		Limit:         pageSize,
 		Page:          page,
 		ShowLikedOnly: showLikedOnly,
+		ShowProcessed: showProcessed,
 	}
 	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, req)
 	if err != nil {
@@ -178,6 +181,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 			selectedFeed:  feedName,
 			selectedSort:  sortBy,
 			showLikedOnly: showLikedOnly,
+			showProcessed: showProcessed,
 			// pagination
 			currentPage: page,
 			totalPages:  totalPages,
@@ -206,6 +210,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic string
 		SelectedFeed  string
 		ShowLikedOnly bool
+		ShowProcessed bool
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -230,6 +235,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic: topic,
 		SelectedFeed:  feedName,
 		ShowLikedOnly: showLikedOnly,
+		ShowProcessed: showProcessed,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,
@@ -277,6 +283,9 @@ func (s *Server) writeHTMXOutOfBandUpdates(w http.ResponseWriter, req articlesPa
 
 	// update liked button state
 	s.writeLikedButton(w, req.showLikedOnly)
+
+	// update processed button state
+	s.writeProcessedButton(w, req.showProcessed)
 }
 
 // writeArticlesList renders the articles container with the list of articles
@@ -576,6 +585,18 @@ func (s *Server) writeLikedButton(w http.ResponseWriter, showLikedOnly bool) {
 	}
 }
 
+// writeProcessedButton renders the processed button with proper state using a template
+func (s *Server) writeProcessedButton(w http.ResponseWriter, showProcessed bool) {
+	data := struct {
+		ShowProcessed bool
+	}{
+		ShowProcessed: showProcessed,
+	}
+	if err := s.templates.ExecuteTemplate(w, "processed-button", data); err != nil {
+		log.Printf("[WARN] failed to write processed button: %v", err)
+	}
+}
+
 // writePaginationControls renders pagination using the pagination template
 func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPageRequest) {
 	// create template data matching the structure used by full page render
@@ -587,6 +608,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		SelectedFeed  string
 		SelectedSort  string
 		ShowLikedOnly bool
+		ShowProcessed bool
 		CurrentPage   int
 		TotalPages    int
 		PageNumbers   []int
@@ -603,6 +625,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		SelectedFeed:  req.selectedFeed,
 		SelectedSort:  req.selectedSort,
 		ShowLikedOnly: req.showLikedOnly,
+		ShowProcessed: req.showProcessed,
 		CurrentPage:   req.currentPage,
 		TotalPages:    req.totalPages,
 		PageNumbers:   req.pageNumbers,
@@ -839,6 +862,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		sortBy = "published" // default to date sort, same as articles page
 	}
 	showLikedOnly := r.URL.Query().Get("liked") == "true" || r.URL.Query().Get("liked") == "on"
+	showProcessed := r.URL.Query().Get("show_processed") == "true" || r.URL.Query().Get("show_processed") == "on"
 
 	// get page parameter
 	page := 1
@@ -858,6 +882,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		Limit:         pageSize,
 		Page:          page,
 		ShowLikedOnly: showLikedOnly,
+		ShowProcessed: showProcessed,
 	}
 	articles, err := s.db.SearchItems(ctx, searchQuery, req)
 	if err != nil {
@@ -901,6 +926,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 			selectedFeed:  feedName,
 			selectedSort:  sortBy,
 			showLikedOnly: showLikedOnly,
+			showProcessed: showProcessed,
 			// pagination
 			currentPage: page,
 			totalPages:  totalPages,
@@ -929,6 +955,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic string
 		SelectedFeed  string
 		ShowLikedOnly bool
+		ShowProcessed bool
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -953,6 +980,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedTopic: topic,
 		SelectedFeed:  feedName,
 		ShowLikedOnly: showLikedOnly,
+		ShowProcessed: showProcessed,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,

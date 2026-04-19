@@ -100,8 +100,14 @@ func (r *Repositories) Ping(ctx context.Context) error {
 	return r.DB.PingContext(ctx)
 }
 
-// initSchema creates tables if they don't exist
+// initSchema creates tables if they don't exist and runs any needed migrations
 func initSchema(ctx context.Context, db *sqlx.DB) error {
+	// run pre-schema migrations against existing tables before loading schema,
+	// so that CREATE INDEX statements in schema.sql see any newly added columns
+	if err := migrateAddProcessedAt(ctx, db); err != nil {
+		return fmt.Errorf("migrate processed_at: %w", err)
+	}
+
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
 		return fmt.Errorf("read schema: %w", err)
@@ -111,6 +117,43 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 		return fmt.Errorf("execute schema: %w", err)
 	}
 
+	return nil
+}
+
+// migrateAddProcessedAt adds the processed_at column to items if missing,
+// and backfills it from feedback_at so existing feedback rows land in "processed".
+// Safe to run on a fresh DB: items table won't exist yet and the function is a no-op.
+func migrateAddProcessedAt(ctx context.Context, db *sqlx.DB) error {
+	var tableCount int
+	err := db.GetContext(ctx, &tableCount,
+		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='items'`)
+	if err != nil {
+		return fmt.Errorf("check items table: %w", err)
+	}
+	if tableCount == 0 {
+		// fresh install — schema.sql will create the column as part of CREATE TABLE
+		return nil
+	}
+
+	var columns []string
+	if err := db.SelectContext(ctx, &columns,
+		`SELECT name FROM pragma_table_info('items')`); err != nil {
+		return fmt.Errorf("read items columns: %w", err)
+	}
+	for _, c := range columns {
+		if c == "processed_at" {
+			return nil
+		}
+	}
+
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE items ADD COLUMN processed_at DATETIME`); err != nil {
+		return fmt.Errorf("add processed_at column: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`UPDATE items SET processed_at = feedback_at WHERE feedback_at IS NOT NULL`); err != nil {
+		return fmt.Errorf("backfill processed_at: %w", err)
+	}
 	return nil
 }
 
