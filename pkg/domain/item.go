@@ -155,9 +155,11 @@ type ItemFilter struct {
 	Offset         int
 	OnlyClassified bool
 	ShowLikedOnly  bool
-	// ShowProcessed, when true, shows items the user has already dismissed
+	// showProcessed, when true, shows items the user has already dismissed
 	// (processed_at IS NOT NULL). When false (default), only the inbox is shown.
 	ShowProcessed bool
+	// dateFrom, when non-zero, restricts items by published date >= DateFrom.
+	DateFrom time.Time
 }
 
 // ArticlesRequest holds parameters for fetching articles
@@ -170,6 +172,8 @@ type ArticlesRequest struct {
 	Page          int
 	ShowLikedOnly bool
 	ShowProcessed bool
+	// dateFrom, when non-zero, restricts items by published date >= DateFrom.
+	DateFrom time.Time
 }
 
 // PaginatedResponse represents a paginated response with metadata

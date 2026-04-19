@@ -1719,3 +1719,86 @@ func TestServer_PreferenceHandlers(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "Failed to get preference enabled status")
 	})
 }
+
+func TestParseDateRange(t *testing.T) {
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	tests := []struct {
+		name         string
+		input        string
+		expectedName string
+		expectedFrom time.Time
+	}{
+		{name: "empty defaults to today", input: "", expectedName: "today", expectedFrom: startOfToday},
+		{name: "unknown defaults to today", input: "bogus", expectedName: "today", expectedFrom: startOfToday},
+		{name: "today explicit", input: "today", expectedName: "today", expectedFrom: startOfToday},
+		{name: "3 days", input: "3d", expectedName: "3d", expectedFrom: startOfToday.AddDate(0, 0, -2)},
+		{name: "7 days", input: "7d", expectedName: "7d", expectedFrom: startOfToday.AddDate(0, 0, -6)},
+		{name: "30 days", input: "30d", expectedName: "30d", expectedFrom: startOfToday.AddDate(0, 0, -29)},
+		{name: "all returns zero time", input: "all", expectedName: "all", expectedFrom: time.Time{}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			name, from := parseDateRange(tc.input)
+			assert.Equal(t, tc.expectedName, name)
+			assert.True(t, tc.expectedFrom.Equal(from), "expected %v, got %v", tc.expectedFrom, from)
+		})
+	}
+}
+
+// TestServer_articlesHandler_DateRange verifies the date_range query param flows
+// into ArticlesRequest.DateFrom and the inbox default is "today".
+func TestServer_articlesHandler_DateRange(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{Listen: ":8080", Timeout: 30 * time.Second, PageSize: 50, BaseURL: "http://localhost:8080"},
+			}
+		},
+	}
+
+	var capturedReq domain.ArticlesRequest
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
+			capturedReq = req
+			return nil, nil
+		},
+		GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) { return 0, nil },
+		GetActiveFeedNamesFunc:      func(ctx context.Context, minScore float64) ([]string, error) { return nil, nil },
+		GetTopicsFilteredFunc:       func(ctx context.Context, minScore float64) ([]string, error) { return nil, nil },
+	}
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	t.Run("default defaults to today", func(t *testing.T) {
+		r := httptest.NewRequest("GET", "/articles", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.articlesHandler(w, r)
+		assert.True(t, startOfToday.Equal(capturedReq.DateFrom), "expected %v, got %v", startOfToday, capturedReq.DateFrom)
+	})
+
+	t.Run("explicit 7d sets 7 days ago", func(t *testing.T) {
+		r := httptest.NewRequest("GET", "/articles?date_range=7d", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.articlesHandler(w, r)
+		expected := startOfToday.AddDate(0, 0, -6)
+		assert.True(t, expected.Equal(capturedReq.DateFrom), "expected %v, got %v", expected, capturedReq.DateFrom)
+	})
+
+	t.Run("all clears DateFrom", func(t *testing.T) {
+		r := httptest.NewRequest("GET", "/articles?date_range=all", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.articlesHandler(w, r)
+		assert.True(t, capturedReq.DateFrom.IsZero())
+	})
+}

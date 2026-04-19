@@ -10,7 +10,11 @@
     <!-- Hidden search query input to maintain search state -->
     <input type="hidden" id="search-query" name="q" value="{{.SearchQuery}}">
     {{end}}
-    
+
+    <!-- Hidden state inputs carry liked/processed view flags for all requests that hx-include them -->
+    <input type="hidden" id="liked-state" name="liked" value="{{if .ShowLikedOnly}}true{{else}}false{{end}}">
+    <input type="hidden" id="processed-state" name="show_processed" value="{{if .ShowProcessed}}true{{else}}false{{end}}">
+
     <!-- Score filter -->
     <div class="filters">
         <label for="score-filter">Min Score:</label>
@@ -19,9 +23,9 @@
                hx-trigger="change"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"
-               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
+               hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
         <span id="score-value">{{.MinScore}}</span>
-        
+
         <!-- Topic filter -->
         <label for="topic-filter">Topic:</label>
         <select id="topic-filter" name="topic"
@@ -29,13 +33,13 @@
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
+                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
             <option value="">All Topics</option>
             {{range .Topics}}
             <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
             {{end}}
         </select>
-        
+
         <!-- Feed filter -->
         <label for="feed-filter">Feed:</label>
         <select id="feed-filter" name="feed"
@@ -43,13 +47,13 @@
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
+                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
             <option value="">All Feeds</option>
             {{range .Feeds}}
             <option value="{{.}}" {{if eq $.SelectedFeed .}}selected{{end}}>{{.}}</option>
             {{end}}
         </select>
-        
+
         <!-- Sort filter -->
         <label for="sort-filter">Sort:</label>
         <select id="sort-filter" name="sort"
@@ -57,13 +61,28 @@
                 hx-trigger="change"
                 hx-target="#articles-with-pagination"
                 hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-toggle, #processed-toggle{{if .IsSearch}}, #search-query{{end}}">
+                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
             <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
             <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
             <option value="source+date" {{if eq .SelectedSort "source+date"}}selected{{end}}>Source + Date</option>
             <option value="source+score" {{if eq .SelectedSort "source+score"}}selected{{end}}>Source + Score</option>
         </select>
-        
+
+        <!-- Date range filter -->
+        <label for="date-range-filter">Published:</label>
+        <select id="date-range-filter" name="date_range"
+                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                hx-trigger="change"
+                hx-target="#articles-with-pagination"
+                hx-swap="innerHTML show:body:top"
+                hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state{{if .IsSearch}}, #search-query{{end}}">
+            <option value="today" {{if eq .DateRange "today"}}selected{{end}}>Today</option>
+            <option value="3d" {{if eq .DateRange "3d"}}selected{{end}}>Last 3 days</option>
+            <option value="7d" {{if eq .DateRange "7d"}}selected{{end}}>Last 7 days</option>
+            <option value="30d" {{if eq .DateRange "30d"}}selected{{end}}>Last 30 days</option>
+            <option value="all" {{if eq .DateRange "all"}}selected{{end}}>All</option>
+        </select>
+
         <!-- Toggle buttons group -->
         <div class="toggle-buttons-group">
             <button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}"
@@ -72,7 +91,7 @@
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
                     hx-swap="innerHTML show:body:top"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter{{if .IsSearch}}, #search-query{{end}}"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter{{if .IsSearch}}, #search-query{{end}}"
                     hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}", "show_processed": "false"}'>
                 ★ Liked
             </button>
@@ -82,7 +101,7 @@
                     hx-trigger="click"
                     hx-target="#articles-with-pagination"
                     hx-swap="innerHTML show:body:top"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter{{if .IsSearch}}, #search-query{{end}}"
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter{{if .IsSearch}}, #search-query{{end}}"
                     hx-vals='{"show_processed": "{{if .ShowProcessed}}false{{else}}true{{end}}", "liked": "false"}'>
                 ✓ Processed
             </button>
@@ -114,16 +133,17 @@
 // Load saved preferences from localStorage
 document.addEventListener('DOMContentLoaded', function() {
     const urlParams = new URLSearchParams(window.location.search);
-    const hasUrlParams = urlParams.has('sort') || urlParams.has('score') || urlParams.has('topic') || urlParams.has('feed') || urlParams.has('liked');
-    
+    const hasUrlParams = urlParams.has('sort') || urlParams.has('score') || urlParams.has('topic') || urlParams.has('feed') || urlParams.has('liked') || urlParams.has('date_range');
+
     // If no URL parameters, apply saved preferences
     if (!hasUrlParams) {
         const savedSort = localStorage.getItem('newscopeSortBy');
         const savedScore = localStorage.getItem('newscopeMinScore');
         const savedLiked = localStorage.getItem('newscopeLikedOnly');
-        
+        const savedDateRange = localStorage.getItem('newscopeDateRange');
+
         let needsUpdate = false;
-        
+
         if (savedSort && savedSort !== '{{.SelectedSort}}') {
             document.getElementById('sort-filter').value = savedSort;
             needsUpdate = true;
@@ -136,7 +156,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (savedLiked !== null && savedLiked !== '{{.ShowLikedOnly}}') {
             needsUpdate = true;
         }
-        
+        if (savedDateRange && savedDateRange !== '{{.DateRange}}') {
+            document.getElementById('date-range-filter').value = savedDateRange;
+            needsUpdate = true;
+        }
+
         // Trigger HTMX update if preferences differ from defaults
         if (needsUpdate) {
             htmx.trigger('#sort-filter', 'change');
@@ -147,6 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('newscopeMinScore', '{{.MinScore}}');
         localStorage.setItem('newscopeSortBy', '{{.SelectedSort}}');
         localStorage.setItem('newscopeLikedOnly', '{{.ShowLikedOnly}}');
+        localStorage.setItem('newscopeDateRange', '{{.DateRange}}');
     }
     
     // Update score display
@@ -205,6 +230,11 @@ document.getElementById('view-condensed').addEventListener('click', function() {
 // Sort preference persistence
 document.getElementById('sort-filter').addEventListener('change', function(e) {
     localStorage.setItem('newscopeSortBy', e.target.value);
+});
+
+// Date range preference persistence
+document.getElementById('date-range-filter').addEventListener('change', function(e) {
+    localStorage.setItem('newscopeDateRange', e.target.value);
 });
 
 // Liked button state is managed by server through out-of-band swaps

@@ -58,6 +58,26 @@ func isValidTopicName(name string) bool {
 	return topicNameRegex.MatchString(name)
 }
 
+// parseDateRange maps the date_range query string into (validated range,
+// DateFrom time). Unknown / empty values fall back to "today". "all" yields
+// a zero time, which the repository layer treats as no date filter.
+func parseDateRange(raw string) (string, time.Time) {
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	switch raw {
+	case "all":
+		return "all", time.Time{}
+	case "3d":
+		return "3d", startOfToday.AddDate(0, 0, -2)
+	case "7d":
+		return "7d", startOfToday.AddDate(0, 0, -6)
+	case "30d":
+		return "30d", startOfToday.AddDate(0, 0, -29)
+	default:
+		return "today", startOfToday
+	}
+}
+
 // getViewMode reads and validates the view mode from request header
 func getViewMode(r *http.Request) string {
 	viewMode := r.Header.Get("X-View-Mode")
@@ -77,6 +97,7 @@ type articlesPageRequest struct {
 	selectedSort  string
 	showLikedOnly bool
 	showProcessed bool
+	dateRange     string
 	// pagination
 	currentPage int
 	totalPages  int
@@ -118,6 +139,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	showLikedOnly := r.URL.Query().Get("liked") == "true" || r.URL.Query().Get("liked") == "on"
 	showProcessed := r.URL.Query().Get("show_processed") == "true" || r.URL.Query().Get("show_processed") == "on"
+	dateRange, dateFrom := parseDateRange(r.URL.Query().Get("date_range"))
 
 	// get page parameter
 	page := 1
@@ -138,6 +160,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		Page:          page,
 		ShowLikedOnly: showLikedOnly,
 		ShowProcessed: showProcessed,
+		DateFrom:      dateFrom,
 	}
 	articles, err := s.db.GetClassifiedItemsWithFilters(ctx, req)
 	if err != nil {
@@ -182,6 +205,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 			selectedSort:  sortBy,
 			showLikedOnly: showLikedOnly,
 			showProcessed: showProcessed,
+			dateRange:     dateRange,
 			// pagination
 			currentPage: page,
 			totalPages:  totalPages,
@@ -211,6 +235,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedFeed  string
 		ShowLikedOnly bool
 		ShowProcessed bool
+		DateRange     string
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -236,6 +261,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedFeed:  feedName,
 		ShowLikedOnly: showLikedOnly,
 		ShowProcessed: showProcessed,
+		DateRange:     dateRange,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,
@@ -286,6 +312,9 @@ func (s *Server) writeHTMXOutOfBandUpdates(w http.ResponseWriter, req articlesPa
 
 	// update processed button state
 	s.writeProcessedButton(w, req.showProcessed)
+
+	// update date range dropdown state
+	s.writeDateRangeDropdown(w, req.dateRange)
 }
 
 // writeArticlesList renders the articles container with the list of articles
@@ -597,6 +626,18 @@ func (s *Server) writeProcessedButton(w http.ResponseWriter, showProcessed bool)
 	}
 }
 
+// writeDateRangeDropdown renders the date range dropdown with current selection
+func (s *Server) writeDateRangeDropdown(w http.ResponseWriter, selected string) {
+	data := struct {
+		DateRange string
+	}{
+		DateRange: selected,
+	}
+	if err := s.templates.ExecuteTemplate(w, "date-range-dropdown", data); err != nil {
+		log.Printf("[WARN] failed to write date range dropdown: %v", err)
+	}
+}
+
 // writePaginationControls renders pagination using the pagination template
 func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPageRequest) {
 	// create template data matching the structure used by full page render
@@ -609,6 +650,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		SelectedSort  string
 		ShowLikedOnly bool
 		ShowProcessed bool
+		DateRange     string
 		CurrentPage   int
 		TotalPages    int
 		PageNumbers   []int
@@ -626,6 +668,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		SelectedSort:  req.selectedSort,
 		ShowLikedOnly: req.showLikedOnly,
 		ShowProcessed: req.showProcessed,
+		DateRange:     req.dateRange,
 		CurrentPage:   req.currentPage,
 		TotalPages:    req.totalPages,
 		PageNumbers:   req.pageNumbers,
@@ -863,6 +906,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	showLikedOnly := r.URL.Query().Get("liked") == "true" || r.URL.Query().Get("liked") == "on"
 	showProcessed := r.URL.Query().Get("show_processed") == "true" || r.URL.Query().Get("show_processed") == "on"
+	dateRange, dateFrom := parseDateRange(r.URL.Query().Get("date_range"))
 
 	// get page parameter
 	page := 1
@@ -883,6 +927,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		Page:          page,
 		ShowLikedOnly: showLikedOnly,
 		ShowProcessed: showProcessed,
+		DateFrom:      dateFrom,
 	}
 	articles, err := s.db.SearchItems(ctx, searchQuery, req)
 	if err != nil {
@@ -927,6 +972,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 			selectedSort:  sortBy,
 			showLikedOnly: showLikedOnly,
 			showProcessed: showProcessed,
+			dateRange:     dateRange,
 			// pagination
 			currentPage: page,
 			totalPages:  totalPages,
@@ -956,6 +1002,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedFeed  string
 		ShowLikedOnly bool
 		ShowProcessed bool
+		DateRange     string
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -981,6 +1028,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		SelectedFeed:  feedName,
 		ShowLikedOnly: showLikedOnly,
 		ShowProcessed: showProcessed,
+		DateRange:     dateRange,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,
