@@ -1802,3 +1802,100 @@ func TestServer_articlesHandler_DateRange(t *testing.T) {
 		assert.True(t, capturedReq.DateFrom.IsZero())
 	})
 }
+
+func TestGetViewMode(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		want   string
+	}{
+		{name: "missing defaults to threads", header: "", want: viewModeThreads},
+		{name: "unknown defaults to threads", header: "bogus", want: viewModeThreads},
+		{name: "explicit threads", header: viewModeThreads, want: viewModeThreads},
+		{name: "expanded passes through", header: viewModeExpanded, want: viewModeExpanded},
+		{name: "condensed passes through", header: viewModeCondensed, want: viewModeCondensed},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/articles", http.NoBody)
+			if tc.header != "" {
+				r.Header.Set("X-View-Mode", tc.header)
+			}
+			assert.Equal(t, tc.want, getViewMode(r))
+		})
+	}
+}
+
+func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
+	srv := newTestServer(t)
+
+	published := time.Date(2026, 4, 19, 10, 30, 0, 0, time.UTC)
+	article := &domain.ClassifiedItem{
+		Item: &domain.Item{
+			ID:          42,
+			Title:       "Example Title",
+			Link:        "https://example.com/a",
+			Description: "Example description",
+			Published:   published,
+		},
+		FeedName: "Example Feed",
+		Classification: &domain.Classification{
+			Score:       7.5,
+			Summary:     "A short summary",
+			Explanation: "Why it matters",
+			Topics:      []string{"tech", "ai"},
+		},
+		UserFeedback: &domain.Feedback{Type: domain.FeedbackLike},
+		Extraction:   &domain.ExtractedContent{PlainText: "some body"},
+	}
+
+	w := httptest.NewRecorder()
+	srv.renderArticleCard(w, article)
+	body := w.Body.String()
+
+	// threads-style card structure
+	assert.Contains(t, body, `class="article-card"`)
+	assert.Contains(t, body, `data-share-url="https://example.com/a"`)
+	assert.Contains(t, body, `data-share-title="Example Title"`)
+	assert.Contains(t, body, `data-user-feedback="like"`)
+	assert.Contains(t, body, `class="card-head"`)
+	assert.Contains(t, body, `class="card-title"`)
+	assert.Contains(t, body, `class="card-summary"`)
+	assert.Contains(t, body, `class="card-extras expanded-only"`)
+
+	// all five action buttons present with threads icons
+	assert.Contains(t, body, `data-action="like"`)
+	assert.Contains(t, body, `data-action="dislike"`)
+	assert.Contains(t, body, `data-action="done"`)
+	assert.Contains(t, body, `data-action="share"`)
+	assert.Contains(t, body, `data-action="comment"`)
+
+	// active state applied from UserFeedback
+	assert.Contains(t, body, `class="action action-like active"`)
+
+	// expanded-view-only content still present in markup (CSS hides it for threads/condensed)
+	assert.Contains(t, body, "Why it matters")
+	assert.Contains(t, body, `data-topic="tech"`)
+	assert.Contains(t, body, `id="content-toggle-42"`)
+}
+
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	funcMap := template.FuncMap{
+		"sub": func(a, b int) int { return a - b },
+		"add": func(a, b int) int { return a + b },
+		"mul": func(a, b float64) float64 { return a * b },
+		"unescapeHTML": func(s string) template.HTML {
+			return template.HTML(s) //nolint:gosec // test helper only
+		},
+	}
+	tmpl := template.New("").Funcs(funcMap)
+	tmpl, err := tmpl.ParseFiles(
+		"templates/article-card.html",
+		"templates/controls.html",
+		"templates/pagination.html",
+	)
+	require.NoError(t, err)
+	return &Server{templates: tmpl}
+}
