@@ -128,6 +128,8 @@ func (r *RepositoryAdapter) GetClassifiedItemsWithFilters(ctx context.Context, r
 		Limit:         req.Limit,
 		Offset:        offset,
 		ShowLikedOnly: req.ShowLikedOnly,
+		ShowProcessed: req.ShowProcessed,
+		DateFrom:      req.DateFrom,
 	}
 
 	// get items from repository
@@ -156,6 +158,8 @@ func (r *RepositoryAdapter) GetClassifiedItemsCount(ctx context.Context, req dom
 		SortBy:        req.SortBy,
 		Limit:         req.Limit,
 		ShowLikedOnly: req.ShowLikedOnly,
+		ShowProcessed: req.ShowProcessed,
+		DateFrom:      req.DateFrom,
 	}
 
 	return r.classificationRepo.GetClassifiedItemsCount(ctx, filter)
@@ -277,6 +281,8 @@ func (r *RepositoryAdapter) SearchItems(ctx context.Context, searchQuery string,
 		Limit:         req.Limit,
 		Offset:        offset,
 		ShowLikedOnly: req.ShowLikedOnly,
+		ShowProcessed: req.ShowProcessed,
+		DateFrom:      req.DateFrom,
 	}
 
 	// get items from repository
@@ -305,6 +311,8 @@ func (r *RepositoryAdapter) GetSearchItemsCount(ctx context.Context, searchQuery
 		SortBy:        req.SortBy,
 		Limit:         req.Limit,
 		ShowLikedOnly: req.ShowLikedOnly,
+		ShowProcessed: req.ShowProcessed,
+		DateFrom:      req.DateFrom,
 	}
 
 	return r.classificationRepo.GetSearchItemsCount(ctx, searchQuery, filter)

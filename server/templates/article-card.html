@@ -42,7 +42,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
                 👍
             </button>
             <button class="btn-feedback btn-dislike-small {{if eq .GetUserFeedback "dislike"}}active{{end}}"
@@ -50,7 +50,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
                 👎
             </button>
             <button class="btn-feedback btn-done-small {{if eq .GetUserFeedback "done"}}active{{end}}"
@@ -58,7 +58,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
                 ✓
             </button>
         </div>
@@ -103,7 +103,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
                 👍 Like
             </button>
             <button class="btn-feedback btn-dislike {{if eq .GetUserFeedback "dislike"}}active{{end}}"
@@ -111,7 +111,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
                 👎 Dislike
             </button>
             <button class="btn-feedback btn-done {{if eq .GetUserFeedback "done"}}active{{end}}"
@@ -119,7 +119,7 @@
                     hx-swap="outerHTML"
                     hx-target="closest .article-card"
                     hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-toggle, #processed-toggle">
+                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
                 ✓ Done
             </button>
             {{if .GetExtractedContent}}

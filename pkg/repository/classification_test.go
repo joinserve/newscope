@@ -1277,6 +1277,81 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 	})
 }
 
+func TestClassificationRepository_GetClassifiedItems_DateFromFilter(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	feed := &domain.Feed{
+		URL:           "https://example.com/date.xml",
+		Title:         "Date Feed",
+		FetchInterval: 3600,
+		Enabled:       true,
+	}
+	require.NoError(t, repos.Feed.CreateFeed(ctx, feed))
+
+	// anchor times relative to now so DateFrom filtering is deterministic
+	now := time.Now()
+	items := []domain.Item{
+		{FeedID: feed.ID, GUID: "old-item", Title: "Old Article", Link: "https://example.com/old", Published: now.AddDate(0, 0, -10)},
+		{FeedID: feed.ID, GUID: "mid-item", Title: "Mid Article", Link: "https://example.com/mid", Published: now.AddDate(0, 0, -5)},
+		{FeedID: feed.ID, GUID: "new-item", Title: "New Article", Link: "https://example.com/new", Published: now.AddDate(0, 0, -1)},
+	}
+
+	for i := range items {
+		require.NoError(t, repos.Item.CreateItem(ctx, &items[i]))
+		classification := &domain.Classification{
+			GUID:        items[i].GUID,
+			Score:       7.0,
+			Explanation: "test",
+			Topics:      []string{"test"},
+		}
+		require.NoError(t, repos.Item.UpdateItemClassification(ctx, items[i].ID, classification))
+	}
+
+	t.Run("zero DateFrom returns all items", func(t *testing.T) {
+		filter := &domain.ItemFilter{MinScore: 0, SortBy: "published", Limit: 10}
+		result, err := repos.Classification.GetClassifiedItems(ctx, filter)
+		require.NoError(t, err)
+		assert.Len(t, result, 3)
+	})
+
+	t.Run("DateFrom 7 days ago excludes older item", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0,
+			SortBy:   "published",
+			Limit:    10,
+			DateFrom: now.AddDate(0, 0, -7),
+		}
+		result, err := repos.Classification.GetClassifiedItems(ctx, filter)
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		assert.Equal(t, "New Article", result[0].Title)
+		assert.Equal(t, "Mid Article", result[1].Title)
+	})
+
+	t.Run("DateFrom 2 days ago keeps only newest", func(t *testing.T) {
+		filter := &domain.ItemFilter{
+			MinScore: 0,
+			SortBy:   "published",
+			Limit:    10,
+			DateFrom: now.AddDate(0, 0, -2),
+		}
+		result, err := repos.Classification.GetClassifiedItems(ctx, filter)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "New Article", result[0].Title)
+	})
+
+	t.Run("count honors DateFrom", func(t *testing.T) {
+		filter := &domain.ItemFilter{MinScore: 0, DateFrom: now.AddDate(0, 0, -7)}
+		count, err := repos.Classification.GetClassifiedItemsCount(ctx, filter)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count)
+	})
+}
+
 func TestClassificationRepository_SearchItems(t *testing.T) {
 	// setup test database
 	repos, cleanup := setupTestDB(t)

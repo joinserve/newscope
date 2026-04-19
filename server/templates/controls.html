@@ -18,13 +18,14 @@
 {{end}}
 
 {{define "liked-button"}}
+<input type="hidden" id="liked-state" name="liked" value="{{if .ShowLikedOnly}}true{{else}}false{{end}}" hx-swap-oob="true">
 <button id="liked-toggle" class="btn-toggle {{if .ShowLikedOnly}}active{{end}}"
         title="Show liked articles only"
         hx-get="/articles"
         hx-trigger="click"
         hx-target="#articles-with-pagination"
         hx-swap="innerHTML show:body:top"
-        hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
+        hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter"
         hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}", "show_processed": "false"}'
         hx-swap-oob="true">
     ★ Liked
@@ -32,17 +33,34 @@
 {{end}}
 
 {{define "processed-button"}}
+<input type="hidden" id="processed-state" name="show_processed" value="{{if .ShowProcessed}}true{{else}}false{{end}}" hx-swap-oob="true">
 <button id="processed-toggle" class="btn-toggle {{if .ShowProcessed}}active{{end}}"
         title="Show processed articles"
         hx-get="/articles"
         hx-trigger="click"
         hx-target="#articles-with-pagination"
         hx-swap="innerHTML show:body:top"
-        hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter"
+        hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter"
         hx-vals='{"show_processed": "{{if .ShowProcessed}}false{{else}}true{{end}}", "liked": "false"}'
         hx-swap-oob="true">
     ✓ Processed
 </button>
+{{end}}
+
+{{define "date-range-dropdown"}}
+<select id="date-range-filter" name="date_range"
+        hx-get="/articles"
+        hx-trigger="change"
+        hx-target="#articles-with-pagination"
+        hx-swap="innerHTML show:body:top"
+        hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state"
+        hx-swap-oob="true">
+    <option value="today" {{if eq .DateRange "today"}}selected{{end}}>Today</option>
+    <option value="3d" {{if eq .DateRange "3d"}}selected{{end}}>Last 3 days</option>
+    <option value="7d" {{if eq .DateRange "7d"}}selected{{end}}>Last 7 days</option>
+    <option value="30d" {{if eq .DateRange "30d"}}selected{{end}}>Last 30 days</option>
+    <option value="all" {{if eq .DateRange "all"}}selected{{end}}>All</option>
+</select>
 {{end}}
 
 {{define "content-toggle-button"}}

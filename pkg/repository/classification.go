@@ -137,6 +137,12 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 		query += ` AND i.processed_at IS NULL`
 	}
 
+	// date range: restrict by published date when DateFrom is set
+	if !filter.DateFrom.IsZero() {
+		query += ` AND i.published >= ?`
+		args = append(args, filter.DateFrom.UTC())
+	}
+
 	// add sorting
 	switch filter.SortBy {
 	case "score":
@@ -507,6 +513,12 @@ func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, 
 		query += ` AND i.processed_at IS NULL`
 	}
 
+	// date range: restrict by published date when DateFrom is set
+	if !filter.DateFrom.IsZero() {
+		query += ` AND i.published >= ?`
+		args = append(args, filter.DateFrom.UTC())
+	}
+
 	var count int
 	if err := r.db.GetContext(ctx, &count, query, args...); err != nil {
 		return 0, fmt.Errorf("get classified items count: %w", err)
@@ -588,6 +600,12 @@ func (r *ClassificationRepository) buildSearchWhereClause(searchQuery string, fi
 		whereClause += ` AND i.processed_at IS NOT NULL`
 	default:
 		whereClause += ` AND i.processed_at IS NULL`
+	}
+
+	// date range: restrict by published date when DateFrom is set
+	if !filter.DateFrom.IsZero() {
+		whereClause += ` AND i.published >= ?`
+		args = append(args, filter.DateFrom.UTC())
 	}
 
 	return whereClause, args
