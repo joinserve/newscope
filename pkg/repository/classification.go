@@ -44,6 +44,7 @@ type itemWithFeedSQL struct {
 	Topics         classificationSQL `db:"topics"`
 	Summary        string            `db:"summary"`
 	ClassifiedAt   *time.Time        `db:"classified_at"`
+	SummarizedAt   *time.Time        `db:"summarized_at"`
 
 	// user feedback
 	UserFeedback string     `db:"user_feedback"`
