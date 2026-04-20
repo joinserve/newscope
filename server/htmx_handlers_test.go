@@ -2041,6 +2041,54 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	assert.Contains(t, body, `data-topic="tech"`)
 }
 
+func TestServer_renderArticleCard_SummarizeButton(t *testing.T) {
+	srv := newTestServer(t)
+	published := time.Date(2026, 4, 19, 10, 30, 0, 0, time.UTC)
+
+	t.Run("summarize button shown when summary missing", func(t *testing.T) {
+		article := &domain.ClassifiedItem{
+			Item: &domain.Item{
+				ID:          99,
+				Title:       "No Summary Yet",
+				Link:        "https://example.com/n",
+				Description: "raw description",
+				Published:   published,
+			},
+			FeedName:       "Feed",
+			Classification: &domain.Classification{Score: 5.0},
+		}
+
+		w := httptest.NewRecorder()
+		srv.renderArticleCard(w, article)
+		body := w.Body.String()
+
+		assert.Contains(t, body, `action-summarize`)
+		assert.Contains(t, body, `hx-post="/api/v1/summarize/99"`)
+		assert.Contains(t, body, `card-summary-fallback`)
+		assert.Contains(t, body, "raw description")
+	})
+
+	t.Run("summarize button hidden when summary present", func(t *testing.T) {
+		article := &domain.ClassifiedItem{
+			Item: &domain.Item{
+				ID:        100,
+				Title:     "Has Summary",
+				Link:      "https://example.com/h",
+				Published: published,
+			},
+			FeedName:       "Feed",
+			Classification: &domain.Classification{Score: 8.0, Summary: "already summarized"},
+		}
+
+		w := httptest.NewRecorder()
+		srv.renderArticleCard(w, article)
+		body := w.Body.String()
+
+		assert.NotContains(t, body, `action-summarize`)
+		assert.Contains(t, body, "already summarized")
+	})
+}
+
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	funcMap := template.FuncMap{

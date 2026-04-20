@@ -15,7 +15,6 @@ import (
 	"github.com/umputun/newscope/pkg/llm"
 )
 
-
 // FeedProcessor handles feed updating and item processing.
 // It is responsible for:
 //   - Periodically fetching RSS/Atom feeds and detecting new items

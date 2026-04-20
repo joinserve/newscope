@@ -65,8 +65,20 @@
         <div class="card-summary">
             {{if .GetSummary}}
             <p>{{.GetSummary}}</p>
-            {{else if .Description}}
-            <p>{{unescapeHTML .Description}}</p>
+            {{else}}
+                {{if .Description}}
+                <p class="card-summary-fallback">{{unescapeHTML .Description}}</p>
+                {{end}}
+                <button class="btn btn-ghost btn-sm action-summarize"
+                        type="button"
+                        hx-post="/api/v1/summarize/{{.ID}}"
+                        hx-target="closest .article-card"
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this"
+                        title="Generate AI summary for this article">
+                    <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>
+                    Summarize
+                </button>
             {{end}}
         </div>
 
