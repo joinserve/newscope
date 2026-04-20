@@ -29,14 +29,7 @@
 
     <div class="card-main">
         <header class="card-head">
-            <a href="#" class="feed-name clickable-feed"
-               data-feed="{{.FeedName}}"
-               hx-get="/articles"
-               hx-vals='{"feed":"{{.FeedName}}"}'
-               hx-trigger="click"
-               hx-target="#articles-with-pagination"
-               hx-swap="innerHTML show:body:top"
-               hx-include="#score-filter, #topic-filter, #sort-filter, #date-range-filter">{{.FeedName}}</a>
+            <a href="/search?q={{.FeedName}}" class="feed-name" title="搜尋 {{.FeedName}}">{{.FeedName}}</a>
             
             {{if .GetTopics}}
             {{$primaryTopic := index .GetTopics 0}}
