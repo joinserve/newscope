@@ -8,6 +8,7 @@ type Feed struct {
 	URL           string
 	Title         string
 	Description   string
+	IconURL       string
 	LastFetched   *time.Time
 	NextFetch     *time.Time
 	FetchInterval time.Duration

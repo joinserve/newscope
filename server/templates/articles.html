@@ -4,126 +4,65 @@
 
 {{define "content"}}
 <div class="articles-header">
-    <h2>{{if .IsSearch}}Search Results{{else}}Articles{{end}} <span id="article-count" class="article-count">({{.ArticleCount}}/{{.TotalCount}})</span></h2>
-    
     {{if .IsSearch}}
-    <!-- Hidden search query input to maintain search state -->
-    <input type="hidden" id="search-query" name="q" value="{{.SearchQuery}}">
+    <div class="search-page-container">
+        <form action="/search" method="get" class="search-page-form">
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="search" id="search-query" name="q" placeholder="搜尋" value="{{.SearchQuery}}" autofocus class="search-page-input">
+                
+                <!-- Date Filter Dropdown inside Search Bar -->
+                <div class="search-filter-dropdown-container">
+                    <button type="button" class="search-filter-toggle" onclick="document.getElementById('search-filter-menu').classList.toggle('show')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                    </button>
+                    <div id="search-filter-menu" class="search-filter-menu">
+                        <label class="dropdown-item">
+                            <input type="radio" name="date_range" value="all" onchange="this.form.submit()" {{if eq .DateRange "all"}}checked{{end}}>
+                            <span>全部時間</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        </label>
+                        <label class="dropdown-item">
+                            <input type="radio" name="date_range" value="7d" onchange="this.form.submit()" {{if eq .DateRange "7d"}}checked{{end}}>
+                            <span>過去 7 天</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </label>
+                        <label class="dropdown-item">
+                            <input type="radio" name="date_range" value="3d" onchange="this.form.submit()" {{if eq .DateRange "3d"}}checked{{end}}>
+                            <span>過去 3 天</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </label>
+                        <label class="dropdown-item">
+                            <input type="radio" name="date_range" value="today" onchange="this.form.submit()" {{if eq .DateRange "today"}}checked{{end}}>
+                            <span>今天</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <script>
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(event) {
+                const menu = document.getElementById('search-filter-menu');
+                const toggle = document.querySelector('.search-filter-toggle');
+                if (menu && menu.classList.contains('show')) {
+                    if (!menu.contains(event.target) && !toggle.contains(event.target)) {
+                        menu.classList.remove('show');
+                    }
+                }
+            });
+            </script>
+            {{if .SelectedSort}}<input type="hidden" name="sort" value="{{.SelectedSort}}">{{end}}
+        </form>
+    </div>
     {{end}}
 
     <!-- Hidden state inputs carry liked/processed view flags for all requests that hx-include them -->
     <input type="hidden" id="liked-state" name="liked" value="{{if .ShowLikedOnly}}true{{else}}false{{end}}">
     <input type="hidden" id="processed-state" name="show_processed" value="{{if .ShowProcessed}}true{{else}}false{{end}}">
-
-    <!-- Threads-style pill filter bar -->
-    <div class="filters">
-        <div class="filter-pill filter-pill-range">
-            <span class="pill-range-label" aria-hidden="true">≥</span>
-            <input type="range" id="score-filter" name="score" min="0" max="10" value="{{.MinScore}}" step="0.5"
-                   aria-label="Minimum score"
-                   hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-                   hx-trigger="change"
-                   hx-target="#articles-with-pagination"
-                   hx-swap="innerHTML show:body:top"
-                   hx-include="#topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
-            <span id="score-value" class="pill-value">{{.MinScore}}</span>
-        </div>
-
-        <select id="topic-filter" name="topic" class="filter-pill"
-                aria-label="Topic"
-                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-                hx-trigger="change"
-                hx-target="#articles-with-pagination"
-                hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
-            <option value="">All Topics</option>
-            {{range .Topics}}
-            <option value="{{.}}" {{if eq $.SelectedTopic .}}selected{{end}}>{{.}}</option>
-            {{end}}
-        </select>
-
-        <select id="feed-filter" name="feed" class="filter-pill"
-                aria-label="Feed"
-                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-                hx-trigger="change"
-                hx-target="#articles-with-pagination"
-                hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
-            <option value="">All Feeds</option>
-            {{range .Feeds}}
-            <option value="{{.}}" {{if eq $.SelectedFeed .}}selected{{end}}>{{.}}</option>
-            {{end}}
-        </select>
-
-        <select id="sort-filter" name="sort" class="filter-pill"
-                aria-label="Sort order"
-                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-                hx-trigger="change"
-                hx-target="#articles-with-pagination"
-                hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #feed-filter, #liked-state, #processed-state, #date-range-filter{{if .IsSearch}}, #search-query{{end}}">
-            <option value="published" {{if eq .SelectedSort "published"}}selected{{end}}>Date</option>
-            <option value="score" {{if eq .SelectedSort "score"}}selected{{end}}>Score</option>
-            <option value="source+date" {{if eq .SelectedSort "source+date"}}selected{{end}}>Source + Date</option>
-            <option value="source+score" {{if eq .SelectedSort "source+score"}}selected{{end}}>Source + Score</option>
-        </select>
-
-        <select id="date-range-filter" name="date_range" class="filter-pill"
-                aria-label="Published"
-                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-                hx-trigger="change"
-                hx-target="#articles-with-pagination"
-                hx-swap="innerHTML show:body:top"
-                hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state{{if .IsSearch}}, #search-query{{end}}">
-            <option value="today" {{if eq .DateRange "today"}}selected{{end}}>Today</option>
-            <option value="3d" {{if eq .DateRange "3d"}}selected{{end}}>Last 3 days</option>
-            <option value="7d" {{if eq .DateRange "7d"}}selected{{end}}>Last 7 days</option>
-            <option value="30d" {{if eq .DateRange "30d"}}selected{{end}}>Last 30 days</option>
-            <option value="all" {{if eq .DateRange "all"}}selected{{end}}>All</option>
-        </select>
-
-        <div class="filter-actions">
-            <button id="liked-toggle" class="pill-toggle {{if .ShowLikedOnly}}active{{end}}"
-                    type="button"
-                    aria-label="Liked only"
-                    title="Show liked only"
-                    hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-                    hx-trigger="click"
-                    hx-target="#articles-with-pagination"
-                    hx-swap="innerHTML show:body:top"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter{{if .IsSearch}}, #search-query{{end}}"
-                    hx-vals='{"liked": "{{if .ShowLikedOnly}}false{{else}}true{{end}}", "show_processed": "false"}'>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path>
-                </svg>
-            </button>
-            <button id="processed-toggle" class="pill-toggle {{if .ShowProcessed}}active{{end}}"
-                    type="button"
-                    aria-label="Show processed"
-                    title="Show processed"
-                    hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
-                    hx-trigger="click"
-                    hx-target="#articles-with-pagination"
-                    hx-swap="innerHTML show:body:top"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #date-range-filter{{if .IsSearch}}, #search-query{{end}}"
-                    hx-vals='{"show_processed": "{{if .ShowProcessed}}false{{else}}true{{end}}", "liked": "false"}'>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M20 6 9 17l-5-5"></path>
-                </svg>
-            </button>
-            <div class="view-toggle-buttons">
-                <button id="view-threads" class="btn-view-toggle active" title="Threads view" type="button" aria-label="Threads view">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <line x1="4" y1="7" x2="20" y2="7"></line>
-                        <line x1="4" y1="12" x2="20" y2="12"></line>
-                        <line x1="4" y1="17" x2="20" y2="17"></line>
-                    </svg>
-                </button>
-                <button id="view-expanded" class="btn-view-toggle" title="Expanded view" type="button" aria-label="Expanded view">⊞</button>
-                <button id="view-condensed" class="btn-view-toggle" title="Condensed view" type="button" aria-label="Condensed view">☰</button>
-            </div>
-        </div>
-    </div>
 </div>
 
 <div id="articles-with-pagination">
@@ -132,13 +71,13 @@
             {{range .Articles}}
             {{template "article-card.html" .}}
             {{else}}
-            <p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>
+            <p class="no-articles">Nothing here yet.</p>
             {{end}}
+
+            <!-- Pagination Controls -->
+            {{template "pagination" .}}
         </div>
     </div>
-
-    <!-- Pagination Controls -->
-    {{template "pagination" .}}
 </div>
 
 <!-- Auto-update score display and localStorage -->
@@ -163,7 +102,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (savedScore && savedScore !== '{{.MinScore}}') {
             document.getElementById('score-filter').value = savedScore;
-            document.getElementById('score-value').textContent = savedScore;
             needsUpdate = true;
         }
         if (savedLiked !== null && savedLiked !== '{{.ShowLikedOnly}}') {
@@ -187,45 +125,22 @@ document.addEventListener('DOMContentLoaded', function() {
         localStorage.setItem('newscopeDateRange', '{{.DateRange}}');
     }
     
-    // Update score display
-    const scoreFilter = document.getElementById('score-filter');
-    document.getElementById('score-value').textContent = scoreFilter.value;
-    
     // Load saved view mode (this is client-side only)
     const savedView = localStorage.getItem('newscopeViewMode') || 'threads';
     setViewMode(savedView);
 });
 
-// Update score display and save to localStorage
-document.getElementById('score-filter').addEventListener('input', function(e) {
-    const value = e.target.value;
-    document.getElementById('score-value').textContent = value;
-    // Save to localStorage
-    localStorage.setItem('newscopeMinScore', value);
-});
-
-// Also save when change event fires (for programmatic changes)
+// Save score selection to localStorage
 document.getElementById('score-filter').addEventListener('change', function(e) {
     localStorage.setItem('newscopeMinScore', e.target.value);
 });
 
 // View mode functionality
-const VIEW_MODES = ['threads', 'expanded', 'condensed'];
+const VIEW_MODES = ['threads'];
 function setViewMode(mode) {
-    if (!VIEW_MODES.includes(mode)) mode = 'threads';
     const container = document.getElementById('articles-container');
-    container.className = 'view-' + mode;
-    VIEW_MODES.forEach(m => {
-        const btn = document.getElementById('view-' + m);
-        if (btn) btn.classList.toggle('active', m === mode);
-    });
-    localStorage.setItem('newscopeViewMode', mode);
+    if (container) container.className = 'view-threads';
 }
-
-VIEW_MODES.forEach(mode => {
-    const btn = document.getElementById('view-' + mode);
-    if (btn) btn.addEventListener('click', () => setViewMode(mode));
-});
 
 // Sort preference persistence
 document.getElementById('sort-filter').addEventListener('change', function(e) {

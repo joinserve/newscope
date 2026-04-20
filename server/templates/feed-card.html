@@ -46,6 +46,15 @@
                 <input type="text" id="edit-title-{{.ID}}" name="title" value="{{.Title}}" placeholder="Feed title">
             </div>
             <div class="form-group">
+                <label for="edit-url-{{.ID}}">Feed URL:</label>
+                <input type="url" id="edit-url-{{.ID}}" name="url" value="{{.URL}}" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-icon_url-{{.ID}}">Domain / Icon URL:</label>
+                <input type="url" id="edit-icon_url-{{.ID}}" name="icon_url" value="{{.IconURL}}" placeholder="Optional: domain.com or full URL to icon">
+                <small class="text-muted">Used for the card avatar image.</small>
+            </div>
+            <div class="form-group">
                 <label for="edit-interval-{{.ID}}">Update Interval (minutes):</label>
                 <input type="number" id="edit-interval-{{.ID}}" name="fetch_interval" value="{{durationMinutes .FetchInterval}}" min="5" max="1440">
             </div>

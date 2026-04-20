@@ -4,7 +4,7 @@
 
 {{define "content"}}
 <div class="settings-page">
-    <div class="page-header">
+    <div class="settings-header">
         <h2>Settings</h2>
         <p class="text-muted">Application configuration and preferences</p>
     </div>
@@ -110,7 +110,7 @@
                     <i class="fas fa-brain"></i>
                     <h3>Learning Preferences</h3>
                 </div>
-                
+
                 <div id="preference-summary-container" class="preference-summary-container"
                      hx-get="/api/v1/preferences/view"
                      hx-trigger="load">
@@ -118,6 +118,16 @@
                     <div class="loading">
                         <i class="fas fa-spinner fa-spin"></i> Loading preferences...
                     </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="section-header">
+                    <i class="fas fa-filter"></i>
+                    <h3>Summarization</h3>
+                </div>
+                <div class="settings-grid">
+                    {{template "summary-threshold.html" .}}
                 </div>
             </div>
         </div>
@@ -138,11 +148,15 @@
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Version</label>
+                    <div class="setting-item-content">
+                        <label>Version</label>
+                    </div>
                     <span class="setting-value">{{.Version}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Debug Mode</label>
+                    <div class="setting-item-content">
+                        <label>Debug Mode</label>
+                    </div>
                     <span class="setting-value {{if .Debug}}text-success{{else}}text-muted{{end}}">
                         {{if .Debug}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}
                     </span>
@@ -157,19 +171,27 @@
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Listen Address</label>
+                    <div class="setting-item-content">
+                        <label>Listen Address</label>
+                    </div>
                     <span class="setting-value">{{.Config.Server.Listen}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Request Timeout</label>
+                    <div class="setting-item-content">
+                        <label>Request Timeout</label>
+                    </div>
                     <span class="setting-value">{{.Config.Server.Timeout}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Page Size</label>
+                    <div class="setting-item-content">
+                        <label>Page Size</label>
+                    </div>
                     <span class="setting-value">{{.Config.Server.PageSize}} articles per page</span>
                 </div>
                 <div class="setting-item">
-                    <label>Base URL</label>
+                    <div class="setting-item-content">
+                        <label>Base URL</label>
+                    </div>
                     <span class="setting-value text-mono">{{.Config.Server.BaseURL}}</span>
                 </div>
             </div>
@@ -182,19 +204,27 @@
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Connection String</label>
+                    <div class="setting-item-content">
+                        <label>Connection String</label>
+                    </div>
                     <span class="setting-value text-mono">{{.Config.Database.DSN}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Max Open Connections</label>
+                    <div class="setting-item-content">
+                        <label>Max Open Connections</label>
+                    </div>
                     <span class="setting-value">{{.Config.Database.MaxOpenConns}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Max Idle Connections</label>
+                    <div class="setting-item-content">
+                        <label>Max Idle Connections</label>
+                    </div>
                     <span class="setting-value">{{.Config.Database.MaxIdleConns}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Connection Max Lifetime</label>
+                    <div class="setting-item-content">
+                        <label>Connection Max Lifetime</label>
+                    </div>
                     <span class="setting-value">{{.Config.Database.ConnMaxLifetime}} seconds</span>
                 </div>
             </div>
@@ -207,24 +237,34 @@
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Scheduler Run Interval</label>
+                    <div class="setting-item-content">
+                        <label>Scheduler Run Interval</label>
+                        <small class="text-muted">How often to check if any feed is due for its next update</small>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.UpdateInterval}}</span>
-                    <small class="text-muted">How often to check if any feed is due for its next update</small>
                 </div>
                 <div class="setting-item">
-                    <label>Max Workers</label>
+                    <div class="setting-item-content">
+                        <label>Max Workers</label>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.MaxWorkers}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Cleanup Interval</label>
+                    <div class="setting-item-content">
+                        <label>Cleanup Interval</label>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.CleanupInterval}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Cleanup Age</label>
+                    <div class="setting-item-content">
+                        <label>Cleanup Age</label>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.CleanupAge}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Cleanup Min Score</label>
+                    <div class="setting-item-content">
+                        <label>Cleanup Min Score</label>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.CleanupMinScore}}</span>
                 </div>
             </div>
@@ -232,24 +272,32 @@
             <h4 class="subsection-header">Database Retry Configuration</h4>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Retry Attempts</label>
+                    <div class="setting-item-content">
+                        <label>Retry Attempts</label>
+                        <small class="text-muted">Number of retry attempts for database operations</small>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.RetryAttempts}}</span>
-                    <small class="text-muted">Number of retry attempts for database operations</small>
                 </div>
                 <div class="setting-item">
-                    <label>Initial Retry Delay</label>
+                    <div class="setting-item-content">
+                        <label>Initial Retry Delay</label>
+                        <small class="text-muted">Initial delay between retries</small>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.RetryInitialDelay}}</span>
-                    <small class="text-muted">Initial delay between retries</small>
                 </div>
                 <div class="setting-item">
-                    <label>Max Retry Delay</label>
+                    <div class="setting-item-content">
+                        <label>Max Retry Delay</label>
+                        <small class="text-muted">Maximum delay between retries</small>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.RetryMaxDelay}}</span>
-                    <small class="text-muted">Maximum delay between retries</small>
                 </div>
                 <div class="setting-item">
-                    <label>Retry Jitter</label>
+                    <div class="setting-item-content">
+                        <label>Retry Jitter</label>
+                        <small class="text-muted">Jitter factor (0-1) to avoid thundering herd</small>
+                    </div>
                     <span class="setting-value">{{.Config.Schedule.RetryJitter}}</span>
-                    <small class="text-muted">Jitter factor (0-1) to avoid thundering herd</small>
                 </div>
             </div>
         </div>
@@ -261,34 +309,48 @@
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Endpoint</label>
+                    <div class="setting-item-content">
+                        <label>Endpoint</label>
+                    </div>
                     <span class="setting-value text-mono">{{.Config.LLM.Endpoint}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Model</label>
+                    <div class="setting-item-content">
+                        <label>Model</label>
+                    </div>
                     <span class="setting-value">{{.Config.LLM.Model}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Temperature</label>
+                    <div class="setting-item-content">
+                        <label>Temperature</label>
+                    </div>
                     <span class="setting-value">{{.Config.LLM.Temperature}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Max Tokens</label>
+                    <div class="setting-item-content">
+                        <label>Max Tokens</label>
+                    </div>
                     <span class="setting-value">{{.Config.LLM.MaxTokens}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Request Timeout</label>
+                    <div class="setting-item-content">
+                        <label>Request Timeout</label>
+                    </div>
                     <span class="setting-value">{{.Config.LLM.Timeout}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>API Key</label>
+                    <div class="setting-item-content">
+                        <label>API Key</label>
+                    </div>
                     <span class="setting-value {{if .Config.LLM.APIKey}}text-success{{else}}text-danger{{end}}">
                         {{if .Config.LLM.APIKey}}<i class="fas fa-key"></i> Configured{{else}}<i class="fas fa-exclamation-triangle"></i> Not configured{{end}}
                     </span>
                 </div>
                 {{if .Config.LLM.SystemPrompt}}
                 <div class="setting-item">
-                    <label>System Prompt</label>
+                    <div class="setting-item-content">
+                        <label>System Prompt</label>
+                    </div>
                     <span class="setting-value {{if .Config.LLM.SystemPrompt}}text-success{{else}}text-muted{{end}}">
                         {{if .Config.LLM.SystemPrompt}}<i class="fas fa-check"></i> Custom prompt configured{{else}}<i class="fas fa-times"></i> Using default{{end}}
                     </span>
@@ -299,17 +361,23 @@
             <h4 class="subsection-header">Classification Settings</h4>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Feedback Examples</label>
+                    <div class="setting-item-content">
+                        <label>Feedback Examples</label>
+                    </div>
                     <span class="setting-value">{{.Config.LLM.Classification.FeedbackExamples}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>JSON Mode</label>
+                    <div class="setting-item-content">
+                        <label>JSON Mode</label>
+                    </div>
                     <span class="setting-value {{if .Config.LLM.Classification.UseJSONMode}}text-success{{else}}text-muted{{end}}">
                         {{if .Config.LLM.Classification.UseJSONMode}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}
                     </span>
                 </div>
                 <div class="setting-item">
-                    <label>Preference Summary Threshold</label>
+                    <div class="setting-item-content">
+                        <label>Preference Summary Threshold</label>
+                    </div>
                     <span class="setting-value">{{.Config.LLM.Classification.PreferenceSummaryThreshold}}</span>
                 </div>
             </div>
@@ -324,45 +392,63 @@
             </div>
             <div class="settings-grid">
                 <div class="setting-item">
-                    <label>Status</label>
+                    <div class="setting-item-content">
+                        <label>Status</label>
+                    </div>
                     <span class="setting-value {{if .Config.Extraction.Enabled}}text-success{{else}}text-muted{{end}}">
                         {{if .Config.Extraction.Enabled}}<i class="fas fa-check"></i> Enabled{{else}}<i class="fas fa-times"></i> Disabled{{end}}
                     </span>
                 </div>
                 <div class="setting-item">
-                    <label>Timeout</label>
+                    <div class="setting-item-content">
+                        <label>Timeout</label>
+                    </div>
                     <span class="setting-value">{{.Config.Extraction.Timeout}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Max Concurrent</label>
+                    <div class="setting-item-content">
+                        <label>Max Concurrent</label>
+                    </div>
                     <span class="setting-value">{{.Config.Extraction.MaxConcurrent}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Rate Limit</label>
+                    <div class="setting-item-content">
+                        <label>Rate Limit</label>
+                    </div>
                     <span class="setting-value">{{.Config.Extraction.RateLimit}}</span>
                 </div>
                 <div class="setting-item">
-                    <label>Min Text Length</label>
+                    <div class="setting-item-content">
+                        <label>Min Text Length</label>
+                    </div>
                     <span class="setting-value">{{.Config.Extraction.MinTextLength}} characters</span>
                 </div>
                 <div class="setting-item">
-                    <label>User Agent</label>
+                    <div class="setting-item-content">
+                        <label>User Agent</label>
+                    </div>
                     <span class="setting-value text-mono">{{.Config.Extraction.UserAgent}}</span>
                 </div>
                 {{if .Config.Extraction.FallbackURL}}
                 <div class="setting-item">
-                    <label>Fallback API</label>
+                    <div class="setting-item-content">
+                        <label>Fallback API</label>
+                    </div>
                     <span class="setting-value text-mono">{{.Config.Extraction.FallbackURL}}</span>
                 </div>
                 {{end}}
                 <div class="setting-item">
-                    <label>Include Images</label>
+                    <div class="setting-item-content">
+                        <label>Include Images</label>
+                    </div>
                     <span class="setting-value {{if .Config.Extraction.IncludeImages}}text-success{{else}}text-muted{{end}}">
                         {{if .Config.Extraction.IncludeImages}}<i class="fas fa-check"></i> Yes{{else}}<i class="fas fa-times"></i> No{{end}}
                     </span>
                 </div>
                 <div class="setting-item">
-                    <label>Include Links</label>
+                    <div class="setting-item-content">
+                        <label>Include Links</label>
+                    </div>
                     <span class="setting-value {{if .Config.Extraction.IncludeLinks}}text-success{{else}}text-muted{{end}}">
                         {{if .Config.Extraction.IncludeLinks}}<i class="fas fa-check"></i> Yes{{else}}<i class="fas fa-times"></i> No{{end}}
                     </span>
@@ -380,8 +466,7 @@
 </div>
 
 <script>
-// fallback for browsers that don't support :has() selector
-if (!CSS.supports('selector(:has(*))')) {
+document.addEventListener('DOMContentLoaded', function() {
     function updateTabState() {
         const hash = window.location.hash || '#config-tab';
         
@@ -402,6 +487,16 @@ if (!CSS.supports('selector(:has(*))')) {
     
     // listen for hash changes
     window.addEventListener('hashchange', updateTabState);
-}
+    
+    // Also handle tab clicks to update hash without jumping
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetHash = this.getAttribute('href');
+            history.pushState(null, null, targetHash);
+            updateTabState();
+        });
+    });
+});
 </script>
 {{end}}

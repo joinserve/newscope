@@ -235,7 +235,7 @@ func TestFeedRepository_UpdateFeed(t *testing.T) {
 		newTitle := "Updated Title"
 		newInterval := 60 * time.Minute // 60 minutes
 
-		err := repos.Feed.UpdateFeed(context.Background(), testFeed.ID, newTitle, newInterval)
+		err := repos.Feed.UpdateFeed(context.Background(), testFeed.ID, newTitle, "https://example.com/updated", "https://example.com/icon.png", newInterval)
 		require.NoError(t, err)
 
 		// verify the update
@@ -245,13 +245,14 @@ func TestFeedRepository_UpdateFeed(t *testing.T) {
 		assert.Equal(t, newInterval, updatedFeed.FetchInterval)
 
 		// verify other fields unchanged
-		assert.Equal(t, testFeed.URL, updatedFeed.URL)
+		assert.Equal(t, "https://example.com/updated", updatedFeed.URL)
+		assert.Equal(t, "https://example.com/icon.png", updatedFeed.IconURL)
 		assert.Equal(t, testFeed.Description, updatedFeed.Description)
 		assert.Equal(t, testFeed.Enabled, updatedFeed.Enabled)
 	})
 
 	t.Run("update non-existent feed", func(t *testing.T) {
-		err := repos.Feed.UpdateFeed(context.Background(), 99999, "New Title", 7200)
+		err := repos.Feed.UpdateFeed(context.Background(), 99999, "New Title", "https://example.com/updated", "https://example.com/icon.png", 7200)
 		assert.NoError(t, err) // sQLite doesn't return error for no rows affected
 	})
 }

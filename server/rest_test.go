@@ -158,7 +158,7 @@ func TestServer_extractHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, extractCalled)
-	assert.Contains(t, w.Body.String(), "Show Content") // button should change
+	assert.Contains(t, w.Body.String(), "Full article content here")
 }
 
 func TestServer_createFeedHandler(t *testing.T) {
@@ -236,7 +236,7 @@ func TestServer_updateFeedHandler(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
+		UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, url string, iconURL string, fetchInterval time.Duration) error {
 			assert.Equal(t, int64(123), feedID)
 			assert.Equal(t, "New Title", title)
 			assert.Equal(t, 40*time.Minute, fetchInterval) // 40 minutes
@@ -650,6 +650,118 @@ func TestServer_ExtractHandler_Errors(t *testing.T) {
 	})
 }
 
+func TestServer_summarizeHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	summarizeCalled := false
+	scheduler := &mocks.SchedulerMock{
+		SummarizeItemNowFunc: func(ctx context.Context, itemID int64) error {
+			summarizeCalled = true
+			assert.Equal(t, int64(456), itemID)
+			return nil
+		},
+		TriggerPreferenceUpdateFunc: func() {},
+	}
+
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
+			return &domain.ClassifiedItem{
+				Item: &domain.Item{
+					ID:        itemID,
+					Title:     "Test Article",
+					Published: time.Now(),
+				},
+				FeedName: "Test Feed",
+				Classification: &domain.Classification{
+					Summary: "A summary of the article",
+					Score:   7.5,
+				},
+			}, nil
+		},
+	}
+
+	srv := New(cfg, database, scheduler, "1.0.0", false)
+
+	req := httptest.NewRequest("POST", "/api/v1/summarize/456", http.NoBody)
+	req.SetPathValue("id", "456")
+	w := httptest.NewRecorder()
+
+	srv.summarizeHandler(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, summarizeCalled)
+	assert.Contains(t, w.Body.String(), "A summary of the article")
+}
+
+func TestServer_SummarizeHandler_Errors(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	t.Run("invalid item ID", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/summarize/invalid", http.NoBody)
+		req.SetPathValue("id", "invalid")
+		w := httptest.NewRecorder()
+
+		srv.summarizeHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "invalid item ID")
+	})
+
+	t.Run("summarization failed", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		scheduler := &mocks.SchedulerMock{
+			SummarizeItemNowFunc: func(ctx context.Context, itemID int64) error {
+				return errors.New("llm timeout")
+			},
+		}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/summarize/123", http.NoBody)
+		req.SetPathValue("id", "123")
+		w := httptest.NewRecorder()
+
+		srv.summarizeHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "llm timeout")
+	})
+
+	t.Run("get item error after summarization", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
+				return nil, errors.New("item not found")
+			},
+		}
+		scheduler := &mocks.SchedulerMock{
+			SummarizeItemNowFunc: func(ctx context.Context, itemID int64) error {
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, scheduler)
+
+		req := httptest.NewRequest("POST", "/api/v1/summarize/123", http.NoBody)
+		req.SetPathValue("id", "123")
+		w := httptest.NewRecorder()
+
+		srv.summarizeHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to reload article")
+	})
+}
+
 func TestServer_CreateFeedHandler_DatabaseError(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {
@@ -741,7 +853,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 
 	t.Run("database error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
+			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, url string, iconURL string, fetchInterval time.Duration) error {
 				return fmt.Errorf("database error")
 			},
 		}
@@ -763,7 +875,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 
 	t.Run("feed not found", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
-			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
+			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, url string, iconURL string, fetchInterval time.Duration) error {
 				return nil
 			},
 			GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {

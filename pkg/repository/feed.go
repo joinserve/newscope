@@ -22,6 +22,7 @@ type feedSQL struct {
 	URL           string     `db:"url"`
 	Title         string     `db:"title"`
 	Description   string     `db:"description"`
+	IconURL       string     `db:"icon_url"`
 	LastFetched   *time.Time `db:"last_fetched"`
 	NextFetch     *time.Time `db:"next_fetch"`
 	FetchInterval int        `db:"fetch_interval"`
@@ -42,13 +43,14 @@ func (r *FeedRepository) CreateFeed(ctx context.Context, feed *domain.Feed) erro
 		URL:           feed.URL,
 		Title:         feed.Title,
 		Description:   feed.Description,
+		IconURL:       feed.IconURL,
 		FetchInterval: int(feed.FetchInterval.Seconds()),
 		Enabled:       feed.Enabled,
 	}
 
 	query := `
-		INSERT INTO feeds (url, title, description, fetch_interval, enabled)
-		VALUES (:url, :title, :description, :fetch_interval, :enabled)
+		INSERT INTO feeds (url, title, description, icon_url, fetch_interval, enabled)
+		VALUES (:url, :title, :description, :icon_url, :fetch_interval, :enabled)
 	`
 	result, err := r.db.NamedExecContext(ctx, query, sqlFeed)
 	if err != nil {
@@ -186,9 +188,9 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedID int64, ena
 }
 
 // UpdateFeed updates feed title and interval
-func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
-	query := "UPDATE feeds SET title = ?, fetch_interval = ? WHERE id = ?"
-	_, err := r.db.ExecContext(ctx, query, title, int(fetchInterval.Seconds()), feedID)
+func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error {
+	query := "UPDATE feeds SET title = ?, url = ?, icon_url = ?, fetch_interval = ? WHERE id = ?"
+	_, err := r.db.ExecContext(ctx, query, title, feedURL, iconURL, int(fetchInterval.Seconds()), feedID)
 	if err != nil {
 		return fmt.Errorf("update feed: %w", err)
 	}
@@ -233,6 +235,7 @@ func (r *FeedRepository) toDomainFeed(sqlFeed *feedSQL) *domain.Feed {
 		URL:           sqlFeed.URL,
 		Title:         sqlFeed.Title,
 		Description:   sqlFeed.Description,
+		IconURL:       sqlFeed.IconURL,
 		LastFetched:   sqlFeed.LastFetched,
 		NextFetch:     sqlFeed.NextFetch,
 		FetchInterval: time.Duration(sqlFeed.FetchInterval) * time.Second,

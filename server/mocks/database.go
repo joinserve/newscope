@@ -68,7 +68,7 @@ import (
 //			SetSettingFunc: func(ctx context.Context, key string, value string) error {
 //				panic("mock out the SetSetting method")
 //			},
-//			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
+//			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error {
 //				panic("mock out the UpdateFeed method")
 //			},
 //			UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
@@ -136,7 +136,7 @@ type DatabaseMock struct {
 	SetSettingFunc func(ctx context.Context, key string, value string) error
 
 	// UpdateFeedFunc mocks the UpdateFeed method.
-	UpdateFeedFunc func(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error
+	UpdateFeedFunc func(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error
 
 	// UpdateFeedStatusFunc mocks the UpdateFeedStatus method.
 	UpdateFeedStatusFunc func(ctx context.Context, feedID int64, enabled bool) error
@@ -281,6 +281,10 @@ type DatabaseMock struct {
 			FeedID int64
 			// Title is the title argument value.
 			Title string
+			// FeedURL is the feedURL argument value.
+			FeedURL string
+			// IconURL is the iconURL argument value.
+			IconURL string
 			// FetchInterval is the fetchInterval argument value.
 			FetchInterval time.Duration
 		}
@@ -954,7 +958,7 @@ func (mock *DatabaseMock) SetSettingCalls() []struct {
 }
 
 // UpdateFeed calls UpdateFeedFunc.
-func (mock *DatabaseMock) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
+func (mock *DatabaseMock) UpdateFeed(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error {
 	if mock.UpdateFeedFunc == nil {
 		panic("DatabaseMock.UpdateFeedFunc: method is nil but Database.UpdateFeed was just called")
 	}
@@ -962,17 +966,21 @@ func (mock *DatabaseMock) UpdateFeed(ctx context.Context, feedID int64, title st
 		Ctx           context.Context
 		FeedID        int64
 		Title         string
+		FeedURL       string
+		IconURL       string
 		FetchInterval time.Duration
 	}{
 		Ctx:           ctx,
 		FeedID:        feedID,
 		Title:         title,
+		FeedURL:       feedURL,
+		IconURL:       iconURL,
 		FetchInterval: fetchInterval,
 	}
 	mock.lockUpdateFeed.Lock()
 	mock.calls.UpdateFeed = append(mock.calls.UpdateFeed, callInfo)
 	mock.lockUpdateFeed.Unlock()
-	return mock.UpdateFeedFunc(ctx, feedID, title, fetchInterval)
+	return mock.UpdateFeedFunc(ctx, feedID, title, feedURL, iconURL, fetchInterval)
 }
 
 // UpdateFeedCalls gets all the calls that were made to UpdateFeed.
@@ -983,12 +991,16 @@ func (mock *DatabaseMock) UpdateFeedCalls() []struct {
 	Ctx           context.Context
 	FeedID        int64
 	Title         string
+	FeedURL       string
+	IconURL       string
 	FetchInterval time.Duration
 } {
 	var calls []struct {
 		Ctx           context.Context
 		FeedID        int64
 		Title         string
+		FeedURL       string
+		IconURL       string
 		FetchInterval time.Duration
 	}
 	mock.lockUpdateFeed.RLock()

@@ -63,6 +63,7 @@ type ClassifiedItem struct {
 	*Item
 	FeedName       string
 	FeedURL        string
+	FeedIconURL    string
 	Extraction     *ExtractedContent
 	Classification *Classification
 	UserFeedback   *Feedback

@@ -27,7 +27,7 @@ type RepositoryAdapter struct {
 type FeedRepo interface {
 	GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
-	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error
+	UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
@@ -236,8 +236,8 @@ func (r *RepositoryAdapter) CreateFeed(ctx context.Context, feed *domain.Feed) e
 }
 
 // UpdateFeed updates feed title and interval
-func (r *RepositoryAdapter) UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error {
-	return r.feedRepo.UpdateFeed(ctx, feedID, title, fetchInterval)
+func (r *RepositoryAdapter) UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error {
+	return r.feedRepo.UpdateFeed(ctx, feedID, title, feedURL, iconURL, fetchInterval)
 }
 
 // UpdateFeedStatus enables or disables a feed

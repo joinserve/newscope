@@ -102,10 +102,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "Test Article")
 	assert.Contains(t, w.Body.String(), "Test Feed")
-	assert.Contains(t, w.Body.String(), "Score: 8.5/10")
-	assert.Contains(t, w.Body.String(), "<html")                                                                    // should contain full HTML
-	assert.Contains(t, w.Body.String(), "Articles <span id=\"article-count\" class=\"article-count\">(1/1)</span>") // should show count
-
+	assert.Contains(t, w.Body.String(), "8.5")
+	assert.Contains(t, w.Body.String(), "<html") // should contain full HTML
 	// test HTMX request (partial update)
 	req2 := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
 	req2.Header.Set("HX-Request", "true")
@@ -116,7 +114,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code)
 	assert.Contains(t, w2.Body.String(), "Test Article")
 	assert.Contains(t, w2.Body.String(), "Test Feed")
-	assert.Contains(t, w2.Body.String(), "Score: 8.5/10")
+	assert.Contains(t, w2.Body.String(), "8.5")
 	assert.NotContains(t, w2.Body.String(), "<html")                                                                       // should NOT contain full HTML for HTMX request
 	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1/1)</span>`) // should update count
 
@@ -194,6 +192,12 @@ func TestServer_feedsHandler(t *testing.T) {
 
 	now := time.Now()
 	database := &mocks.DatabaseMock{
+		GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"tech"}, nil
+		},
+		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"Example Feed", "Test RSS"}, nil
+		},
 		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 			return []domain.Feed{
 				{
@@ -276,6 +280,12 @@ func TestServer_SettingsHandler(t *testing.T) {
 		GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 			// return some sample topics for testing
 			return []string{"technology", "science", "business"}, nil
+		},
+		GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"technology", "science"}, nil
+		},
+		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"Feed 1", "Feed 2"}, nil
 		},
 	}
 	scheduler := &mocks.SchedulerMock{
@@ -701,6 +711,12 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 	t.Run("FeedsHandler template error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
 			GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 				return []domain.Feed{
 					{
@@ -741,6 +757,12 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 	t.Run("SettingsHandler template error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
 				// return empty strings for topic preferences
 				return "", nil
@@ -1209,6 +1231,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 				return []string{"technology", "science", "business", "politics", "health"}, nil
 			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"technology"}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"Feed 1"}, nil
+			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
 
@@ -1237,6 +1265,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 				return []string{"technology", "science"}, nil
 			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"technology"}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"Feed 1"}, nil
+			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
 
@@ -1262,6 +1296,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 				return nil, errors.New("database error")
 			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"technology"}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"Feed 1"}, nil
+			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
 
@@ -1283,6 +1323,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 				return []domain.TopicWithScore{}, nil
 			},
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{}, nil
+			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 				return []string{}, nil
 			},
 		}
@@ -1720,6 +1766,123 @@ func TestServer_PreferenceHandlers(t *testing.T) {
 	})
 }
 
+func TestServer_summaryThresholdHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+	}
+
+	t.Run("saves valid threshold", func(t *testing.T) {
+		var saved string
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingSummaryThreshold, key)
+				saved = value
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "7.5")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "7.5", saved)
+		assert.Contains(t, w.Body.String(), `value="7.5"`)
+		assert.Contains(t, w.Body.String(), "Saved")
+	})
+
+	t.Run("rejects non-numeric", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "nope")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Threshold must be a number")
+		assert.Empty(t, database.SetSettingCalls())
+	})
+
+	t.Run("rejects out-of-range", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "11")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Threshold must be between 0 and 10")
+		assert.Empty(t, database.SetSettingCalls())
+	})
+
+	t.Run("db error surfaces as 500", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				return errors.New("disk full")
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "5")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to save threshold")
+	})
+}
+
+func TestReadSummaryThreshold(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("default when unset", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "", nil },
+		}
+		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
+	})
+
+	t.Run("parses stored value", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "8.5", nil },
+		}
+		assert.InEpsilon(t, 8.5, readSummaryThreshold(ctx, db), 0.001)
+	})
+
+	t.Run("falls back on parse error", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "nope", nil },
+		}
+		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
+	})
+
+	t.Run("falls back on db error", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "", errors.New("boom") },
+		}
+		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
+	})
+}
+
 func TestParseDateRange(t *testing.T) {
 	now := time.Now()
 	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -1862,7 +2025,6 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	assert.Contains(t, body, `class="card-head"`)
 	assert.Contains(t, body, `class="card-title"`)
 	assert.Contains(t, body, `class="card-summary"`)
-	assert.Contains(t, body, `class="card-extras expanded-only"`)
 
 	// all five action buttons present with threads icons
 	assert.Contains(t, body, `data-action="like"`)
@@ -1877,15 +2039,75 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	// expanded-view-only content still present in markup (CSS hides it for threads/condensed)
 	assert.Contains(t, body, "Why it matters")
 	assert.Contains(t, body, `data-topic="tech"`)
-	assert.Contains(t, body, `id="content-toggle-42"`)
+}
+
+func TestServer_renderArticleCard_SummarizeButton(t *testing.T) {
+	srv := newTestServer(t)
+	published := time.Date(2026, 4, 19, 10, 30, 0, 0, time.UTC)
+
+	t.Run("summarize button shown when summary missing", func(t *testing.T) {
+		article := &domain.ClassifiedItem{
+			Item: &domain.Item{
+				ID:          99,
+				Title:       "No Summary Yet",
+				Link:        "https://example.com/n",
+				Description: "raw description",
+				Published:   published,
+			},
+			FeedName:       "Feed",
+			Classification: &domain.Classification{Score: 5.0},
+		}
+
+		w := httptest.NewRecorder()
+		srv.renderArticleCard(w, article)
+		body := w.Body.String()
+
+		assert.Contains(t, body, `action-summarize-btn`)
+		assert.Contains(t, body, `hx-post="/api/v1/summarize/99"`)
+		assert.Contains(t, body, `card-summary-fallback`)
+		assert.Contains(t, body, "raw description")
+	})
+
+	t.Run("summarize button hidden when summary present", func(t *testing.T) {
+		article := &domain.ClassifiedItem{
+			Item: &domain.Item{
+				ID:        100,
+				Title:     "Has Summary",
+				Link:      "https://example.com/h",
+				Published: published,
+			},
+			FeedName:       "Feed",
+			Classification: &domain.Classification{Score: 8.0, Summary: "already summarized"},
+		}
+
+		w := httptest.NewRecorder()
+		srv.renderArticleCard(w, article)
+		body := w.Body.String()
+
+		assert.NotContains(t, body, `action-summarize`)
+		assert.Contains(t, body, "already summarized")
+	})
 }
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	funcMap := template.FuncMap{
-		"sub": func(a, b int) int { return a - b },
-		"add": func(a, b int) int { return a + b },
-		"mul": func(a, b float64) float64 { return a * b },
+		"sub":       func(a, b int) int { return a - b },
+		"add":       func(a, b int) int { return a + b },
+		"mul":       func(a, b float64) float64 { return a * b },
+		"hasPrefix": strings.HasPrefix,
+		"isImageURL": func(s string) bool {
+			lower := strings.ToLower(s)
+			return strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".jpg") ||
+				strings.HasSuffix(lower, ".jpeg") || strings.HasSuffix(lower, ".gif") ||
+				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
+				strings.HasSuffix(lower, ".ico")
+		},
+		"getDomain":    func(u string) string { return u },
+		"extractImage": func(content string, url string) string { return "" },
+		"stripHTML": func(s string) string {
+			return s // mock for tests
+		},
 		"unescapeHTML": func(s string) template.HTML {
 			return template.HTML(s) //nolint:gosec // test helper only
 		},
@@ -1895,6 +2117,7 @@ func newTestServer(t *testing.T) *Server {
 		"templates/article-card.html",
 		"templates/controls.html",
 		"templates/pagination.html",
+		"templates/summary-threshold.html",
 	)
 	require.NoError(t, err)
 	return &Server{templates: tmpl}

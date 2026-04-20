@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -72,7 +73,7 @@ type Database interface {
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
-	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error
+	UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetSetting(ctx context.Context, key string) (string, error)
@@ -85,6 +86,7 @@ type Database interface {
 type Scheduler interface {
 	UpdateFeedNow(ctx context.Context, feedID int64) error
 	ExtractContentNow(ctx context.Context, itemID int64) error
+	SummarizeItemNow(ctx context.Context, itemID int64) error
 	UpdatePreferenceSummary(ctx context.Context) error
 	TriggerPreferenceUpdate()
 }
@@ -162,10 +164,28 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			}
 			return a / b
 		},
+		"isImageURL": func(s string) bool {
+			lower := strings.ToLower(s)
+			return strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".jpg") ||
+				strings.HasSuffix(lower, ".jpeg") || strings.HasSuffix(lower, ".gif") ||
+				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
+				strings.HasSuffix(lower, ".ico")
+		},
+		"hasPrefix": strings.HasPrefix,
 		"durationMinutes": func(d time.Duration) int {
 			return int(d.Minutes())
 		},
 		"printf":       fmt.Sprintf,
+		"stripHTML": func(s string) string {
+			// Add spaces for common block elements before stripping to prevent words from running together
+			s = html.UnescapeString(s)
+			blockRe := regexp.MustCompile(`(?i)</?(p|br|div|li|h[1-6]|td|tr|table|blockquote)[^>]*>`)
+			s = blockRe.ReplaceAllString(s, " ")
+			// Strip the remaining tags
+			s = bluemonday.StrictPolicy().Sanitize(s)
+			// Collapse multiple spaces
+			return strings.Join(strings.Fields(s), " ")
+		},
 		"unescapeHTML": html.UnescapeString,
 		"safeHTML": func(s string) template.HTML {
 			// fix common content extraction issues before sanitization
@@ -197,6 +217,23 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			sanitized := htmlPolicy.Sanitize(s)
 			return template.HTML(sanitized) //nolint:gosec // content is sanitized by bluemonday
 		},
+		"getDomain": func(urlStr string) string {
+			u, err := url.Parse(urlStr)
+			if err != nil {
+				return ""
+			}
+			return u.Hostname()
+		},
+		"extractImage": func(content, description string) string {
+			imgRe := regexp.MustCompile(`(?i)<img[^>]+src="([^">]+)"`)
+			if matches := imgRe.FindStringSubmatch(content); len(matches) > 1 {
+				return matches[1]
+			}
+			if matches := imgRe.FindStringSubmatch(description); len(matches) > 1 {
+				return matches[1]
+			}
+			return ""
+		},
 	}
 
 	// parse component templates only
@@ -211,7 +248,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/topic-tags.html",
 		"templates/topic-dropdowns.html",
 		"templates/controls.html",
-		"templates/preference-summary.html")
+		"templates/preference-summary.html",
+		"templates/summary-threshold.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 	}
@@ -227,7 +265,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			"templates/"+pageName,
 			"templates/article-card.html",
 			"templates/feed-card.html",
-			"templates/pagination.html")
+			"templates/pagination.html",
+			"templates/summary-threshold.html")
 		if err != nil {
 			log.Printf("[WARN] failed to parse %s: %v", pageName, err)
 			continue
@@ -327,6 +366,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /status", s.statusHandler)
 		r.HandleFunc("POST /feedback/{id}/{action}", s.feedbackHandler)
 		r.HandleFunc("POST /extract/{id}", s.extractHandler)
+		r.HandleFunc("POST /summarize/{id}", s.summarizeHandler)
 		r.HandleFunc("GET /articles/{id}/content", s.articleContentHandler)
 		r.HandleFunc("GET /articles/{id}/hide", s.hideContentHandler)
 
@@ -353,6 +393,9 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /preferences/save", s.preferenceSaveHandler)
 		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
 		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
+
+		// summarization settings
+		r.HandleFunc("POST /settings/summary-threshold", s.summaryThresholdHandler)
 	})
 
 	// RSS routes
