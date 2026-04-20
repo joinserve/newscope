@@ -2062,7 +2062,7 @@ func TestServer_renderArticleCard_SummarizeButton(t *testing.T) {
 		srv.renderArticleCard(w, article)
 		body := w.Body.String()
 
-		assert.Contains(t, body, `action-summarize`)
+		assert.Contains(t, body, `action-summarize-btn`)
 		assert.Contains(t, body, `hx-post="/api/v1/summarize/99"`)
 		assert.Contains(t, body, `card-summary-fallback`)
 		assert.Contains(t, body, "raw description")
@@ -2105,6 +2105,9 @@ func newTestServer(t *testing.T) *Server {
 		},
 		"getDomain":    func(u string) string { return u },
 		"extractImage": func(content string, url string) string { return "" },
+		"stripHTML": func(s string) string {
+			return s // mock for tests
+		},
 		"unescapeHTML": func(s string) template.HTML {
 			return template.HTML(s) //nolint:gosec // test helper only
 		},

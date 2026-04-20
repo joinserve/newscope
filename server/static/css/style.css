@@ -986,6 +986,79 @@ html.dark-theme .moon-icon { opacity: 1; }
     color: var(--text-tertiary);
 }
 
+.search-filter-dropdown-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-filter-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 0.35rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s;
+    margin-left: 0.5rem;
+}
+
+.search-filter-toggle:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.search-filter-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-secondary);
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    min-width: 200px;
+    z-index: 100;
+    padding: 0.5rem;
+    flex-direction: column;
+}
+
+.search-filter-menu.show {
+    display: flex;
+}
+
+.search-filter-menu label.dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color 0.2s;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.search-filter-menu label.dropdown-item:hover {
+    background-color: var(--bg-hover);
+}
+
+.search-filter-menu input[type="radio"] {
+    display: none;
+}
+
+.search-filter-menu input[type="radio"]:checked + span {
+    font-weight: 600;
+}
+
+.search-filter-menu svg {
+    color: var(--text-secondary);
+}
+
 /* RSS Help Page Redesign */
 .rss-section {
     background-color: var(--bg-primary);
@@ -1195,6 +1268,45 @@ html.dark-theme .moon-icon { opacity: 1; }
 .card-summary p {
     margin: 0;
     line-height: 1.5;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.card-summary p.card-summary-fallback {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 0.9375rem;
+    margin-bottom: 0.5rem;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.action-summarize-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    background: transparent;
+    border: 1px solid var(--border-secondary);
+    color: var(--text-primary);
+    padding: 0.375rem 0.75rem;
+    border-radius: 16px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 0.25rem;
+}
+
+.action-summarize-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-primary);
+}
+
+.action-summarize-btn svg {
+    color: var(--text-secondary);
 }
 
 /* Remove AI Badge styling as it's now just normal text */

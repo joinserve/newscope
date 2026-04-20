@@ -67,16 +67,16 @@
             <p>{{.GetSummary}}</p>
             {{else}}
                 {{if .Description}}
-                <p class="card-summary-fallback">{{unescapeHTML .Description}}</p>
+                <p class="card-summary-fallback">{{stripHTML .Description}}</p>
                 {{end}}
-                <button class="btn btn-ghost btn-sm action-summarize"
+                <button class="action-summarize-btn"
                         type="button"
                         hx-post="/api/v1/summarize/{{.ID}}"
                         hx-target="closest .article-card"
                         hx-swap="outerHTML"
                         hx-disabled-elt="this"
                         title="Generate AI summary for this article">
-                    <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" class="lucide lucide-sparkles"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
                     Summarize
                 </button>
             {{end}}

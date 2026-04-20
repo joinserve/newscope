@@ -163,6 +163,7 @@ func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	feed := &domain.Feed{
 		URL:           url,
 		Title:         r.FormValue("title"),
+		IconURL:       r.FormValue("icon_url"),
 		FetchInterval: fetchInterval,
 		Enabled:       true,
 	}

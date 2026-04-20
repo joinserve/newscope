@@ -176,6 +176,16 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			return int(d.Minutes())
 		},
 		"printf":       fmt.Sprintf,
+		"stripHTML": func(s string) string {
+			// Add spaces for common block elements before stripping to prevent words from running together
+			s = html.UnescapeString(s)
+			blockRe := regexp.MustCompile(`(?i)<\/?(p|br|div|li|h[1-6]|td|tr|table|blockquote)[^>]*>`)
+			s = blockRe.ReplaceAllString(s, " ")
+			// Strip the remaining tags
+			s = bluemonday.StrictPolicy().Sanitize(s)
+			// Collapse multiple spaces
+			return strings.Join(strings.Fields(s), " ")
+		},
 		"unescapeHTML": html.UnescapeString,
 		"safeHTML": func(s string) template.HTML {
 			// fix common content extraction issues before sanitization

@@ -33,6 +33,10 @@
             <input type="text" id="title" name="title" placeholder="Feed title">
         </div>
         <div class="form-group">
+            <label for="icon_url">Icon URL / Domain (optional):</label>
+            <input type="text" id="icon_url" name="icon_url" placeholder="https://example.com/icon.png or news.ycombinator.com">
+        </div>
+        <div class="form-group">
             <label for="fetch_interval">Update Interval (minutes):</label>
             <input type="number" id="fetch_interval" name="fetch_interval" value="30" min="5" max="1440">
             <small class="text-muted">How often this specific feed should be checked (default: 30 minutes)</small>
