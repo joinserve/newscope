@@ -17,11 +17,14 @@ import (
 //
 //		// make and configure a mocked scheduler.Classifier
 //		mockedClassifier := &ClassifierMock{
-//			ClassifyItemsFunc: func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
-//				panic("mock out the ClassifyItems method")
-//			},
 //			GeneratePreferenceSummaryFunc: func(ctx context.Context, feedback []domain.FeedbackExample) (string, error) {
 //				panic("mock out the GeneratePreferenceSummary method")
+//			},
+//			ScoreArticlesFunc: func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+//				panic("mock out the ScoreArticles method")
+//			},
+//			SummarizeArticleFunc: func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
+//				panic("mock out the SummarizeArticle method")
 //			},
 //			UpdatePreferenceSummaryFunc: func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
 //				panic("mock out the UpdatePreferenceSummary method")
@@ -33,30 +36,42 @@ import (
 //
 //	}
 type ClassifierMock struct {
-	// ClassifyItemsFunc mocks the ClassifyItems method.
-	ClassifyItemsFunc func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error)
-
 	// GeneratePreferenceSummaryFunc mocks the GeneratePreferenceSummary method.
 	GeneratePreferenceSummaryFunc func(ctx context.Context, feedback []domain.FeedbackExample) (string, error)
+
+	// ScoreArticlesFunc mocks the ScoreArticles method.
+	ScoreArticlesFunc func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error)
+
+	// SummarizeArticleFunc mocks the SummarizeArticle method.
+	SummarizeArticleFunc func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error)
 
 	// UpdatePreferenceSummaryFunc mocks the UpdatePreferenceSummary method.
 	UpdatePreferenceSummaryFunc func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// ClassifyItems holds details about calls to the ClassifyItems method.
-		ClassifyItems []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Req is the req argument value.
-			Req llm.ClassifyRequest
-		}
 		// GeneratePreferenceSummary holds details about calls to the GeneratePreferenceSummary method.
 		GeneratePreferenceSummary []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Feedback is the feedback argument value.
 			Feedback []domain.FeedbackExample
+		}
+		// ScoreArticles holds details about calls to the ScoreArticles method.
+		ScoreArticles []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Req is the req argument value.
+			Req llm.ClassifyRequest
+		}
+		// SummarizeArticle holds details about calls to the SummarizeArticle method.
+		SummarizeArticle []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Article is the article argument value.
+			Article domain.Item
+			// Req is the req argument value.
+			Req llm.ClassifyRequest
 		}
 		// UpdatePreferenceSummary holds details about calls to the UpdatePreferenceSummary method.
 		UpdatePreferenceSummary []struct {
@@ -68,45 +83,10 @@ type ClassifierMock struct {
 			NewFeedback []domain.FeedbackExample
 		}
 	}
-	lockClassifyItems             sync.RWMutex
 	lockGeneratePreferenceSummary sync.RWMutex
+	lockScoreArticles             sync.RWMutex
+	lockSummarizeArticle          sync.RWMutex
 	lockUpdatePreferenceSummary   sync.RWMutex
-}
-
-// ClassifyItems calls ClassifyItemsFunc.
-func (mock *ClassifierMock) ClassifyItems(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
-	if mock.ClassifyItemsFunc == nil {
-		panic("ClassifierMock.ClassifyItemsFunc: method is nil but Classifier.ClassifyItems was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		Req llm.ClassifyRequest
-	}{
-		Ctx: ctx,
-		Req: req,
-	}
-	mock.lockClassifyItems.Lock()
-	mock.calls.ClassifyItems = append(mock.calls.ClassifyItems, callInfo)
-	mock.lockClassifyItems.Unlock()
-	return mock.ClassifyItemsFunc(ctx, req)
-}
-
-// ClassifyItemsCalls gets all the calls that were made to ClassifyItems.
-// Check the length with:
-//
-//	len(mockedClassifier.ClassifyItemsCalls())
-func (mock *ClassifierMock) ClassifyItemsCalls() []struct {
-	Ctx context.Context
-	Req llm.ClassifyRequest
-} {
-	var calls []struct {
-		Ctx context.Context
-		Req llm.ClassifyRequest
-	}
-	mock.lockClassifyItems.RLock()
-	calls = mock.calls.ClassifyItems
-	mock.lockClassifyItems.RUnlock()
-	return calls
 }
 
 // GeneratePreferenceSummary calls GeneratePreferenceSummaryFunc.
@@ -142,6 +122,82 @@ func (mock *ClassifierMock) GeneratePreferenceSummaryCalls() []struct {
 	mock.lockGeneratePreferenceSummary.RLock()
 	calls = mock.calls.GeneratePreferenceSummary
 	mock.lockGeneratePreferenceSummary.RUnlock()
+	return calls
+}
+
+// ScoreArticles calls ScoreArticlesFunc.
+func (mock *ClassifierMock) ScoreArticles(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	if mock.ScoreArticlesFunc == nil {
+		panic("ClassifierMock.ScoreArticlesFunc: method is nil but Classifier.ScoreArticles was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Req llm.ClassifyRequest
+	}{
+		Ctx: ctx,
+		Req: req,
+	}
+	mock.lockScoreArticles.Lock()
+	mock.calls.ScoreArticles = append(mock.calls.ScoreArticles, callInfo)
+	mock.lockScoreArticles.Unlock()
+	return mock.ScoreArticlesFunc(ctx, req)
+}
+
+// ScoreArticlesCalls gets all the calls that were made to ScoreArticles.
+// Check the length with:
+//
+//	len(mockedClassifier.ScoreArticlesCalls())
+func (mock *ClassifierMock) ScoreArticlesCalls() []struct {
+	Ctx context.Context
+	Req llm.ClassifyRequest
+} {
+	var calls []struct {
+		Ctx context.Context
+		Req llm.ClassifyRequest
+	}
+	mock.lockScoreArticles.RLock()
+	calls = mock.calls.ScoreArticles
+	mock.lockScoreArticles.RUnlock()
+	return calls
+}
+
+// SummarizeArticle calls SummarizeArticleFunc.
+func (mock *ClassifierMock) SummarizeArticle(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
+	if mock.SummarizeArticleFunc == nil {
+		panic("ClassifierMock.SummarizeArticleFunc: method is nil but Classifier.SummarizeArticle was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Article domain.Item
+		Req     llm.ClassifyRequest
+	}{
+		Ctx:     ctx,
+		Article: article,
+		Req:     req,
+	}
+	mock.lockSummarizeArticle.Lock()
+	mock.calls.SummarizeArticle = append(mock.calls.SummarizeArticle, callInfo)
+	mock.lockSummarizeArticle.Unlock()
+	return mock.SummarizeArticleFunc(ctx, article, req)
+}
+
+// SummarizeArticleCalls gets all the calls that were made to SummarizeArticle.
+// Check the length with:
+//
+//	len(mockedClassifier.SummarizeArticleCalls())
+func (mock *ClassifierMock) SummarizeArticleCalls() []struct {
+	Ctx     context.Context
+	Article domain.Item
+	Req     llm.ClassifyRequest
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Article domain.Item
+		Req     llm.ClassifyRequest
+	}
+	mock.lockSummarizeArticle.RLock()
+	calls = mock.calls.SummarizeArticle
+	mock.lockSummarizeArticle.RUnlock()
 	return calls
 }
 
