@@ -346,6 +346,8 @@ llm:
 ## Things to Know
 
 - Articles are scored 0-10 based on relevance to your interests
+- Classification is two-phase: a cheap phase-1 pass scores articles by title and description only, and phase 2 (content extraction + AI summary) runs only when the score meets `summary_threshold` (default: 6.0, tunable in Settings)
+- Low-scoring articles show their raw description with a manual "Summarize" button that triggers phase 2 on demand
 - Preferred topics boost scores by 1-2 points
 - Avoided topics reduce scores by 1-2 points
 - Feedback is used to generate preference summaries that adapt to your reading habits
@@ -365,6 +367,7 @@ llm:
 - `GET /api/v1/status` - Server status and statistics
 - `POST /api/v1/feedback/{id}/{action}` - Submit feedback (like/dislike)
 - `POST /api/v1/extract/{id}` - Extract article content
+- `POST /api/v1/summarize/{id}` - Run phase-2 summarization on demand
 - `GET /api/v1/articles/{id}/content` - Get extracted content
 
 ### Feed Management
