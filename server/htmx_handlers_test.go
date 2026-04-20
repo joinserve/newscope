@@ -103,7 +103,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Test Article")
 	assert.Contains(t, w.Body.String(), "Test Feed")
 	assert.Contains(t, w.Body.String(), "8.5")
-	assert.Contains(t, w.Body.String(), "<html")                                                                    // should contain full HTML
+	assert.Contains(t, w.Body.String(), "<html") // should contain full HTML
 	// test HTMX request (partial update)
 	req2 := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
 	req2.Header.Set("HX-Request", "true")
@@ -1927,9 +1927,9 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	funcMap := template.FuncMap{
-		"sub": func(a, b int) int { return a - b },
-		"add": func(a, b int) int { return a + b },
-		"mul": func(a, b float64) float64 { return a * b },
+		"sub":       func(a, b int) int { return a - b },
+		"add":       func(a, b int) int { return a + b },
+		"mul":       func(a, b float64) float64 { return a * b },
 		"hasPrefix": strings.HasPrefix,
 		"isImageURL": func(s string) bool {
 			lower := strings.ToLower(s)
@@ -1938,7 +1938,7 @@ func newTestServer(t *testing.T) *Server {
 				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
 				strings.HasSuffix(lower, ".ico")
 		},
-		"getDomain": func(u string) string { return u },
+		"getDomain":    func(u string) string { return u },
 		"extractImage": func(content string, url string) string { return "" },
 		"unescapeHTML": func(s string) template.HTML {
 			return template.HTML(s) //nolint:gosec // test helper only

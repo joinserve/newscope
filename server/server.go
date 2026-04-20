@@ -170,7 +170,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
 				strings.HasSuffix(lower, ".ico")
 		},
-		"hasPrefix":    strings.HasPrefix,
+		"hasPrefix": strings.HasPrefix,
 		"durationMinutes": func(d time.Duration) int {
 			return int(d.Minutes())
 		},
