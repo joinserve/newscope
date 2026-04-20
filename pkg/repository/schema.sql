@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS feeds (
     last_fetched DATETIME,
     next_fetch DATETIME,
     fetch_interval INTEGER DEFAULT 1800, -- 30 minutes
+    icon_url TEXT DEFAULT '',
     error_count INTEGER DEFAULT 0,
     last_error TEXT DEFAULT '',
     enabled BOOLEAN DEFAULT 1,

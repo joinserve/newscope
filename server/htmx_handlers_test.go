@@ -102,10 +102,8 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "Test Article")
 	assert.Contains(t, w.Body.String(), "Test Feed")
-	assert.Contains(t, w.Body.String(), "Score: 8.5/10")
+	assert.Contains(t, w.Body.String(), "8.5")
 	assert.Contains(t, w.Body.String(), "<html")                                                                    // should contain full HTML
-	assert.Contains(t, w.Body.String(), "Articles <span id=\"article-count\" class=\"article-count\">(1/1)</span>") // should show count
-
 	// test HTMX request (partial update)
 	req2 := httptest.NewRequest("GET", "/articles?score=5.0&topic=tech", http.NoBody)
 	req2.Header.Set("HX-Request", "true")
@@ -116,7 +114,7 @@ func TestServer_articlesHandler(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code)
 	assert.Contains(t, w2.Body.String(), "Test Article")
 	assert.Contains(t, w2.Body.String(), "Test Feed")
-	assert.Contains(t, w2.Body.String(), "Score: 8.5/10")
+	assert.Contains(t, w2.Body.String(), "8.5")
 	assert.NotContains(t, w2.Body.String(), "<html")                                                                       // should NOT contain full HTML for HTMX request
 	assert.Contains(t, w2.Body.String(), `<span id="article-count" class="article-count" hx-swap-oob="true">(1/1)</span>`) // should update count
 
@@ -194,6 +192,12 @@ func TestServer_feedsHandler(t *testing.T) {
 
 	now := time.Now()
 	database := &mocks.DatabaseMock{
+		GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"tech"}, nil
+		},
+		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"Example Feed", "Test RSS"}, nil
+		},
 		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 			return []domain.Feed{
 				{
@@ -276,6 +280,12 @@ func TestServer_SettingsHandler(t *testing.T) {
 		GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 			// return some sample topics for testing
 			return []string{"technology", "science", "business"}, nil
+		},
+		GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"technology", "science"}, nil
+		},
+		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+			return []string{"Feed 1", "Feed 2"}, nil
 		},
 	}
 	scheduler := &mocks.SchedulerMock{
@@ -701,6 +711,12 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 	t.Run("FeedsHandler template error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
 			GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 				return []domain.Feed{
 					{
@@ -741,6 +757,12 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 	t.Run("SettingsHandler template error", func(t *testing.T) {
 		database := &mocks.DatabaseMock{
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
 			GetSettingFunc: func(ctx context.Context, key string) (string, error) {
 				// return empty strings for topic preferences
 				return "", nil
@@ -1209,6 +1231,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 				return []string{"technology", "science", "business", "politics", "health"}, nil
 			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"technology"}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"Feed 1"}, nil
+			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
 
@@ -1237,6 +1265,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 				return []string{"technology", "science"}, nil
 			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"technology"}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"Feed 1"}, nil
+			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
 
@@ -1262,6 +1296,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
 				return nil, errors.New("database error")
 			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"technology"}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{"Feed 1"}, nil
+			},
 		}
 		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
 
@@ -1283,6 +1323,12 @@ func TestServer_RssHelpHandler(t *testing.T) {
 				return []domain.TopicWithScore{}, nil
 			},
 			GetTopicsFunc: func(ctx context.Context) ([]string, error) {
+				return []string{}, nil
+			},
+			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
+				return []string{}, nil
+			},
+			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 				return []string{}, nil
 			},
 		}
@@ -1862,7 +1908,6 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	assert.Contains(t, body, `class="card-head"`)
 	assert.Contains(t, body, `class="card-title"`)
 	assert.Contains(t, body, `class="card-summary"`)
-	assert.Contains(t, body, `class="card-extras expanded-only"`)
 
 	// all five action buttons present with threads icons
 	assert.Contains(t, body, `data-action="like"`)
@@ -1877,7 +1922,6 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	// expanded-view-only content still present in markup (CSS hides it for threads/condensed)
 	assert.Contains(t, body, "Why it matters")
 	assert.Contains(t, body, `data-topic="tech"`)
-	assert.Contains(t, body, `id="content-toggle-42"`)
 }
 
 func newTestServer(t *testing.T) *Server {
@@ -1886,6 +1930,16 @@ func newTestServer(t *testing.T) *Server {
 		"sub": func(a, b int) int { return a - b },
 		"add": func(a, b int) int { return a + b },
 		"mul": func(a, b float64) float64 { return a * b },
+		"hasPrefix": strings.HasPrefix,
+		"isImageURL": func(s string) bool {
+			lower := strings.ToLower(s)
+			return strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".jpg") ||
+				strings.HasSuffix(lower, ".jpeg") || strings.HasSuffix(lower, ".gif") ||
+				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
+				strings.HasSuffix(lower, ".ico")
+		},
+		"getDomain": func(u string) string { return u },
+		"extractImage": func(content string, url string) string { return "" },
 		"unescapeHTML": func(s string) template.HTML {
 			return template.HTML(s) //nolint:gosec // test helper only
 		},

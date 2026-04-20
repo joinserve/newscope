@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -72,7 +73,7 @@ type Database interface {
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
-	UpdateFeed(ctx context.Context, feedID int64, title string, fetchInterval time.Duration) error
+	UpdateFeed(ctx context.Context, feedID int64, title string, url string, iconURL string, fetchInterval time.Duration) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetSetting(ctx context.Context, key string) (string, error)
@@ -162,6 +163,14 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			}
 			return a / b
 		},
+		"isImageURL": func(s string) bool {
+			lower := strings.ToLower(s)
+			return strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".jpg") ||
+				strings.HasSuffix(lower, ".jpeg") || strings.HasSuffix(lower, ".gif") ||
+				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
+				strings.HasSuffix(lower, ".ico")
+		},
+		"hasPrefix":    strings.HasPrefix,
 		"durationMinutes": func(d time.Duration) int {
 			return int(d.Minutes())
 		},
@@ -196,6 +205,23 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			// sanitize HTML content before rendering
 			sanitized := htmlPolicy.Sanitize(s)
 			return template.HTML(sanitized) //nolint:gosec // content is sanitized by bluemonday
+		},
+		"getDomain": func(urlStr string) string {
+			u, err := url.Parse(urlStr)
+			if err != nil {
+				return ""
+			}
+			return u.Hostname()
+		},
+		"extractImage": func(content, description string) string {
+			imgRe := regexp.MustCompile(`(?i)<img[^>]+src="([^">]+)"`)
+			if matches := imgRe.FindStringSubmatch(content); len(matches) > 1 {
+				return matches[1]
+			}
+			if matches := imgRe.FindStringSubmatch(description); len(matches) > 1 {
+				return matches[1]
+			}
+			return ""
 		},
 	}
 

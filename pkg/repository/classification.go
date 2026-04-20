@@ -57,8 +57,9 @@ type itemWithFeedSQL struct {
 	UpdatedAt time.Time `db:"updated_at"`
 
 	// joined data (not stored in DB, populated by queries)
-	FeedTitle string `db:"feed_title"`
-	FeedURL   string `db:"feed_url"`
+	FeedTitle   string `db:"feed_title"`
+	FeedURL     string `db:"feed_url"`
+	FeedIconURL string `db:"feed_icon_url"`
 }
 
 // classificationSQL is a JSON array of topic strings for SQL operations
@@ -103,7 +104,8 @@ func (r *ClassificationRepository) GetClassifiedItems(ctx context.Context, filte
 		SELECT 
 			i.*,
 			f.title as feed_title,
-			f.url as feed_url
+			f.url as feed_url,
+			f.icon_url as feed_icon_url
 		FROM items i
 		JOIN feeds f ON i.feed_id = f.id
 		WHERE i.relevance_score >= ?
@@ -182,7 +184,8 @@ func (r *ClassificationRepository) GetClassifiedItem(ctx context.Context, itemID
 		SELECT 
 			i.*,
 			f.title as feed_title,
-			f.url as feed_url
+			f.url as feed_url,
+			f.icon_url as feed_icon_url
 		FROM items i
 		JOIN feeds f ON i.feed_id = f.id
 		WHERE i.id = ?
@@ -439,8 +442,9 @@ func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedS
 			CreatedAt:   sqlItem.CreatedAt,
 			UpdatedAt:   sqlItem.UpdatedAt,
 		},
-		FeedName: sqlItem.FeedTitle,
-		FeedURL:  sqlItem.FeedURL,
+		FeedName:    sqlItem.FeedTitle,
+		FeedURL:     sqlItem.FeedURL,
+		FeedIconURL: sqlItem.FeedIconURL,
 	}
 
 	// add extraction if available
@@ -621,7 +625,8 @@ func (r *ClassificationRepository) SearchItems(ctx context.Context, searchQuery 
 		SELECT 
 			i.*,
 			f.title as feed_title,
-			f.url as feed_url` + where
+			f.url as feed_url,
+			f.icon_url as feed_icon_url` + where
 
 	// add sorting
 	switch filter.SortBy {

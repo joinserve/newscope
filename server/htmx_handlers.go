@@ -119,10 +119,18 @@ type articlesPageRequest struct {
 
 // commonPageData contains fields common to all pages
 type commonPageData struct {
-	ActivePage   string
-	IsSearch     bool
-	SearchQuery  string
-	SelectedSort string
+	ActivePage    string
+	IsSearch      bool
+	SearchQuery   string
+	SelectedSort  string
+	MinScore      float64
+	SelectedTopic string
+	SelectedFeed  string
+	ShowLikedOnly bool
+	ShowProcessed bool
+	DateRange     string
+	FilterTopics  []string
+	FilterFeeds   []string
 }
 
 // articlesHandler displays the main articles page
@@ -230,17 +238,9 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data for full page render
 	data := struct {
 		commonPageData
-		Articles      []domain.ClassifiedItem
-		ArticleCount  int
-		TotalCount    int
-		Topics        []string
-		Feeds         []string
-		MinScore      float64
-		SelectedTopic string
-		SelectedFeed  string
-		ShowLikedOnly bool
-		ShowProcessed bool
-		DateRange     string
+		Articles     []domain.ClassifiedItem
+		ArticleCount int
+		TotalCount   int
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -251,22 +251,22 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		IsHTMX      bool
 	}{
 		commonPageData: commonPageData{
-			ActivePage:   "home",
-			IsSearch:     false,
-			SearchQuery:  "",
-			SelectedSort: sortBy,
+			ActivePage:    "home",
+			IsSearch:      false,
+			SearchQuery:   "",
+			SelectedSort:  sortBy,
+			MinScore:      minScore,
+			SelectedTopic: topic,
+			SelectedFeed:  feedName,
+			ShowLikedOnly: showLikedOnly,
+			ShowProcessed: showProcessed,
+			DateRange:     dateRange,
+			FilterTopics:  topics,
+			FilterFeeds:   feeds,
 		},
-		Articles:      articles,
-		ArticleCount:  len(articles),
-		TotalCount:    totalCount,
-		Topics:        topics,
-		Feeds:         feeds,
-		MinScore:      minScore,
-		SelectedTopic: topic,
-		SelectedFeed:  feedName,
-		ShowLikedOnly: showLikedOnly,
-		ShowProcessed: showProcessed,
-		DateRange:     dateRange,
+		Articles:     articles,
+		ArticleCount: len(articles),
+		TotalCount:   totalCount,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,
@@ -293,10 +293,7 @@ func (s *Server) handleHTMXArticlesRequest(w http.ResponseWriter, r *http.Reques
 	viewMode := getViewMode(r)
 
 	// render articles list with container
-	s.writeArticlesList(w, req.articles, viewMode)
-
-	// render pagination controls
-	s.writePaginationControls(w, req)
+	s.writeArticlesList(w, req, viewMode)
 }
 
 // writeHTMXOutOfBandUpdates writes all out-of-band swap updates for HTMX
@@ -323,22 +320,25 @@ func (s *Server) writeHTMXOutOfBandUpdates(w http.ResponseWriter, req articlesPa
 }
 
 // writeArticlesList renders the articles container with the list of articles
-func (s *Server) writeArticlesList(w http.ResponseWriter, articles []domain.ClassifiedItem, viewMode string) {
+func (s *Server) writeArticlesList(w http.ResponseWriter, req articlesPageRequest, viewMode string) {
 	// render the complete articles-with-pagination wrapper
 	if _, err := fmt.Fprintf(w, `<div id="articles-container" class="view-%s"><div id="articles-list">`, viewMode); err != nil {
 		log.Printf("[WARN] failed to write articles container start: %v", err)
 	}
 
 	// render articles or no-articles message
-	if len(articles) == 0 {
+	if len(req.articles) == 0 {
 		if _, err := w.Write([]byte(`<p class="no-articles">No articles found. Try lowering the score filter or wait for classification to run.</p>`)); err != nil {
 			log.Printf("[WARN] failed to write no articles message: %v", err)
 		}
 	} else {
-		for i := range articles {
-			s.renderArticleCard(w, &articles[i])
+		for i := range req.articles {
+			s.renderArticleCard(w, &req.articles[i])
 		}
 	}
+
+	// render pagination controls INSIDE articles-list
+	s.writePaginationControls(w, req)
 
 	if _, err := w.Write([]byte(`</div></div>`)); err != nil {
 		log.Printf("[WARN] failed to write articles container end: %v", err)
@@ -356,6 +356,10 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// get topics and feeds for sidebar filters
+	topics, _ := s.db.GetTopicsFiltered(ctx, 0.0)
+	activeFeeds, _ := s.db.GetActiveFeedNames(ctx, 0.0)
+
 	// prepare template data
 	data := struct {
 		commonPageData
@@ -366,6 +370,10 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 			IsSearch:     false,
 			SearchQuery:  "",
 			SelectedSort: "",
+			MinScore:     0.0,
+			DateRange:    "all",
+			FilterTopics: topics,
+			FilterFeeds:  activeFeeds,
 		},
 		Feeds: feeds,
 	}
@@ -409,29 +417,36 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 	// filter out already assigned topics
 	availableTopics := getAvailableTopics(allTopics, preferredTopics, avoidedTopics)
 
+	// get topics and feeds for sidebar filters
+	topics, _ := s.db.GetTopicsFiltered(ctx, 0.0)
+	activeFeeds, _ := s.db.GetActiveFeedNames(ctx, 0.0)
+
 	// prepare data for display
 	data := struct {
-		ActivePage      string
+		commonPageData
 		Config          *config.Config
 		Version         string
 		Debug           bool
 		PreferredTopics []string
 		AvoidedTopics   []string
 		AvailableTopics []string
-		IsSearch        bool
-		SearchQuery     string
-		SelectedSort    string
 	}{
-		ActivePage:      "settings",
+		commonPageData: commonPageData{
+			ActivePage:   "settings",
+			IsSearch:     false,
+			SearchQuery:  "",
+			SelectedSort: "",
+			MinScore:     0.0,
+			DateRange:    "all",
+			FilterTopics: topics,
+			FilterFeeds:  activeFeeds,
+		},
 		Config:          cfg,
 		Version:         s.version,
 		Debug:           s.debug,
 		PreferredTopics: preferredTopics,
 		AvoidedTopics:   avoidedTopics,
 		AvailableTopics: availableTopics,
-		IsSearch:        false,
-		SearchQuery:     "",
-		SelectedSort:    "",
 	}
 
 	// render settings page
@@ -463,25 +478,32 @@ func (s *Server) rssHelpHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := s.config.GetFullConfig()
 	baseURL := cfg.Server.BaseURL
 
+	// get topics and feeds for sidebar filters
+	topics, _ := s.db.GetTopicsFiltered(ctx, 0.0)
+	activeFeeds, _ := s.db.GetActiveFeedNames(ctx, 0.0)
+
 	// prepare template data
 	data := struct {
-		ActivePage   string
-		TopTopics    []domain.TopicWithScore
-		AllTopics    []string
-		BaseURL      string
-		Version      string
-		IsSearch     bool
-		SearchQuery  string
-		SelectedSort string
+		commonPageData
+		TopTopics []domain.TopicWithScore
+		AllTopics []string
+		BaseURL   string
+		Version   string
 	}{
-		ActivePage:   "rss-help",
-		TopTopics:    topTopics,
-		AllTopics:    allTopics,
-		BaseURL:      baseURL,
-		Version:      s.version,
-		IsSearch:     false,
-		SearchQuery:  "",
-		SelectedSort: "",
+		commonPageData: commonPageData{
+			ActivePage:   "rss-help",
+			IsSearch:     false,
+			SearchQuery:  "",
+			SelectedSort: "",
+			MinScore:     0.0,
+			DateRange:    "all",
+			FilterTopics: topics,
+			FilterFeeds:  activeFeeds,
+		},
+		TopTopics: topTopics,
+		AllTopics: allTopics,
+		BaseURL:   baseURL,
+		Version:   s.version,
 	}
 
 	// render RSS help page
@@ -890,11 +912,6 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get search query
 	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
-	if searchQuery == "" {
-		// redirect to articles page if no query
-		http.Redirect(w, r, "/articles", http.StatusSeeOther)
-		return
-	}
 
 	// get query parameters (same as articles handler)
 	minScore := 0.0
@@ -919,6 +936,47 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
 			page = p
 		}
+	}
+
+	// if search query is empty, just render the search start page
+	if searchQuery == "" {
+		data := struct {
+			commonPageData
+			Articles     []domain.ClassifiedItem
+			ArticleCount int
+			TotalCount   int
+			// pagination
+			CurrentPage int
+			TotalPages  int
+			PageSize    int
+			PageNumbers []int
+			HasNext     bool
+			HasPrev     bool
+			IsHTMX      bool
+		}{
+			commonPageData: commonPageData{
+				ActivePage:    "search",
+				IsSearch:      true,
+				SearchQuery:   "",
+				SelectedSort:  sortBy,
+				MinScore:      minScore,
+				SelectedTopic: topic,
+				SelectedFeed:  feedName,
+				ShowLikedOnly: showLikedOnly,
+				ShowProcessed: showProcessed,
+				DateRange:     dateRange,
+				FilterTopics:  []string{},
+				FilterFeeds:   []string{},
+			},
+			Articles:     []domain.ClassifiedItem{},
+			ArticleCount: 0,
+			TotalCount:   0,
+			IsHTMX:       false,
+		}
+		if err := s.renderPage(w, "articles.html", data); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		}
+		return
 	}
 
 	// search articles
@@ -997,17 +1055,9 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data for full page render
 	data := struct {
 		commonPageData
-		Articles      []domain.ClassifiedItem
-		ArticleCount  int
-		TotalCount    int
-		Topics        []string
-		Feeds         []string
-		MinScore      float64
-		SelectedTopic string
-		SelectedFeed  string
-		ShowLikedOnly bool
-		ShowProcessed bool
-		DateRange     string
+		Articles     []domain.ClassifiedItem
+		ArticleCount int
+		TotalCount   int
 		// pagination
 		CurrentPage int
 		TotalPages  int
@@ -1018,22 +1068,22 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		IsHTMX      bool
 	}{
 		commonPageData: commonPageData{
-			ActivePage:   "search",
-			IsSearch:     true,
-			SearchQuery:  searchQuery,
-			SelectedSort: sortBy,
+			ActivePage:    "search",
+			IsSearch:      true,
+			SearchQuery:   searchQuery,
+			SelectedSort:  sortBy,
+			MinScore:      minScore,
+			SelectedTopic: topic,
+			SelectedFeed:  feedName,
+			ShowLikedOnly: showLikedOnly,
+			ShowProcessed: showProcessed,
+			DateRange:     dateRange,
+			FilterTopics:  topics,
+			FilterFeeds:   feeds,
 		},
-		Articles:      articles,
-		ArticleCount:  len(articles),
-		TotalCount:    totalCount,
-		Topics:        topics,
-		Feeds:         feeds,
-		MinScore:      minScore,
-		SelectedTopic: topic,
-		SelectedFeed:  feedName,
-		ShowLikedOnly: showLikedOnly,
-		ShowProcessed: showProcessed,
-		DateRange:     dateRange,
+		Articles:     articles,
+		ArticleCount: len(articles),
+		TotalCount:   totalCount,
 		// pagination
 		CurrentPage: page,
 		TotalPages:  totalPages,

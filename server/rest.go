@@ -177,6 +177,8 @@ func (s *Server) updateFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := r.FormValue("title")
+	url := r.FormValue("url")
+	iconURL := r.FormValue("icon_url")
 
 	// parse fetch interval
 	fetchInterval := 30 * time.Minute // default 30 minutes
@@ -187,7 +189,7 @@ func (s *Server) updateFeedHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// update feed
-	if err := s.db.UpdateFeed(ctx, id, title, fetchInterval); err != nil {
+	if err := s.db.UpdateFeed(ctx, id, title, url, iconURL, fetchInterval); err != nil {
 		log.Printf("[ERROR] failed to update feed: %v", err)
 		renderError(w, r, err, http.StatusInternalServerError)
 		return

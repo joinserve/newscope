@@ -38,6 +38,12 @@ Thumbs.db
 .env
 .env.local
 
+# Local config with secrets (use config.yml.example as template)
+config.yml
+
+# Local Go module cache
+.go/
+
 # Coverage files
 coverage.out
 coverage_no_mocks.out

@@ -107,6 +107,9 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 	if err := migrateAddProcessedAt(ctx, db); err != nil {
 		return fmt.Errorf("migrate processed_at: %w", err)
 	}
+	if err := migrateAddIconURL(ctx, db); err != nil {
+		return fmt.Errorf("migrate icon_url: %w", err)
+	}
 
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
@@ -153,6 +156,36 @@ func migrateAddProcessedAt(ctx context.Context, db *sqlx.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`UPDATE items SET processed_at = feedback_at WHERE feedback_at IS NOT NULL`); err != nil {
 		return fmt.Errorf("backfill processed_at: %w", err)
+	}
+	return nil
+}
+
+// migrateAddIconURL adds the icon_url column to feeds if missing.
+func migrateAddIconURL(ctx context.Context, db *sqlx.DB) error {
+	var tableCount int
+	err := db.GetContext(ctx, &tableCount,
+		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='feeds'`)
+	if err != nil {
+		return fmt.Errorf("check feeds table: %w", err)
+	}
+	if tableCount == 0 {
+		return nil
+	}
+
+	var columns []string
+	if err := db.SelectContext(ctx, &columns,
+		`SELECT name FROM pragma_table_info('feeds')`); err != nil {
+		return fmt.Errorf("read feeds columns: %w", err)
+	}
+	for _, c := range columns {
+		if c == "icon_url" {
+			return nil
+		}
+	}
+
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE feeds ADD COLUMN icon_url TEXT DEFAULT ''`); err != nil {
+		return fmt.Errorf("add icon_url column: %w", err)
 	}
 	return nil
 }
