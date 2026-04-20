@@ -156,6 +156,7 @@ body {
     flex-direction: column;
     min-width: 0;
     margin: 0 1rem;
+    margin-left: calc(1rem + 72px);
     min-height: 100vh;
     max-width: 640px;
     position: relative;
@@ -165,6 +166,12 @@ body {
 @media (min-width: 1200px) {
     .layout-main {
         max-width: 680px;
+    }
+}
+
+@media (max-width: 1200px) {
+    .layout-main {
+        margin-left: 1rem;
     }
 }
 
