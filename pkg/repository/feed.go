@@ -188,9 +188,9 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedID int64, ena
 }
 
 // UpdateFeed updates feed title and interval
-func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title string, url string, iconURL string, fetchInterval time.Duration) error {
+func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error {
 	query := "UPDATE feeds SET title = ?, url = ?, icon_url = ?, fetch_interval = ? WHERE id = ?"
-	_, err := r.db.ExecContext(ctx, query, title, url, iconURL, int(fetchInterval.Seconds()), feedID)
+	_, err := r.db.ExecContext(ctx, query, title, feedURL, iconURL, int(fetchInterval.Seconds()), feedID)
 	if err != nil {
 		return fmt.Errorf("update feed: %w", err)
 	}
