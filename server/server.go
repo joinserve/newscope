@@ -179,7 +179,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"stripHTML": func(s string) string {
 			// Add spaces for common block elements before stripping to prevent words from running together
 			s = html.UnescapeString(s)
-			blockRe := regexp.MustCompile(`(?i)<\/?(p|br|div|li|h[1-6]|td|tr|table|blockquote)[^>]*>`)
+			blockRe := regexp.MustCompile(`(?i)</?(p|br|div|li|h[1-6]|td|tr|table|blockquote)[^>]*>`)
 			s = blockRe.ReplaceAllString(s, " ")
 			// Strip the remaining tags
 			s = bluemonday.StrictPolicy().Sanitize(s)
