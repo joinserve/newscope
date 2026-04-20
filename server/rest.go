@@ -108,6 +108,33 @@ func (s *Server) extractHandler(w http.ResponseWriter, r *http.Request) {
 	s.renderArticleCard(w, article)
 }
 
+// summarizeHandler triggers on-demand Phase 2 summarization for an item
+func (s *Server) summarizeHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		renderError(w, r, fmt.Errorf("invalid item ID"), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.scheduler.SummarizeItemNow(ctx, id); err != nil {
+		log.Printf("[ERROR] failed to summarize item: %v", err)
+		renderError(w, r, err, http.StatusInternalServerError)
+		return
+	}
+
+	article, err := s.db.GetClassifiedItem(ctx, id)
+	if err != nil {
+		log.Printf("[ERROR] failed to get article after summarization: %v", err)
+		http.Error(w, "Failed to reload article", http.StatusInternalServerError)
+		return
+	}
+
+	s.renderArticleCard(w, article)
+}
+
 // createFeedHandler handles feed creation
 func (s *Server) createFeedHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

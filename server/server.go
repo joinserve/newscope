@@ -86,6 +86,7 @@ type Database interface {
 type Scheduler interface {
 	UpdateFeedNow(ctx context.Context, feedID int64) error
 	ExtractContentNow(ctx context.Context, itemID int64) error
+	SummarizeItemNow(ctx context.Context, itemID int64) error
 	UpdatePreferenceSummary(ctx context.Context) error
 	TriggerPreferenceUpdate()
 }
@@ -353,6 +354,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /status", s.statusHandler)
 		r.HandleFunc("POST /feedback/{id}/{action}", s.feedbackHandler)
 		r.HandleFunc("POST /extract/{id}", s.extractHandler)
+		r.HandleFunc("POST /summarize/{id}", s.summarizeHandler)
 		r.HandleFunc("GET /articles/{id}/content", s.articleContentHandler)
 		r.HandleFunc("GET /articles/{id}/hide", s.hideContentHandler)
 

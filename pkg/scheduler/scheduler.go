@@ -260,6 +260,11 @@ func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 	return s.feedProcessor.ExtractContentNow(ctx, itemID)
 }
 
+// SummarizeItemNow triggers on-demand Phase 2 summarization for an item
+func (s *Scheduler) SummarizeItemNow(ctx context.Context, itemID int64) error {
+	return s.feedProcessor.SummarizeItemNow(ctx, itemID)
+}
+
 // TriggerPreferenceUpdate triggers a preference summary update via the worker
 func (s *Scheduler) TriggerPreferenceUpdate() {
 	// non-blocking send to buffered channel

@@ -391,6 +391,112 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	assert.Len(t, itemManager.UpdateItemSummaryCalls(), 1)
 }
 
+func TestScheduler_SummarizeItemNow(t *testing.T) {
+	feedManager := &mocks.FeedManagerMock{}
+	itemManager := &mocks.ItemManagerMock{}
+	classificationManager := &mocks.ClassificationManagerMock{}
+	settingManager := &mocks.SettingManagerMock{}
+	parser := &mocks.ParserMock{}
+	extractor := &mocks.ExtractorMock{}
+	classifier := &mocks.ClassifierMock{}
+
+	params := Params{
+		FeedManager:           feedManager,
+		ItemManager:           itemManager,
+		ClassificationManager: classificationManager,
+		SettingManager:        settingManager,
+		Parser:                parser,
+		Extractor:             extractor,
+		Classifier:            classifier,
+		RetryAttempts:         5,
+		RetryInitialDelay:     10 * time.Millisecond,
+		RetryMaxDelay:         100 * time.Millisecond,
+		RetryJitter:           0.1,
+	}
+	scheduler := NewScheduler(params)
+
+	testItem := &domain.Item{
+		ID:    42,
+		GUID:  "sum-guid",
+		Link:  "https://example.com/item42",
+		Title: "Summarize Me",
+	}
+
+	extractResult := &content.ExtractResult{
+		Content:     "Long form content",
+		RichContent: "<p>Long form content</p>",
+	}
+
+	classification := domain.Classification{
+		GUID:        testItem.GUID,
+		Score:       7.5,
+		Explanation: "refined after reading content",
+		Topics:      []string{"ai"},
+		Summary:     "A refined summary.",
+	}
+
+	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
+		assert.Equal(t, testItem.ID, id)
+		return testItem, nil
+	}
+	extractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
+		assert.Equal(t, testItem.Link, url)
+		return extractResult, nil
+	}
+	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
+		return []domain.FeedbackExample{}, nil
+	}
+	classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
+		return []string{"ai"}, nil
+	}
+	settingManager.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
+		return "", nil
+	}
+	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
+		return nil
+	}
+	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
+		assert.Equal(t, extractResult.Content, article.Content)
+		return classification, nil
+	}
+	itemManager.UpdateItemSummaryFunc = func(ctx context.Context, itemID int64, score float64, explanation, summary string) error {
+		assert.Equal(t, testItem.ID, itemID)
+		assert.InEpsilon(t, classification.Score, score, 0.001)
+		assert.Equal(t, classification.Explanation, explanation)
+		assert.Equal(t, classification.Summary, summary)
+		return nil
+	}
+
+	err := scheduler.SummarizeItemNow(context.Background(), testItem.ID)
+	require.NoError(t, err)
+	assert.Len(t, classifier.SummarizeArticleCalls(), 1)
+	assert.Len(t, itemManager.UpdateItemSummaryCalls(), 1)
+	assert.Empty(t, classifier.ScoreArticlesCalls(), "phase-1 scoring should be skipped for on-demand summarize")
+}
+
+func TestScheduler_SummarizeItemNow_GetItemError(t *testing.T) {
+	itemManager := &mocks.ItemManagerMock{}
+	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
+		return nil, assert.AnError
+	}
+	params := Params{
+		FeedManager:           &mocks.FeedManagerMock{},
+		ItemManager:           itemManager,
+		ClassificationManager: &mocks.ClassificationManagerMock{},
+		SettingManager:        &mocks.SettingManagerMock{},
+		Parser:                &mocks.ParserMock{},
+		Extractor:             &mocks.ExtractorMock{},
+		Classifier:            &mocks.ClassifierMock{},
+		RetryAttempts:         1,
+		RetryInitialDelay:     time.Millisecond,
+	}
+	scheduler := NewScheduler(params)
+
+	err := scheduler.SummarizeItemNow(context.Background(), 99)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "get item 99")
+}
+
 func TestScheduler_StartStop(t *testing.T) {
 	feedManager := &mocks.FeedManagerMock{}
 	itemManager := &mocks.ItemManagerMock{}

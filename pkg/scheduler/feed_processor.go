@@ -528,6 +528,23 @@ func (fp *FeedProcessor) ExtractContentNow(ctx context.Context, itemID int64) er
 	return nil
 }
 
+// SummarizeItemNow runs Phase 2 (content extraction + LLM summary) for an item
+// on demand. Used for manual user triggers when the item's Phase 1 score was
+// below the auto-summarize threshold but the user wants a summary anyway.
+func (fp *FeedProcessor) SummarizeItemNow(ctx context.Context, itemID int64) error {
+	lgr.Printf("[DEBUG] triggering on-demand summarization for item %d", itemID)
+	item, err := fp.itemManager.GetItem(ctx, itemID)
+	if err != nil {
+		return fmt.Errorf("get item %d: %w", itemID, err)
+	}
+
+	llmCtx := fp.loadClassificationContext(ctx, "summarize")
+	if ok := fp.runPhase2(ctx, item, llmCtx); !ok {
+		return fmt.Errorf("phase-2 summarization failed for item %d", itemID)
+	}
+	return nil
+}
+
 // getTopicPreferences retrieves user's preferred and avoided topics
 func (fp *FeedProcessor) getTopicPreferences(ctx context.Context, itemID string) (preferred, avoided []string) {
 	var preferredTopics, avoidedTopics []string
