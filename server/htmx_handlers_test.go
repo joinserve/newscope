@@ -1766,6 +1766,123 @@ func TestServer_PreferenceHandlers(t *testing.T) {
 	})
 }
 
+func TestServer_summaryThresholdHandler(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+	}
+
+	t.Run("saves valid threshold", func(t *testing.T) {
+		var saved string
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				assert.Equal(t, domain.SettingSummaryThreshold, key)
+				saved = value
+				return nil
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "7.5")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "7.5", saved)
+		assert.Contains(t, w.Body.String(), `value="7.5"`)
+		assert.Contains(t, w.Body.String(), "Saved")
+	})
+
+	t.Run("rejects non-numeric", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "nope")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Threshold must be a number")
+		assert.Empty(t, database.SetSettingCalls())
+	})
+
+	t.Run("rejects out-of-range", func(t *testing.T) {
+		database := &mocks.DatabaseMock{}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "11")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Threshold must be between 0 and 10")
+		assert.Empty(t, database.SetSettingCalls())
+	})
+
+	t.Run("db error surfaces as 500", func(t *testing.T) {
+		database := &mocks.DatabaseMock{
+			SetSettingFunc: func(ctx context.Context, key, value string) error {
+				return errors.New("disk full")
+			},
+		}
+		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+		form := url.Values{}
+		form.Set("threshold", "5")
+		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		srv.summaryThresholdHandler(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "Failed to save threshold")
+	})
+}
+
+func TestReadSummaryThreshold(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("default when unset", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "", nil },
+		}
+		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
+	})
+
+	t.Run("parses stored value", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "8.5", nil },
+		}
+		assert.InEpsilon(t, 8.5, readSummaryThreshold(ctx, db), 0.001)
+	})
+
+	t.Run("falls back on parse error", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "nope", nil },
+		}
+		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
+	})
+
+	t.Run("falls back on db error", func(t *testing.T) {
+		db := &mocks.DatabaseMock{
+			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "", errors.New("boom") },
+		}
+		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
+	})
+}
+
 func TestParseDateRange(t *testing.T) {
 	now := time.Now()
 	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -1949,6 +2066,7 @@ func newTestServer(t *testing.T) *Server {
 		"templates/article-card.html",
 		"templates/controls.html",
 		"templates/pagination.html",
+		"templates/summary-threshold.html",
 	)
 	require.NoError(t, err)
 	return &Server{templates: tmpl}

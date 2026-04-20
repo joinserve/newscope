@@ -17,4 +17,9 @@ const (
 	SettingLastSummaryFeedbackCount    = "last_summary_feedback_count"
 	SettingPreferenceSummaryEnabled    = "preference_summary_enabled"
 	SettingPreferenceSummaryLastUpdate = "preference_summary_last_update"
+	SettingSummaryThreshold            = "summary_threshold"
 )
+
+// DefaultSummaryThreshold is the fallback Phase-2 score cutoff when
+// SettingSummaryThreshold is unset or unparseable.
+const DefaultSummaryThreshold = 6.0

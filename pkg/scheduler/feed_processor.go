@@ -15,13 +15,6 @@ import (
 	"github.com/umputun/newscope/pkg/llm"
 )
 
-// defaultSummaryThreshold is the fallback cutoff for Phase 2 summarization
-// when the summary_threshold setting is unset.
-const defaultSummaryThreshold = 6.0
-
-// summaryThresholdSettingKey mirrors repository.SettingKeySummaryThreshold;
-// duplicated here to avoid a scheduler→repository import cycle.
-const summaryThresholdSettingKey = "summary_threshold"
 
 // FeedProcessor handles feed updating and item processing.
 // It is responsible for:
@@ -365,20 +358,20 @@ func (fp *FeedProcessor) loadClassificationContext(ctx context.Context, label st
 }
 
 // getSummaryThreshold returns the configured phase-2 threshold, falling back
-// to defaultSummaryThreshold when unset or unparseable.
+// to domain.DefaultSummaryThreshold when unset or unparseable.
 func (fp *FeedProcessor) getSummaryThreshold(ctx context.Context) float64 {
-	raw, err := fp.settingManager.GetSetting(ctx, summaryThresholdSettingKey)
+	raw, err := fp.settingManager.GetSetting(ctx, domain.SettingSummaryThreshold)
 	if err != nil {
 		lgr.Printf("[WARN] failed to read summary_threshold: %v", err)
-		return defaultSummaryThreshold
+		return domain.DefaultSummaryThreshold
 	}
 	if raw == "" {
-		return defaultSummaryThreshold
+		return domain.DefaultSummaryThreshold
 	}
 	v, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
-		lgr.Printf("[WARN] invalid summary_threshold %q, falling back to %.1f", raw, defaultSummaryThreshold)
-		return defaultSummaryThreshold
+		lgr.Printf("[WARN] invalid summary_threshold %q, falling back to %.1f", raw, domain.DefaultSummaryThreshold)
+		return domain.DefaultSummaryThreshold
 	}
 	return v
 }

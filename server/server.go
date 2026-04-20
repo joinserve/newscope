@@ -238,7 +238,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/topic-tags.html",
 		"templates/topic-dropdowns.html",
 		"templates/controls.html",
-		"templates/preference-summary.html")
+		"templates/preference-summary.html",
+		"templates/summary-threshold.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 	}
@@ -254,7 +255,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			"templates/"+pageName,
 			"templates/article-card.html",
 			"templates/feed-card.html",
-			"templates/pagination.html")
+			"templates/pagination.html",
+			"templates/summary-threshold.html")
 		if err != nil {
 			log.Printf("[WARN] failed to parse %s: %v", pageName, err)
 			continue
@@ -381,6 +383,9 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /preferences/save", s.preferenceSaveHandler)
 		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
 		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
+
+		// summarization settings
+		r.HandleFunc("POST /settings/summary-threshold", s.summaryThresholdHandler)
 	})
 
 	// RSS routes
