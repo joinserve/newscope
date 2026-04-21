@@ -1360,7 +1360,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	unreadArticles, err := s.db.GetClassifiedItemsWithFilters(ctx, unreadReq)
 	if err != nil {
-		log.Printf("[ERROR] failed to fetch unread items for source %q: %v", feedName, err)
+		log.Printf("[ERROR] failed to fetch unread items for source %s: %v", strconv.Quote(feedName), err)
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to load unread articles", err)
 		return
 	}
@@ -1373,7 +1373,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	readArticles, err := s.db.GetClassifiedItemsWithFilters(ctx, readReq)
 	if err != nil {
-		log.Printf("[ERROR] failed to fetch read items for source %q: %v", feedName, err)
+		log.Printf("[ERROR] failed to fetch read items for source %s: %v", strconv.Quote(feedName), err)
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to load read articles", err)
 		return
 	}
