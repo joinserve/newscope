@@ -2,7 +2,12 @@
          data-article-id="{{.ID}}"
          data-share-url="{{.Link}}"
          data-share-title="{{unescapeHTML .Title}}"
-         data-user-feedback="{{.GetUserFeedback}}">
+         data-user-feedback="{{.GetUserFeedback}}"
+         {{if eq .GetUserFeedback ""}}
+         hx-post="/api/v1/feedback/{{.ID}}/done"
+         hx-trigger="intersect once threshold:0.5"
+         hx-swap="none"
+         {{end}}>
     
     <div class="card-avatar">
         {{$iconSrc := ""}}
@@ -130,22 +135,6 @@
                 </svg>
             </button>
 
-            <button class="action action-done {{if eq .GetUserFeedback "done"}}active{{end}}"
-                    type="button"
-                    data-action="done"
-                    hx-post="/api/v1/feedback/{{.ID}}/done"
-                    hx-swap="outerHTML"
-                    hx-target="closest .article-card"
-                    hx-trigger="click"
-                    hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="m17 2 4 4-4 4"/>
-                    <path d="M3 11v-1a4 4 0 0 1 4-4h14"/>
-                    <path d="m7 22-4-4 4-4"/>
-                    <path d="M21 13v1a4 4 0 0 1-4 4H3"/>
-                </svg>
-            </button>
-
             <button class="action action-share"
                     type="button"
                     data-action="share">
@@ -167,7 +156,7 @@
                     hx-trigger="click"
                     hx-include="#score-filter, #topic-filter, #feed-filter, #sort-filter, #liked-state, #processed-state, #date-range-filter">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 6L6 18M6 6l12 12"/>
+                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path>
                 </svg>
             </button>
 

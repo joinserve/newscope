@@ -2026,10 +2026,9 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	assert.Contains(t, body, `class="card-title"`)
 	assert.Contains(t, body, `class="card-summary"`)
 
-	// all five action buttons present with threads icons
+	// four action buttons present with threads icons
 	assert.Contains(t, body, `data-action="like"`)
 	assert.Contains(t, body, `data-action="dislike"`)
-	assert.Contains(t, body, `data-action="done"`)
 	assert.Contains(t, body, `data-action="share"`)
 	assert.Contains(t, body, `data-action="comment"`)
 
