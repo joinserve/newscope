@@ -17,11 +17,7 @@ import (
 
 // setupBasicItemManagerMocks sets up common mock implementations for ItemManager
 func setupBasicItemManagerMocks(itemManager *mocks.ItemManagerMock) {
-	itemManager.UpdateItemScoreFunc = func(ctx context.Context, itemID int64, score float64, topics []string) error {
-		return nil
-	}
-
-	itemManager.UpdateItemSummaryFunc = func(ctx context.Context, itemID int64, score float64, explanation, summary string) error {
+	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
 		return nil
 	}
 
@@ -215,23 +211,14 @@ func TestScheduler_UpdateFeedNow(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{{
 			GUID:        req.Articles[0].GUID,
 			Score:       7.5,
 			Explanation: "test classification",
 			Topics:      []string{"tech"},
-		}}, nil
-	}
-
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		return domain.Classification{
-			GUID:        article.GUID,
-			Score:       7.5,
-			Explanation: "test classification",
-			Topics:      []string{"tech"},
 			Summary:     "test summary",
-		}, nil
+		}}, nil
 	}
 
 	setupBasicItemManagerMocks(itemManager)
@@ -331,25 +318,13 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		}
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		assert.Len(t, req.Articles, 1)
+		assert.Equal(t, extractResult.Content, req.Articles[0].Content) // content should be set
 		assert.Empty(t, req.Feedbacks)
 		assert.Equal(t, []string{"tech", "news"}, req.CanonicalTopics)
 		assert.Empty(t, req.PreferenceSummary)
-		return []domain.Classification{{
-			GUID:        classification.GUID,
-			Score:       classification.Score,
-			Explanation: classification.Explanation,
-			Topics:      classification.Topics,
-		}}, nil
-	}
-
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		assert.Equal(t, extractResult.Content, article.Content) // content should be set in phase 2
-		assert.Empty(t, req.Feedbacks)
-		assert.Equal(t, []string{"tech", "news"}, req.CanonicalTopics)
-		assert.Empty(t, req.PreferenceSummary)
-		return *classification, nil
+		return []domain.Classification{*classification}, nil
 	}
 
 	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
@@ -360,18 +335,15 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 		return nil
 	}
 
-	itemManager.UpdateItemScoreFunc = func(ctx context.Context, itemID int64, score float64, topics []string) error {
+	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, class *domain.Classification) error {
 		assert.Equal(t, testItem.ID, itemID)
-		assert.InEpsilon(t, classification.Score, score, 0.001)
-		assert.Equal(t, classification.Topics, topics)
-		return nil
-	}
-
-	itemManager.UpdateItemSummaryFunc = func(ctx context.Context, itemID int64, score float64, explanation, summary string) error {
-		assert.Equal(t, testItem.ID, itemID)
-		assert.InEpsilon(t, classification.Score, score, 0.001)
-		assert.Equal(t, classification.Explanation, explanation)
-		assert.Equal(t, classification.Summary, summary)
+		assert.Nil(t, extraction) // extraction is nil in batch processing since it's saved separately
+		assert.Equal(t, classification.GUID, class.GUID)
+		assert.InEpsilon(t, classification.Score, class.Score, 0.001)
+		assert.Equal(t, classification.Explanation, class.Explanation)
+		assert.Equal(t, classification.Topics, class.Topics)
+		assert.Equal(t, classification.Summary, class.Summary)
+		assert.False(t, class.ClassifiedAt.IsZero()) // ensure ClassifiedAt is set
 		return nil
 	}
 
@@ -385,116 +357,8 @@ func TestScheduler_ExtractContentNow(t *testing.T) {
 	assert.Len(t, classificationManager.GetRecentFeedbackCalls(), 1)
 	assert.Len(t, classificationManager.GetTopicsCalls(), 1)
 	assert.Len(t, settingManager.GetSettingCalls(), 3) // preference_summary, preferred_topics, avoided_topics
-	assert.Len(t, classifier.ScoreArticlesCalls(), 1)
-	assert.Len(t, classifier.SummarizeArticleCalls(), 1)
-	assert.Len(t, itemManager.UpdateItemScoreCalls(), 1)
-	assert.Len(t, itemManager.UpdateItemSummaryCalls(), 1)
-}
-
-func TestScheduler_SummarizeItemNow(t *testing.T) {
-	feedManager := &mocks.FeedManagerMock{}
-	itemManager := &mocks.ItemManagerMock{}
-	classificationManager := &mocks.ClassificationManagerMock{}
-	settingManager := &mocks.SettingManagerMock{}
-	parser := &mocks.ParserMock{}
-	extractor := &mocks.ExtractorMock{}
-	classifier := &mocks.ClassifierMock{}
-
-	params := Params{
-		FeedManager:           feedManager,
-		ItemManager:           itemManager,
-		ClassificationManager: classificationManager,
-		SettingManager:        settingManager,
-		Parser:                parser,
-		Extractor:             extractor,
-		Classifier:            classifier,
-		RetryAttempts:         5,
-		RetryInitialDelay:     10 * time.Millisecond,
-		RetryMaxDelay:         100 * time.Millisecond,
-		RetryJitter:           0.1,
-	}
-	scheduler := NewScheduler(params)
-
-	testItem := &domain.Item{
-		ID:    42,
-		GUID:  "sum-guid",
-		Link:  "https://example.com/item42",
-		Title: "Summarize Me",
-	}
-
-	extractResult := &content.ExtractResult{
-		Content:     "Long form content",
-		RichContent: "<p>Long form content</p>",
-	}
-
-	classification := domain.Classification{
-		GUID:        testItem.GUID,
-		Score:       7.5,
-		Explanation: "refined after reading content",
-		Topics:      []string{"ai"},
-		Summary:     "A refined summary.",
-	}
-
-	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
-		assert.Equal(t, testItem.ID, id)
-		return testItem, nil
-	}
-	extractor.ExtractFunc = func(ctx context.Context, url string) (*content.ExtractResult, error) {
-		assert.Equal(t, testItem.Link, url)
-		return extractResult, nil
-	}
-	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-		return []domain.FeedbackExample{}, nil
-	}
-	classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
-		return []string{"ai"}, nil
-	}
-	settingManager.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
-		return "", nil
-	}
-	itemManager.UpdateItemExtractionFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
-		return nil
-	}
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		assert.Equal(t, extractResult.Content, article.Content)
-		return classification, nil
-	}
-	itemManager.UpdateItemSummaryFunc = func(ctx context.Context, itemID int64, score float64, explanation, summary string) error {
-		assert.Equal(t, testItem.ID, itemID)
-		assert.InEpsilon(t, classification.Score, score, 0.001)
-		assert.Equal(t, classification.Explanation, explanation)
-		assert.Equal(t, classification.Summary, summary)
-		return nil
-	}
-
-	err := scheduler.SummarizeItemNow(context.Background(), testItem.ID)
-	require.NoError(t, err)
-	assert.Len(t, classifier.SummarizeArticleCalls(), 1)
-	assert.Len(t, itemManager.UpdateItemSummaryCalls(), 1)
-	assert.Empty(t, classifier.ScoreArticlesCalls(), "phase-1 scoring should be skipped for on-demand summarize")
-}
-
-func TestScheduler_SummarizeItemNow_GetItemError(t *testing.T) {
-	itemManager := &mocks.ItemManagerMock{}
-	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
-		return nil, assert.AnError
-	}
-	params := Params{
-		FeedManager:           &mocks.FeedManagerMock{},
-		ItemManager:           itemManager,
-		ClassificationManager: &mocks.ClassificationManagerMock{},
-		SettingManager:        &mocks.SettingManagerMock{},
-		Parser:                &mocks.ParserMock{},
-		Extractor:             &mocks.ExtractorMock{},
-		Classifier:            &mocks.ClassifierMock{},
-		RetryAttempts:         1,
-		RetryInitialDelay:     time.Millisecond,
-	}
-	scheduler := NewScheduler(params)
-
-	err := scheduler.SummarizeItemNow(context.Background(), 99)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "get item 99")
+	assert.Len(t, classifier.ClassifyItemsCalls(), 1)
+	assert.Len(t, itemManager.UpdateItemProcessedCalls(), 1)
 }
 
 func TestScheduler_StartStop(t *testing.T) {
@@ -592,23 +456,6 @@ func TestScheduler_ProcessItem_ExtractionError(t *testing.T) {
 		return nil
 	}
 
-	// phase 1 mocks so ProcessItem can run up to phase 2 extraction
-	classificationManager.GetRecentFeedbackFunc = func(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error) {
-		return []domain.FeedbackExample{}, nil
-	}
-	classificationManager.GetTopicsFunc = func(ctx context.Context) ([]string, error) {
-		return []string{}, nil
-	}
-	settingManager.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
-		return "", nil
-	}
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
-		return []domain.Classification{{GUID: testItem.GUID, Score: 8, Topics: []string{"tech"}, Explanation: "phase1"}}, nil
-	}
-	itemManager.UpdateItemScoreFunc = func(ctx context.Context, itemID int64, score float64, topics []string) error {
-		return nil
-	}
-
 	// execute - processItem is private, so we use ExtractContentNow
 	itemManager.GetItemFunc = func(ctx context.Context, id int64) (*domain.Item, error) {
 		return testItem, nil
@@ -620,9 +467,8 @@ func TestScheduler_ProcessItem_ExtractionError(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, extractor.ExtractCalls(), 1)
 	assert.Len(t, itemManager.UpdateItemExtractionCalls(), 1)
-	// phase 2 summarization must not run when extraction fails
-	assert.Empty(t, classifier.SummarizeArticleCalls())
-	assert.Empty(t, itemManager.UpdateItemSummaryCalls())
+	// should not attempt classification after extraction error
+	assert.Empty(t, classifier.ClassifyItemsCalls())
 }
 
 func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
@@ -677,7 +523,7 @@ func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
 	}
 
 	// setup classification to fail
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return nil, assert.AnError
 	}
 
@@ -693,13 +539,11 @@ func TestScheduler_ProcessItem_ClassificationError(t *testing.T) {
 
 	err := scheduler.ExtractContentNow(context.Background(), 1)
 
-	// verify - phase-1 failure short-circuits: no extraction, no phase-2 writes
+	// verify - should not return error but should not call UpdateItemProcessed
 	require.NoError(t, err)
-	assert.Empty(t, extractor.ExtractCalls())
-	assert.Len(t, classifier.ScoreArticlesCalls(), 1)
-	assert.Empty(t, classifier.SummarizeArticleCalls())
-	assert.Empty(t, itemManager.UpdateItemScoreCalls())
-	assert.Empty(t, itemManager.UpdateItemSummaryCalls())
+	assert.Len(t, extractor.ExtractCalls(), 1)
+	assert.Len(t, classifier.ClassifyItemsCalls(), 1)
+	assert.Empty(t, itemManager.UpdateItemProcessedCalls()) // should not be called after classification error
 }
 
 func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
@@ -754,7 +598,7 @@ func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
 	}
 
 	// setup classification to return empty results
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{}, nil // empty results
 	}
 
@@ -770,13 +614,11 @@ func TestScheduler_ProcessItem_NoClassificationResults(t *testing.T) {
 
 	err := scheduler.ExtractContentNow(context.Background(), 1)
 
-	// verify - phase-1 returned no scores: no extraction, no phase-2 writes
+	// verify - should not return error but should not call UpdateItemProcessed
 	require.NoError(t, err)
-	assert.Empty(t, extractor.ExtractCalls())
-	assert.Len(t, classifier.ScoreArticlesCalls(), 1)
-	assert.Empty(t, classifier.SummarizeArticleCalls())
-	assert.Empty(t, itemManager.UpdateItemScoreCalls())
-	assert.Empty(t, itemManager.UpdateItemSummaryCalls())
+	assert.Len(t, extractor.ExtractCalls(), 1)
+	assert.Len(t, classifier.ClassifyItemsCalls(), 1)
+	assert.Empty(t, itemManager.UpdateItemProcessedCalls()) // should not be called with empty results
 }
 
 func TestScheduler_UpdateFeed_ParseError(t *testing.T) {
@@ -932,23 +774,14 @@ func TestScheduler_UpdateFeed_DuplicateItems(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{{
 			GUID:        req.Articles[0].GUID,
 			Score:       7.5,
 			Explanation: "test classification",
 			Topics:      []string{"tech"},
-		}}, nil
-	}
-
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		return domain.Classification{
-			GUID:        article.GUID,
-			Score:       7.5,
-			Explanation: "test classification",
-			Topics:      []string{"tech"},
 			Summary:     "test summary",
-		}, nil
+		}}, nil
 	}
 
 	setupBasicItemManagerMocks(itemManager)
@@ -1011,11 +844,8 @@ func TestScheduler_UpdateAllFeeds_GetFeedsError(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{}, nil
-	}
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		return domain.Classification{}, nil
 	}
 
 	setupBasicItemManagerMocks(itemManager)
@@ -1103,11 +933,8 @@ func TestScheduler_UpdateAllFeeds_MultipleFeeds(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{}, nil // empty results for quick test
-	}
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		return domain.Classification{}, nil
 	}
 
 	setupBasicItemManagerMocks(itemManager)
@@ -1216,11 +1043,8 @@ func TestScheduler_UpdateFeed_ItemCreationError(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{}, nil // empty results for quick test
-	}
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		return domain.Classification{}, nil
 	}
 
 	setupBasicItemManagerMocks(itemManager)
@@ -1392,11 +1216,8 @@ func TestScheduler_CleanupWorker(t *testing.T) {
 	}
 
 	classifier := &mocks.ClassifierMock{
-		ScoreArticlesFunc: func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+		ClassifyItemsFunc: func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 			return []domain.Classification{}, nil
-		},
-		SummarizeArticleFunc: func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-			return domain.Classification{}, nil
 		},
 	}
 
@@ -1554,13 +1375,10 @@ func TestScheduler_UpdateFeed_ItemCreationWithLockError(t *testing.T) {
 		return "", nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{
 			{GUID: "item1", Score: 8, Explanation: "Good", Topics: []string{"tech"}},
 		}, nil
-	}
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		return domain.Classification{GUID: article.GUID, Score: 8, Explanation: "Good", Topics: []string{"tech"}, Summary: "summary"}, nil
 	}
 
 	setupBasicItemManagerMocks(itemManager)

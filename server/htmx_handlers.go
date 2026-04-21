@@ -407,8 +407,6 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	summaryThreshold := readSummaryThreshold(ctx, s.db)
-
 	// get all available topics for the dropdown
 	allTopics, err := s.db.GetTopics(ctx)
 	if err != nil {
@@ -426,14 +424,12 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare data for display
 	data := struct {
 		commonPageData
-		Config           *config.Config
-		Version          string
-		Debug            bool
-		PreferredTopics  []string
-		AvoidedTopics    []string
-		AvailableTopics  []string
-		SummaryThreshold float64
-		Saved            bool
+		Config          *config.Config
+		Version         string
+		Debug           bool
+		PreferredTopics []string
+		AvoidedTopics   []string
+		AvailableTopics []string
 	}{
 		commonPageData: commonPageData{
 			ActivePage:   "settings",
@@ -445,13 +441,12 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 			FilterTopics: topics,
 			FilterFeeds:  activeFeeds,
 		},
-		Config:           cfg,
-		Version:          s.version,
-		Debug:            s.debug,
-		PreferredTopics:  preferredTopics,
-		AvoidedTopics:    avoidedTopics,
-		AvailableTopics:  availableTopics,
-		SummaryThreshold: summaryThreshold,
+		Config:          cfg,
+		Version:         s.version,
+		Debug:           s.debug,
+		PreferredTopics: preferredTopics,
+		AvoidedTopics:   avoidedTopics,
+		AvailableTopics: availableTopics,
 	}
 
 	// render settings page
@@ -1273,69 +1268,6 @@ func (s *Server) preferenceResetHandler(w http.ResponseWriter, r *http.Request) 
 
 	// return to view mode with cleared data
 	s.preferenceViewHandler(w, r)
-}
-
-// summaryThresholdReader is a narrow interface used by the settings page to
-// read the summary threshold without pulling in the full Database interface
-// for test fakes.
-type summaryThresholdReader interface {
-	GetSetting(ctx context.Context, key string) (string, error)
-}
-
-// readSummaryThreshold loads the configured phase-2 summary threshold from the
-// database, returning domain.DefaultSummaryThreshold when unset or unparseable.
-func readSummaryThreshold(ctx context.Context, db summaryThresholdReader) float64 {
-	raw, err := db.GetSetting(ctx, domain.SettingSummaryThreshold)
-	if err != nil {
-		log.Printf("[WARN] failed to read summary threshold: %v", err)
-		return domain.DefaultSummaryThreshold
-	}
-	if raw == "" {
-		return domain.DefaultSummaryThreshold
-	}
-	v, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		log.Printf("[WARN] invalid summary threshold %q: %v", raw, err)
-		return domain.DefaultSummaryThreshold
-	}
-	return v
-}
-
-// summaryThresholdHandler updates the phase-2 summary threshold setting. The
-// form posts a "threshold" field (float 0-10). On success it renders the
-// read-only summary-threshold partial so HTMX can swap it back in.
-func (s *Server) summaryThresholdHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	if err := r.ParseForm(); err != nil {
-		s.respondWithError(w, http.StatusBadRequest, "Invalid form", err)
-		return
-	}
-	raw := strings.TrimSpace(r.FormValue("threshold"))
-	v, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		s.respondWithError(w, http.StatusBadRequest, "Threshold must be a number", err)
-		return
-	}
-	if v < 0 || v > 10 {
-		s.respondWithError(w, http.StatusBadRequest, "Threshold must be between 0 and 10", nil)
-		return
-	}
-
-	formatted := strconv.FormatFloat(v, 'f', -1, 64)
-	if err := s.db.SetSetting(ctx, domain.SettingSummaryThreshold, formatted); err != nil {
-		log.Printf("[WARN] failed to save summary threshold: %v", err)
-		s.respondWithError(w, http.StatusInternalServerError, "Failed to save threshold", err)
-		return
-	}
-
-	data := struct {
-		SummaryThreshold float64
-		Saved            bool
-	}{SummaryThreshold: v, Saved: true}
-	if err := s.templates.ExecuteTemplate(w, "summary-threshold.html", data); err != nil {
-		log.Printf("[WARN] failed to render summary threshold: %v", err)
-	}
 }
 
 // preferenceToggleHandler toggles preference learning enabled/disabled

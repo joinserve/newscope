@@ -63,9 +63,8 @@ type ItemManager interface {
 	CreateItem(ctx context.Context, item *domain.Item) error
 	ItemExists(ctx context.Context, feedID int64, guid string) (bool, error)
 	ItemExistsByTitleOrURL(ctx context.Context, title, url string) (bool, error)
+	UpdateItemProcessed(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error
 	UpdateItemExtraction(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error
-	UpdateItemScore(ctx context.Context, itemID int64, score float64, topics []string) error
-	UpdateItemSummary(ctx context.Context, itemID int64, score float64, explanation, summary string) error
 	DeleteOldItems(ctx context.Context, age time.Duration, minScore float64) (int64, error)
 	GetUnclassifiedItems(ctx context.Context, limit int) ([]domain.Item, error)
 	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]domain.Item, error)
@@ -97,8 +96,7 @@ type Extractor interface {
 
 // Classifier interface for LLM classification
 type Classifier interface {
-	ScoreArticles(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error)
-	SummarizeArticle(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error)
+	ClassifyItems(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error)
 	GeneratePreferenceSummary(ctx context.Context, feedback []domain.FeedbackExample) (string, error)
 	UpdatePreferenceSummary(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error)
 }
@@ -258,11 +256,6 @@ func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 // ExtractContentNow triggers immediate content extraction for an item
 func (s *Scheduler) ExtractContentNow(ctx context.Context, itemID int64) error {
 	return s.feedProcessor.ExtractContentNow(ctx, itemID)
-}
-
-// SummarizeItemNow triggers on-demand Phase 2 summarization for an item
-func (s *Scheduler) SummarizeItemNow(ctx context.Context, itemID int64) error {
-	return s.feedProcessor.SummarizeItemNow(ctx, itemID)
 }
 
 // TriggerPreferenceUpdate triggers a preference summary update via the worker

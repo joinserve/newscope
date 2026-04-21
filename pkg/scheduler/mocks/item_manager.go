@@ -44,11 +44,8 @@ import (
 //			UpdateItemExtractionFunc: func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error {
 //				panic("mock out the UpdateItemExtraction method")
 //			},
-//			UpdateItemScoreFunc: func(ctx context.Context, itemID int64, score float64, topics []string) error {
-//				panic("mock out the UpdateItemScore method")
-//			},
-//			UpdateItemSummaryFunc: func(ctx context.Context, itemID int64, score float64, explanation string, summary string) error {
-//				panic("mock out the UpdateItemSummary method")
+//			UpdateItemProcessedFunc: func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
+//				panic("mock out the UpdateItemProcessed method")
 //			},
 //		}
 //
@@ -84,11 +81,8 @@ type ItemManagerMock struct {
 	// UpdateItemExtractionFunc mocks the UpdateItemExtraction method.
 	UpdateItemExtractionFunc func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent) error
 
-	// UpdateItemScoreFunc mocks the UpdateItemScore method.
-	UpdateItemScoreFunc func(ctx context.Context, itemID int64, score float64, topics []string) error
-
-	// UpdateItemSummaryFunc mocks the UpdateItemSummary method.
-	UpdateItemSummaryFunc func(ctx context.Context, itemID int64, score float64, explanation string, summary string) error
+	// UpdateItemProcessedFunc mocks the UpdateItemProcessed method.
+	UpdateItemProcessedFunc func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -163,29 +157,16 @@ type ItemManagerMock struct {
 			// Extraction is the extraction argument value.
 			Extraction *domain.ExtractedContent
 		}
-		// UpdateItemScore holds details about calls to the UpdateItemScore method.
-		UpdateItemScore []struct {
+		// UpdateItemProcessed holds details about calls to the UpdateItemProcessed method.
+		UpdateItemProcessed []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// ItemID is the itemID argument value.
 			ItemID int64
-			// Score is the score argument value.
-			Score float64
-			// Topics is the topics argument value.
-			Topics []string
-		}
-		// UpdateItemSummary holds details about calls to the UpdateItemSummary method.
-		UpdateItemSummary []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// ItemID is the itemID argument value.
-			ItemID int64
-			// Score is the score argument value.
-			Score float64
-			// Explanation is the explanation argument value.
-			Explanation string
-			// Summary is the summary argument value.
-			Summary string
+			// Extraction is the extraction argument value.
+			Extraction *domain.ExtractedContent
+			// Classification is the classification argument value.
+			Classification *domain.Classification
 		}
 	}
 	lockCreateItem                  sync.RWMutex
@@ -197,8 +178,7 @@ type ItemManagerMock struct {
 	lockItemExists                  sync.RWMutex
 	lockItemExistsByTitleOrURL      sync.RWMutex
 	lockUpdateItemExtraction        sync.RWMutex
-	lockUpdateItemScore             sync.RWMutex
-	lockUpdateItemSummary           sync.RWMutex
+	lockUpdateItemProcessed         sync.RWMutex
 }
 
 // CreateItem calls CreateItemFunc.
@@ -541,94 +521,46 @@ func (mock *ItemManagerMock) UpdateItemExtractionCalls() []struct {
 	return calls
 }
 
-// UpdateItemScore calls UpdateItemScoreFunc.
-func (mock *ItemManagerMock) UpdateItemScore(ctx context.Context, itemID int64, score float64, topics []string) error {
-	if mock.UpdateItemScoreFunc == nil {
-		panic("ItemManagerMock.UpdateItemScoreFunc: method is nil but ItemManager.UpdateItemScore was just called")
+// UpdateItemProcessed calls UpdateItemProcessedFunc.
+func (mock *ItemManagerMock) UpdateItemProcessed(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
+	if mock.UpdateItemProcessedFunc == nil {
+		panic("ItemManagerMock.UpdateItemProcessedFunc: method is nil but ItemManager.UpdateItemProcessed was just called")
 	}
 	callInfo := struct {
-		Ctx    context.Context
-		ItemID int64
-		Score  float64
-		Topics []string
+		Ctx            context.Context
+		ItemID         int64
+		Extraction     *domain.ExtractedContent
+		Classification *domain.Classification
 	}{
-		Ctx:    ctx,
-		ItemID: itemID,
-		Score:  score,
-		Topics: topics,
+		Ctx:            ctx,
+		ItemID:         itemID,
+		Extraction:     extraction,
+		Classification: classification,
 	}
-	mock.lockUpdateItemScore.Lock()
-	mock.calls.UpdateItemScore = append(mock.calls.UpdateItemScore, callInfo)
-	mock.lockUpdateItemScore.Unlock()
-	return mock.UpdateItemScoreFunc(ctx, itemID, score, topics)
+	mock.lockUpdateItemProcessed.Lock()
+	mock.calls.UpdateItemProcessed = append(mock.calls.UpdateItemProcessed, callInfo)
+	mock.lockUpdateItemProcessed.Unlock()
+	return mock.UpdateItemProcessedFunc(ctx, itemID, extraction, classification)
 }
 
-// UpdateItemScoreCalls gets all the calls that were made to UpdateItemScore.
+// UpdateItemProcessedCalls gets all the calls that were made to UpdateItemProcessed.
 // Check the length with:
 //
-//	len(mockedItemManager.UpdateItemScoreCalls())
-func (mock *ItemManagerMock) UpdateItemScoreCalls() []struct {
-	Ctx    context.Context
-	ItemID int64
-	Score  float64
-	Topics []string
+//	len(mockedItemManager.UpdateItemProcessedCalls())
+func (mock *ItemManagerMock) UpdateItemProcessedCalls() []struct {
+	Ctx            context.Context
+	ItemID         int64
+	Extraction     *domain.ExtractedContent
+	Classification *domain.Classification
 } {
 	var calls []struct {
-		Ctx    context.Context
-		ItemID int64
-		Score  float64
-		Topics []string
+		Ctx            context.Context
+		ItemID         int64
+		Extraction     *domain.ExtractedContent
+		Classification *domain.Classification
 	}
-	mock.lockUpdateItemScore.RLock()
-	calls = mock.calls.UpdateItemScore
-	mock.lockUpdateItemScore.RUnlock()
-	return calls
-}
-
-// UpdateItemSummary calls UpdateItemSummaryFunc.
-func (mock *ItemManagerMock) UpdateItemSummary(ctx context.Context, itemID int64, score float64, explanation string, summary string) error {
-	if mock.UpdateItemSummaryFunc == nil {
-		panic("ItemManagerMock.UpdateItemSummaryFunc: method is nil but ItemManager.UpdateItemSummary was just called")
-	}
-	callInfo := struct {
-		Ctx         context.Context
-		ItemID      int64
-		Score       float64
-		Explanation string
-		Summary     string
-	}{
-		Ctx:         ctx,
-		ItemID:      itemID,
-		Score:       score,
-		Explanation: explanation,
-		Summary:     summary,
-	}
-	mock.lockUpdateItemSummary.Lock()
-	mock.calls.UpdateItemSummary = append(mock.calls.UpdateItemSummary, callInfo)
-	mock.lockUpdateItemSummary.Unlock()
-	return mock.UpdateItemSummaryFunc(ctx, itemID, score, explanation, summary)
-}
-
-// UpdateItemSummaryCalls gets all the calls that were made to UpdateItemSummary.
-// Check the length with:
-//
-//	len(mockedItemManager.UpdateItemSummaryCalls())
-func (mock *ItemManagerMock) UpdateItemSummaryCalls() []struct {
-	Ctx         context.Context
-	ItemID      int64
-	Score       float64
-	Explanation string
-	Summary     string
-} {
-	var calls []struct {
-		Ctx         context.Context
-		ItemID      int64
-		Score       float64
-		Explanation string
-		Summary     string
-	}
-	mock.lockUpdateItemSummary.RLock()
-	calls = mock.calls.UpdateItemSummary
-	mock.lockUpdateItemSummary.RUnlock()
+	mock.lockUpdateItemProcessed.RLock()
+	calls = mock.calls.UpdateItemProcessed
+	mock.lockUpdateItemProcessed.RUnlock()
 	return calls
 }

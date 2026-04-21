@@ -17,9 +17,6 @@ import (
 //			ExtractContentNowFunc: func(ctx context.Context, itemID int64) error {
 //				panic("mock out the ExtractContentNow method")
 //			},
-//			SummarizeItemNowFunc: func(ctx context.Context, itemID int64) error {
-//				panic("mock out the SummarizeItemNow method")
-//			},
 //			TriggerPreferenceUpdateFunc: func()  {
 //				panic("mock out the TriggerPreferenceUpdate method")
 //			},
@@ -39,9 +36,6 @@ type SchedulerMock struct {
 	// ExtractContentNowFunc mocks the ExtractContentNow method.
 	ExtractContentNowFunc func(ctx context.Context, itemID int64) error
 
-	// SummarizeItemNowFunc mocks the SummarizeItemNow method.
-	SummarizeItemNowFunc func(ctx context.Context, itemID int64) error
-
 	// TriggerPreferenceUpdateFunc mocks the TriggerPreferenceUpdate method.
 	TriggerPreferenceUpdateFunc func()
 
@@ -55,13 +49,6 @@ type SchedulerMock struct {
 	calls struct {
 		// ExtractContentNow holds details about calls to the ExtractContentNow method.
 		ExtractContentNow []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// ItemID is the itemID argument value.
-			ItemID int64
-		}
-		// SummarizeItemNow holds details about calls to the SummarizeItemNow method.
-		SummarizeItemNow []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// ItemID is the itemID argument value.
@@ -84,7 +71,6 @@ type SchedulerMock struct {
 		}
 	}
 	lockExtractContentNow       sync.RWMutex
-	lockSummarizeItemNow        sync.RWMutex
 	lockTriggerPreferenceUpdate sync.RWMutex
 	lockUpdateFeedNow           sync.RWMutex
 	lockUpdatePreferenceSummary sync.RWMutex
@@ -123,42 +109,6 @@ func (mock *SchedulerMock) ExtractContentNowCalls() []struct {
 	mock.lockExtractContentNow.RLock()
 	calls = mock.calls.ExtractContentNow
 	mock.lockExtractContentNow.RUnlock()
-	return calls
-}
-
-// SummarizeItemNow calls SummarizeItemNowFunc.
-func (mock *SchedulerMock) SummarizeItemNow(ctx context.Context, itemID int64) error {
-	if mock.SummarizeItemNowFunc == nil {
-		panic("SchedulerMock.SummarizeItemNowFunc: method is nil but Scheduler.SummarizeItemNow was just called")
-	}
-	callInfo := struct {
-		Ctx    context.Context
-		ItemID int64
-	}{
-		Ctx:    ctx,
-		ItemID: itemID,
-	}
-	mock.lockSummarizeItemNow.Lock()
-	mock.calls.SummarizeItemNow = append(mock.calls.SummarizeItemNow, callInfo)
-	mock.lockSummarizeItemNow.Unlock()
-	return mock.SummarizeItemNowFunc(ctx, itemID)
-}
-
-// SummarizeItemNowCalls gets all the calls that were made to SummarizeItemNow.
-// Check the length with:
-//
-//	len(mockedScheduler.SummarizeItemNowCalls())
-func (mock *SchedulerMock) SummarizeItemNowCalls() []struct {
-	Ctx    context.Context
-	ItemID int64
-} {
-	var calls []struct {
-		Ctx    context.Context
-		ItemID int64
-	}
-	mock.lockSummarizeItemNow.RLock()
-	calls = mock.calls.SummarizeItemNow
-	mock.lockSummarizeItemNow.RUnlock()
 	return calls
 }
 

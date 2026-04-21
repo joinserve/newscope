@@ -110,9 +110,6 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 	if err := migrateAddIconURL(ctx, db); err != nil {
 		return fmt.Errorf("migrate icon_url: %w", err)
 	}
-	if err := migrateAddSummarizedAt(ctx, db); err != nil {
-		return fmt.Errorf("migrate summarized_at: %w", err)
-	}
 
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
@@ -189,43 +186,6 @@ func migrateAddIconURL(ctx context.Context, db *sqlx.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE feeds ADD COLUMN icon_url TEXT DEFAULT ''`); err != nil {
 		return fmt.Errorf("add icon_url column: %w", err)
-	}
-	return nil
-}
-
-// migrateAddSummarizedAt adds the summarized_at column to items if missing and
-// backfills it from classified_at for rows that already have a summary — those
-// were produced by the pre-split single-phase pipeline and are effectively
-// "summarized" already.
-func migrateAddSummarizedAt(ctx context.Context, db *sqlx.DB) error {
-	var tableCount int
-	err := db.GetContext(ctx, &tableCount,
-		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='items'`)
-	if err != nil {
-		return fmt.Errorf("check items table: %w", err)
-	}
-	if tableCount == 0 {
-		return nil
-	}
-
-	var columns []string
-	if err := db.SelectContext(ctx, &columns,
-		`SELECT name FROM pragma_table_info('items')`); err != nil {
-		return fmt.Errorf("read items columns: %w", err)
-	}
-	for _, c := range columns {
-		if c == "summarized_at" {
-			return nil
-		}
-	}
-
-	if _, err := db.ExecContext(ctx,
-		`ALTER TABLE items ADD COLUMN summarized_at DATETIME`); err != nil {
-		return fmt.Errorf("add summarized_at column: %w", err)
-	}
-	if _, err := db.ExecContext(ctx,
-		`UPDATE items SET summarized_at = classified_at WHERE classified_at IS NOT NULL AND summary != ''`); err != nil {
-		return fmt.Errorf("backfill summarized_at: %w", err)
 	}
 	return nil
 }

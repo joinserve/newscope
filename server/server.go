@@ -86,7 +86,6 @@ type Database interface {
 type Scheduler interface {
 	UpdateFeedNow(ctx context.Context, feedID int64) error
 	ExtractContentNow(ctx context.Context, itemID int64) error
-	SummarizeItemNow(ctx context.Context, itemID int64) error
 	UpdatePreferenceSummary(ctx context.Context) error
 	TriggerPreferenceUpdate()
 }
@@ -175,15 +174,15 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"durationMinutes": func(d time.Duration) int {
 			return int(d.Minutes())
 		},
-		"printf":       fmt.Sprintf,
+		"printf": fmt.Sprintf,
 		"stripHTML": func(s string) string {
-			// Add spaces for common block elements before stripping to prevent words from running together
+			// add spaces for common block elements before stripping to prevent words from running together
 			s = html.UnescapeString(s)
 			blockRe := regexp.MustCompile(`(?i)</?(p|br|div|li|h[1-6]|td|tr|table|blockquote)[^>]*>`)
 			s = blockRe.ReplaceAllString(s, " ")
-			// Strip the remaining tags
+			// strip the remaining tags
 			s = bluemonday.StrictPolicy().Sanitize(s)
-			// Collapse multiple spaces
+			// collapse multiple spaces
 			return strings.Join(strings.Fields(s), " ")
 		},
 		"unescapeHTML": html.UnescapeString,
@@ -248,8 +247,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/topic-tags.html",
 		"templates/topic-dropdowns.html",
 		"templates/controls.html",
-		"templates/preference-summary.html",
-		"templates/summary-threshold.html")
+		"templates/preference-summary.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 	}
@@ -265,8 +263,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			"templates/"+pageName,
 			"templates/article-card.html",
 			"templates/feed-card.html",
-			"templates/pagination.html",
-			"templates/summary-threshold.html")
+			"templates/pagination.html")
 		if err != nil {
 			log.Printf("[WARN] failed to parse %s: %v", pageName, err)
 			continue
@@ -366,7 +363,6 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /status", s.statusHandler)
 		r.HandleFunc("POST /feedback/{id}/{action}", s.feedbackHandler)
 		r.HandleFunc("POST /extract/{id}", s.extractHandler)
-		r.HandleFunc("POST /summarize/{id}", s.summarizeHandler)
 		r.HandleFunc("GET /articles/{id}/content", s.articleContentHandler)
 		r.HandleFunc("GET /articles/{id}/hide", s.hideContentHandler)
 
@@ -393,9 +389,6 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /preferences/save", s.preferenceSaveHandler)
 		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
 		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
-
-		// summarization settings
-		r.HandleFunc("POST /settings/summary-threshold", s.summaryThresholdHandler)
 	})
 
 	// RSS routes

@@ -47,7 +47,6 @@ type itemSQL struct {
 	Topics         topicsSQL  `db:"topics"`
 	Summary        string     `db:"summary"`
 	ClassifiedAt   *time.Time `db:"classified_at"`
-	SummarizedAt   *time.Time `db:"summarized_at"`
 
 	// user feedback
 	UserFeedback string     `db:"user_feedback"`
@@ -174,7 +173,7 @@ func (r *ItemRepository) GetItems(ctx context.Context, limit int, minScore float
 // GetUnclassifiedItems retrieves items that need classification
 func (r *ItemRepository) GetUnclassifiedItems(ctx context.Context, limit int) ([]domain.Item, error) {
 	query := `
-		SELECT * FROM items
+		SELECT * FROM items 
 		WHERE classified_at IS NULL
 		AND extracted_content != ''
 		AND extraction_error = ''
@@ -185,50 +184,6 @@ func (r *ItemRepository) GetUnclassifiedItems(ctx context.Context, limit int) ([
 	err := r.db.SelectContext(ctx, &sqlItems, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get unclassified items: %w", err)
-	}
-
-	items := make([]domain.Item, len(sqlItems))
-	for i, item := range sqlItems {
-		items[i] = *r.toDomainItem(&item)
-	}
-	return items, nil
-}
-
-// GetItemsToScore retrieves items that have never been scored (Phase 1).
-// Scoring uses title+description only, so no extraction is required.
-func (r *ItemRepository) GetItemsToScore(ctx context.Context, limit int) ([]domain.Item, error) {
-	query := `
-		SELECT * FROM items
-		WHERE classified_at IS NULL
-		ORDER BY published DESC
-		LIMIT ?
-	`
-	var sqlItems []itemSQL
-	if err := r.db.SelectContext(ctx, &sqlItems, query, limit); err != nil {
-		return nil, fmt.Errorf("get items to score: %w", err)
-	}
-
-	items := make([]domain.Item, len(sqlItems))
-	for i, item := range sqlItems {
-		items[i] = *r.toDomainItem(&item)
-	}
-	return items, nil
-}
-
-// GetItemsToSummarize retrieves items that have been scored above the threshold
-// but have not yet been summarized (Phase 2).
-func (r *ItemRepository) GetItemsToSummarize(ctx context.Context, limit int, threshold float64) ([]domain.Item, error) {
-	query := `
-		SELECT * FROM items
-		WHERE classified_at IS NOT NULL
-		AND summarized_at IS NULL
-		AND relevance_score >= ?
-		ORDER BY relevance_score DESC, published DESC
-		LIMIT ?
-	`
-	var sqlItems []itemSQL
-	if err := r.db.SelectContext(ctx, &sqlItems, query, threshold, limit); err != nil {
-		return nil, fmt.Errorf("get items to summarize: %w", err)
 	}
 
 	items := make([]domain.Item, len(sqlItems))
@@ -291,8 +246,8 @@ func (r *ItemRepository) UpdateItemExtraction(ctx context.Context, itemID int64,
 // UpdateItemClassification updates item with LLM classification results
 func (r *ItemRepository) UpdateItemClassification(ctx context.Context, itemID int64, classification *domain.Classification) error {
 	query := `
-		UPDATE items
-		SET relevance_score = ?,
+		UPDATE items 
+		SET relevance_score = ?, 
 		    explanation = ?,
 		    topics = ?,
 		    summary = ?,
@@ -302,39 +257,6 @@ func (r *ItemRepository) UpdateItemClassification(ctx context.Context, itemID in
 	_, err := r.db.ExecContext(ctx, query, classification.Score, classification.Explanation, topicsSQL(classification.Topics), classification.Summary, itemID)
 	if err != nil {
 		return fmt.Errorf("update item classification: %w", err)
-	}
-	return nil
-}
-
-// UpdateItemScore writes Phase 1 results (score + topics). Summary / explanation
-// are left untouched so a later Phase 2 pass can fill them in.
-func (r *ItemRepository) UpdateItemScore(ctx context.Context, itemID int64, score float64, topics []string) error {
-	query := `
-		UPDATE items
-		SET relevance_score = ?,
-		    topics = ?,
-		    classified_at = datetime('now')
-		WHERE id = ?
-	`
-	if _, err := r.db.ExecContext(ctx, query, score, topicsSQL(topics), itemID); err != nil {
-		return fmt.Errorf("update item score: %w", err)
-	}
-	return nil
-}
-
-// UpdateItemSummary writes Phase 2 results. Phase 2 may refine the score based
-// on full content, so it overwrites relevance_score alongside summary + explanation.
-func (r *ItemRepository) UpdateItemSummary(ctx context.Context, itemID int64, score float64, explanation, summary string) error {
-	query := `
-		UPDATE items
-		SET relevance_score = ?,
-		    explanation = ?,
-		    summary = ?,
-		    summarized_at = datetime('now')
-		WHERE id = ?
-	`
-	if _, err := r.db.ExecContext(ctx, query, score, explanation, summary, itemID); err != nil {
-		return fmt.Errorf("update item summary: %w", err)
 	}
 	return nil
 }
