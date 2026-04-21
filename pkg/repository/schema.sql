@@ -39,8 +39,7 @@ CREATE TABLE IF NOT EXISTS items (
     explanation TEXT DEFAULT '',         -- Why this score
     topics JSON DEFAULT '[]',             -- Detected topics/tags
     summary TEXT DEFAULT '',             -- Article summary
-    classified_at DATETIME,               -- Phase 1: scored (title+description only)
-    summarized_at DATETIME,               -- Phase 2: summarized (full content)
+    classified_at DATETIME,
     
     -- User feedback
     user_feedback TEXT DEFAULT '',      -- 'like', 'dislike', 'done', 'spam', empty
@@ -84,7 +83,6 @@ CREATE INDEX IF NOT EXISTS idx_feeds_enabled_next ON feeds(enabled, next_fetch) 
 CREATE INDEX IF NOT EXISTS idx_items_topics_json ON items(json_extract(topics, '$'));
 CREATE INDEX IF NOT EXISTS idx_items_score_classified ON items(relevance_score DESC, classified_at) WHERE classified_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_items_classified_score ON items(classified_at, relevance_score DESC) WHERE classified_at IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_items_to_summarize ON items(relevance_score DESC) WHERE classified_at IS NOT NULL AND summarized_at IS NULL;
 
 -- Full-text search support
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(

@@ -178,30 +178,6 @@ IMPORTANT: Even low-relevance articles (score 0-3) MUST have topics assigned. Us
 
 Consider the user's previous feedback when provided.`
 
-// scoringSystemPrompt is used for Phase 1 (cheap title-only scoring).
-// It asks for score + topics + short explanation, no summary. The model
-// does not see article content so it must rely on title and description.
-const scoringSystemPrompt = `You are an AI assistant that scores articles for relevance using only the title and description (full content is not available at this stage).
-Rate each article from 0-10 where:
-- 0-3: Not relevant
-- 4-6: Somewhat relevant
-- 7-8: Relevant
-- 9-10: Highly relevant
-
-Each classification should contain:
-- guid: the article's GUID
-- score: relevance score (0-10). Adjust based on topic preferences if provided.
-- explanation: brief explanation (max 100 chars)
-- topics: array of 1-3 relevant topic keywords. Rules:
-  * Use concise, meaningful terms (kubernetes, golang, react, docker)
-  * Avoid redundant specificity (use "load-balancing" not "load-balancing-algorithms")
-  * Don't create minor variations (use "ai" not "ai-models")
-  * Maximum 3 topics per article
-- summary: leave as an empty string ""; summaries are generated in a separate pass on articles that clear the threshold.
-
-You have limited information, so prefer moderate scores over extreme ones when uncertain.
-Consider the user's previous feedback when provided.`
-
 // ClassifyRequest contains all parameters for article classification
 type ClassifyRequest struct {
 	Articles          []domain.Item
@@ -231,15 +207,6 @@ func isReasoningModel(model string) bool {
 
 // classify classifies articles using the provided request parameters (internal implementation)
 func (c *Classifier) classify(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
-	return c.runClassification(ctx, req, c.systemMsg, true)
-}
-
-// runClassification sends the prompt to the LLM and parses classifications,
-// retrying the API call with exponential backoff and — when validateSummary
-// is true — retrying the whole round when summaries start with forbidden
-// meta-language phrases. Phase 1 scoring passes false so the retry loop is
-// skipped (summaries are expected to be empty).
-func (c *Classifier) runClassification(ctx context.Context, req ClassifyRequest, systemMsg string, validateSummary bool) ([]domain.Classification, error) {
 	if len(req.Articles) == 0 {
 		return []domain.Classification{}, nil
 	}
@@ -253,10 +220,6 @@ func (c *Classifier) runClassification(ctx context.Context, req ClassifyRequest,
 	retryAttempts := c.config.Classification.SummaryRetryAttempts
 	if retryAttempts == 0 {
 		retryAttempts = 3
-	}
-	if !validateSummary {
-		// no summary retries needed for scoring phase
-		retryAttempts = 0
 	}
 
 	// outer loop for summary validation retries
@@ -272,7 +235,7 @@ func (c *Classifier) runClassification(ctx context.Context, req ClassifyRequest,
 				Messages: []openai.ChatCompletionMessage{
 					{
 						Role:    openai.ChatMessageRoleSystem,
-						Content: systemMsg,
+						Content: c.systemMsg,
 					},
 					{
 						Role:    openai.ChatMessageRoleUser,
@@ -568,44 +531,6 @@ func (c *Classifier) getForbiddenPrefixes() []string {
 // ClassifyItems implements the scheduler.Classifier interface
 func (c *Classifier) ClassifyItems(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
 	return c.classify(ctx, req)
-}
-
-// ScoreArticles runs Phase 1: score articles using only title + description,
-// returning classifications with populated score, topics, and explanation but
-// an empty summary. Any Content field on the articles is ignored so prompts
-// stay small and cheap.
-func (c *Classifier) ScoreArticles(ctx context.Context, req ClassifyRequest) ([]domain.Classification, error) {
-	if len(req.Articles) == 0 {
-		return []domain.Classification{}, nil
-	}
-
-	// strip content so the prompt stays lean and the LLM isn't tempted to write a summary
-	stripped := make([]domain.Item, len(req.Articles))
-	for i, a := range req.Articles {
-		stripped[i] = a
-		stripped[i].Content = ""
-	}
-	scoreReq := req
-	scoreReq.Articles = stripped
-
-	return c.runClassification(ctx, scoreReq, scoringSystemPrompt, false)
-}
-
-// SummarizeArticle runs Phase 2 for a single article: uses full content to
-// refine the score and produce a summary. Returns the single Classification
-// or an error if the LLM could not produce one.
-func (c *Classifier) SummarizeArticle(ctx context.Context, article domain.Item, req ClassifyRequest) (domain.Classification, error) {
-	summarizeReq := req
-	summarizeReq.Articles = []domain.Item{article}
-
-	classifications, err := c.runClassification(ctx, summarizeReq, c.systemMsg, true)
-	if err != nil {
-		return domain.Classification{}, err
-	}
-	if len(classifications) == 0 {
-		return domain.Classification{}, fmt.Errorf("no classification returned for article %s", article.GUID)
-	}
-	return classifications[0], nil
 }
 
 // default prompts for preference summary operations

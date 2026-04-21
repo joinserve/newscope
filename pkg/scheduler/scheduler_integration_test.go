@@ -197,7 +197,7 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 		return nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		var classifications []domain.Classification
 		for _, article := range req.Articles {
 			score := 7.5
@@ -211,36 +211,17 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 				Score:       score,
 				Topics:      topics,
 				Explanation: "Classified based on content",
+				Summary:     "Summary of " + article.Title,
 			})
 		}
 		return classifications, nil
-	}
-
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		score := 7.5
-		topics := []string{"tech"}
-		if article.Title == "AI breakthrough" {
-			score = 9.0
-			topics = []string{"tech", "ai"}
-		}
-		return domain.Classification{
-			GUID:        article.GUID,
-			Score:       score,
-			Topics:      topics,
-			Explanation: "Classified based on content",
-			Summary:     "Summary of " + article.Title,
-		}, nil
 	}
 
 	classifier.UpdatePreferenceSummaryFunc = func(ctx context.Context, currentSummary string, newFeedback []domain.FeedbackExample) (string, error) {
 		return "Updated preference summary", nil
 	}
 
-	itemManager.UpdateItemScoreFunc = func(ctx context.Context, itemID int64, score float64, topics []string) error {
-		return nil
-	}
-
-	itemManager.UpdateItemSummaryFunc = func(ctx context.Context, itemID int64, score float64, explanation, summary string) error {
+	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
 		return nil
 	}
 
@@ -284,17 +265,15 @@ func TestScheduler_Integration_FullWorkflow(t *testing.T) {
 	// verify items were created
 	assert.GreaterOrEqual(t, len(itemManager.CreateItemCalls()), 2) // one for each feed
 
-	// with two-phase batch processing, classification and phase-2 extraction are
-	// asynchronous and fire after the batch timeout; wait for both before asserting counts
+	// verify items were processed (extraction and classification)
+	assert.GreaterOrEqual(t, len(extractor.ExtractCalls()), 2)
+
+	// with batch processing, classification is asynchronous and may not happen immediately
+	// if batch isn't full (2 items < default batch size 10), classification occurs after timeout
 	require.Eventually(t, func() bool {
-		return len(classifier.ScoreArticlesCalls()) >= 1
+		return len(classifier.ClassifyItemsCalls()) >= 1
 	}, 6*time.Second, 100*time.Millisecond,
 		"classifier should be called after batch timeout expires")
-
-	require.Eventually(t, func() bool {
-		return len(extractor.ExtractCalls()) >= 2
-	}, 6*time.Second, 100*time.Millisecond,
-		"phase-2 extraction should run for qualifying items after batch processes")
 
 	// preference summary is only updated when explicitly triggered
 	// assert.GreaterOrEqual(t, len(classificationManager.GetFeedbackCountCalls()), 1)
@@ -380,22 +359,15 @@ func TestScheduler_Integration_ErrorHandling(t *testing.T) {
 		return &content.ExtractResult{}, nil
 	}
 
-	classifier.ScoreArticlesFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
+	classifier.ClassifyItemsFunc = func(ctx context.Context, req llm.ClassifyRequest) ([]domain.Classification, error) {
 		return []domain.Classification{}, nil
-	}
-	classifier.SummarizeArticleFunc = func(ctx context.Context, article domain.Item, req llm.ClassifyRequest) (domain.Classification, error) {
-		return domain.Classification{}, nil
 	}
 
 	itemManager.DeleteOldItemsFunc = func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
 		return 0, nil
 	}
 
-	itemManager.UpdateItemScoreFunc = func(ctx context.Context, itemID int64, score float64, topics []string) error {
-		return nil
-	}
-
-	itemManager.UpdateItemSummaryFunc = func(ctx context.Context, itemID int64, score float64, explanation, summary string) error {
+	itemManager.UpdateItemProcessedFunc = func(ctx context.Context, itemID int64, extraction *domain.ExtractedContent, classification *domain.Classification) error {
 		return nil
 	}
 

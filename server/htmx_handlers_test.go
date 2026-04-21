@@ -1766,123 +1766,6 @@ func TestServer_PreferenceHandlers(t *testing.T) {
 	})
 }
 
-func TestServer_summaryThresholdHandler(t *testing.T) {
-	cfg := &mocks.ConfigProviderMock{
-		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
-	}
-
-	t.Run("saves valid threshold", func(t *testing.T) {
-		var saved string
-		database := &mocks.DatabaseMock{
-			SetSettingFunc: func(ctx context.Context, key, value string) error {
-				assert.Equal(t, domain.SettingSummaryThreshold, key)
-				saved = value
-				return nil
-			},
-		}
-		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
-
-		form := url.Values{}
-		form.Set("threshold", "7.5")
-		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		srv.summaryThresholdHandler(w, req)
-
-		assert.Equal(t, http.StatusOK, w.Code)
-		assert.Equal(t, "7.5", saved)
-		assert.Contains(t, w.Body.String(), `value="7.5"`)
-		assert.Contains(t, w.Body.String(), "Saved")
-	})
-
-	t.Run("rejects non-numeric", func(t *testing.T) {
-		database := &mocks.DatabaseMock{}
-		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
-
-		form := url.Values{}
-		form.Set("threshold", "nope")
-		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		srv.summaryThresholdHandler(w, req)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "Threshold must be a number")
-		assert.Empty(t, database.SetSettingCalls())
-	})
-
-	t.Run("rejects out-of-range", func(t *testing.T) {
-		database := &mocks.DatabaseMock{}
-		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
-
-		form := url.Values{}
-		form.Set("threshold", "11")
-		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		srv.summaryThresholdHandler(w, req)
-
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "Threshold must be between 0 and 10")
-		assert.Empty(t, database.SetSettingCalls())
-	})
-
-	t.Run("db error surfaces as 500", func(t *testing.T) {
-		database := &mocks.DatabaseMock{
-			SetSettingFunc: func(ctx context.Context, key, value string) error {
-				return errors.New("disk full")
-			},
-		}
-		srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
-
-		form := url.Values{}
-		form.Set("threshold", "5")
-		req := httptest.NewRequest("POST", "/api/v1/settings/summary-threshold", strings.NewReader(form.Encode()))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		w := httptest.NewRecorder()
-
-		srv.summaryThresholdHandler(w, req)
-
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
-		assert.Contains(t, w.Body.String(), "Failed to save threshold")
-	})
-}
-
-func TestReadSummaryThreshold(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("default when unset", func(t *testing.T) {
-		db := &mocks.DatabaseMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "", nil },
-		}
-		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
-	})
-
-	t.Run("parses stored value", func(t *testing.T) {
-		db := &mocks.DatabaseMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "8.5", nil },
-		}
-		assert.InEpsilon(t, 8.5, readSummaryThreshold(ctx, db), 0.001)
-	})
-
-	t.Run("falls back on parse error", func(t *testing.T) {
-		db := &mocks.DatabaseMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "nope", nil },
-		}
-		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
-	})
-
-	t.Run("falls back on db error", func(t *testing.T) {
-		db := &mocks.DatabaseMock{
-			GetSettingFunc: func(ctx context.Context, key string) (string, error) { return "", errors.New("boom") },
-		}
-		assert.InEpsilon(t, domain.DefaultSummaryThreshold, readSummaryThreshold(ctx, db), 0.001)
-	})
-}
-
 func TestParseDateRange(t *testing.T) {
 	now := time.Now()
 	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -2040,54 +1923,6 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	assert.Contains(t, body, `data-topic="tech"`)
 }
 
-func TestServer_renderArticleCard_SummarizeButton(t *testing.T) {
-	srv := newTestServer(t)
-	published := time.Date(2026, 4, 19, 10, 30, 0, 0, time.UTC)
-
-	t.Run("summarize button shown when summary missing", func(t *testing.T) {
-		article := &domain.ClassifiedItem{
-			Item: &domain.Item{
-				ID:          99,
-				Title:       "No Summary Yet",
-				Link:        "https://example.com/n",
-				Description: "raw description",
-				Published:   published,
-			},
-			FeedName:       "Feed",
-			Classification: &domain.Classification{Score: 5.0},
-		}
-
-		w := httptest.NewRecorder()
-		srv.renderArticleCard(w, article)
-		body := w.Body.String()
-
-		assert.Contains(t, body, `action-summarize-btn`)
-		assert.Contains(t, body, `hx-post="/api/v1/summarize/99"`)
-		assert.Contains(t, body, `card-summary-fallback`)
-		assert.Contains(t, body, "raw description")
-	})
-
-	t.Run("summarize button hidden when summary present", func(t *testing.T) {
-		article := &domain.ClassifiedItem{
-			Item: &domain.Item{
-				ID:        100,
-				Title:     "Has Summary",
-				Link:      "https://example.com/h",
-				Published: published,
-			},
-			FeedName:       "Feed",
-			Classification: &domain.Classification{Score: 8.0, Summary: "already summarized"},
-		}
-
-		w := httptest.NewRecorder()
-		srv.renderArticleCard(w, article)
-		body := w.Body.String()
-
-		assert.NotContains(t, body, `action-summarize`)
-		assert.Contains(t, body, "already summarized")
-	})
-}
-
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	funcMap := template.FuncMap{
@@ -2105,7 +1940,7 @@ func newTestServer(t *testing.T) *Server {
 		"getDomain":    func(u string) string { return u },
 		"extractImage": func(content string, url string) string { return "" },
 		"stripHTML": func(s string) string {
-			return s // mock for tests
+			return s
 		},
 		"unescapeHTML": func(s string) template.HTML {
 			return template.HTML(s) //nolint:gosec // test helper only
@@ -2116,7 +1951,6 @@ func newTestServer(t *testing.T) *Server {
 		"templates/article-card.html",
 		"templates/controls.html",
 		"templates/pagination.html",
-		"templates/summary-threshold.html",
 	)
 	require.NoError(t, err)
 	return &Server{templates: tmpl}

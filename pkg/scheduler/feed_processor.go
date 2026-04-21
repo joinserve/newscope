@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -102,7 +101,8 @@ func (fp *FeedProcessor) ProcessingWorker(ctx context.Context, items <-chan doma
 				return
 			}
 
-			// phase 1 scores on title+description only, so no pre-extraction here
+			// extract content for the item first
+			fp.extractContent(ctx, &item)
 			batch = append(batch, item)
 
 			// process batch if full
@@ -186,10 +186,7 @@ func (fp *FeedProcessor) extractContent(ctx context.Context, item *domain.Item) 
 	}
 }
 
-// ProcessBatch runs Phase 1 scoring for all items in the batch and then runs
-// Phase 2 summarization for those whose score meets the configured threshold.
-// Phase 1 is cheap (title+description only); Phase 2 performs per-item content
-// extraction plus a richer LLM call and therefore only fires on qualifying items.
+// ProcessBatch classifies multiple items in a single API call
 func (fp *FeedProcessor) ProcessBatch(ctx context.Context, items []domain.Item) {
 	if len(items) == 0 {
 		return
@@ -197,182 +194,90 @@ func (fp *FeedProcessor) ProcessBatch(ctx context.Context, items []domain.Item) 
 
 	lgr.Printf("[INFO] processing batch of %d items", len(items))
 
-	llmCtx := fp.loadClassificationContext(ctx, "batch")
+	// get context for classification
+	feedbacks, err := fp.classificationManager.GetRecentFeedback(ctx, "", 50)
+	if err != nil {
+		lgr.Printf("[WARN] batch: failed to get feedback examples: %v", err)
+		feedbacks = []domain.FeedbackExample{}
+	}
 
-	// phase 1: score on title + description only
+	topics, err := fp.classificationManager.GetTopics(ctx)
+	if err != nil {
+		lgr.Printf("[WARN] batch: failed to get canonical topics: %v", err)
+		topics = []string{}
+	}
+
+	preferenceSummary, err := fp.settingManager.GetSetting(ctx, "preference_summary")
+	if err != nil {
+		lgr.Printf("[WARN] batch: failed to get preference summary: %v", err)
+		preferenceSummary = ""
+	}
+
+	// get topic preferences
+	preferredTopics, avoidedTopics := fp.getTopicPreferences(ctx, "batch")
+
+	// classify all items in a single API call
 	req := llm.ClassifyRequest{
 		Articles:          items,
-		Feedbacks:         llmCtx.Feedbacks,
-		CanonicalTopics:   llmCtx.CanonicalTopics,
-		PreferenceSummary: llmCtx.PreferenceSummary,
-		PreferredTopics:   llmCtx.PreferredTopics,
-		AvoidedTopics:     llmCtx.AvoidedTopics,
+		Feedbacks:         feedbacks,
+		CanonicalTopics:   topics,
+		PreferenceSummary: preferenceSummary,
+		PreferredTopics:   preferredTopics,
+		AvoidedTopics:     avoidedTopics,
 	}
 
-	scores, err := fp.classifier.ScoreArticles(ctx, req)
+	classifications, err := fp.classifier.ClassifyItems(ctx, req)
 	if err != nil {
-		lgr.Printf("[WARN] failed to score batch: %v", err)
+		lgr.Printf("[WARN] failed to classify batch: %v", err)
 		return
 	}
 
-	scoreMap := make(map[string]domain.Classification, len(scores))
-	for _, s := range scores {
-		scoreMap[s.GUID] = s
+	// map classifications by GUID for quick lookup
+	classMap := make(map[string]domain.Classification)
+	for _, class := range classifications {
+		classMap[class.GUID] = class
 	}
 
-	threshold := fp.getSummaryThreshold(ctx)
-	var scoredCount, summarizedCount int
-
+	// update each item with its classification
 	for _, item := range items {
-		score, found := scoreMap[item.GUID]
+		classification, found := classMap[item.GUID]
 		if !found {
-			lgr.Printf("[WARN] no score returned for item: %s", item.Title)
+			lgr.Printf("[WARN] no classification returned for item: %s", item.Title)
 			continue
 		}
 
-		if err := fp.retryFunc(ctx, func() error {
-			return fp.itemManager.UpdateItemScore(ctx, item.ID, score.Score, score.Topics)
-		}); err != nil {
-			lgr.Printf("[WARN] failed to save phase-1 score for item %d after retries: %v", item.ID, err)
-			continue
-		}
-		scoredCount++
-		lgr.Printf("[DEBUG] phase-1 scored item %d: %s (score: %.1f, topics: %s)",
-			item.ID, item.Title, score.Score, strings.Join(score.Topics, ", "))
+		classification.ClassifiedAt = time.Now()
 
-		if score.Score < threshold {
+		// update classification in database (use empty extraction since it's already saved)
+		err = fp.retryFunc(ctx, func() error {
+			return fp.itemManager.UpdateItemProcessed(ctx, item.ID, nil, &classification)
+		})
+		if err != nil {
+			lgr.Printf("[WARN] failed to update item %d classification after retries: %v", item.ID, err)
 			continue
 		}
 
-		if ok := fp.runPhase2(ctx, &item, llmCtx); ok {
-			summarizedCount++
-		}
+		lgr.Printf("[DEBUG] classified item %d: %s (score: %.1f, topics: %s)",
+			item.ID, item.Title, classification.Score, strings.Join(classification.Topics, ", "))
 	}
 
-	lgr.Printf("[INFO] batch processing completed: %d scored, %d summarized (threshold %.1f)",
-		scoredCount, summarizedCount, threshold)
+	lgr.Printf("[INFO] batch processing completed: %d/%d items classified", len(classifications), len(items))
 }
 
-// ProcessItem forces both phases for a single item regardless of threshold.
-// Used for manual triggers (e.g. UpdateFeedNow, ExtractContentNow) where the
-// user has explicitly opted into the cost of full processing.
+// ProcessItem handles extraction and classification for a single item.
+// This is used for manual triggers and backward compatibility.
 func (fp *FeedProcessor) ProcessItem(ctx context.Context, item *domain.Item) {
-	llmCtx := fp.loadClassificationContext(ctx, "item")
-
-	// phase 1
-	scoreReq := llm.ClassifyRequest{
-		Articles:          []domain.Item{*item},
-		Feedbacks:         llmCtx.Feedbacks,
-		CanonicalTopics:   llmCtx.CanonicalTopics,
-		PreferenceSummary: llmCtx.PreferenceSummary,
-		PreferredTopics:   llmCtx.PreferredTopics,
-		AvoidedTopics:     llmCtx.AvoidedTopics,
-	}
-	scores, err := fp.classifier.ScoreArticles(ctx, scoreReq)
-	if err != nil || len(scores) == 0 {
-		lgr.Printf("[WARN] phase-1 scoring failed for item %d: %v", item.ID, err)
-		return
-	}
-	score := scores[0]
-	if err := fp.retryFunc(ctx, func() error {
-		return fp.itemManager.UpdateItemScore(ctx, item.ID, score.Score, score.Topics)
-	}); err != nil {
-		lgr.Printf("[WARN] failed to save phase-1 score for item %d after retries: %v", item.ID, err)
-		return
-	}
-
-	// phase 2 runs unconditionally for manual triggers
-	fp.runPhase2(ctx, item, llmCtx)
-}
-
-// runPhase2 extracts content and runs a per-article LLM summary pass, updating
-// the item with the refined score, explanation, and summary. Returns true on
-// success so callers can track summarization counts.
-func (fp *FeedProcessor) runPhase2(ctx context.Context, item *domain.Item, llmCtx classificationContext) bool {
+	// extract content
 	fp.extractContent(ctx, item)
+
+	// skip classification if extraction failed
 	if item.Content == "" {
-		lgr.Printf("[WARN] skipping phase-2 for item %d: no content extracted", item.ID)
-		return false
+		lgr.Printf("[WARN] skipping classification for item %d: no content extracted", item.ID)
+		return
 	}
 
-	cls, err := fp.classifier.SummarizeArticle(ctx, *item, llm.ClassifyRequest{
-		Feedbacks:         llmCtx.Feedbacks,
-		CanonicalTopics:   llmCtx.CanonicalTopics,
-		PreferenceSummary: llmCtx.PreferenceSummary,
-		PreferredTopics:   llmCtx.PreferredTopics,
-		AvoidedTopics:     llmCtx.AvoidedTopics,
-	})
-	if err != nil {
-		lgr.Printf("[WARN] phase-2 summarize failed for item %d: %v", item.ID, err)
-		return false
-	}
-
-	if err := fp.retryFunc(ctx, func() error {
-		return fp.itemManager.UpdateItemSummary(ctx, item.ID, cls.Score, cls.Explanation, cls.Summary)
-	}); err != nil {
-		lgr.Printf("[WARN] failed to save phase-2 summary for item %d after retries: %v", item.ID, err)
-		return false
-	}
-	lgr.Printf("[DEBUG] phase-2 summarized item %d: %s (score: %.1f)",
-		item.ID, item.Title, cls.Score)
-	return true
-}
-
-// classificationContext bundles the inputs shared across phase 1 and phase 2
-// calls in a batch so we only query feedbacks / topics / preferences once.
-type classificationContext struct {
-	Feedbacks         []domain.FeedbackExample
-	CanonicalTopics   []string
-	PreferenceSummary string
-	PreferredTopics   []string
-	AvoidedTopics     []string
-}
-
-// loadClassificationContext fetches the per-batch LLM context. Errors are
-// logged and fall back to zero values so a missing context never blocks
-// classification entirely.
-func (fp *FeedProcessor) loadClassificationContext(ctx context.Context, label string) classificationContext {
-	var llmCtx classificationContext
-
-	if feedbacks, err := fp.classificationManager.GetRecentFeedback(ctx, "", 50); err != nil {
-		lgr.Printf("[WARN] %s: failed to get feedback examples: %v", label, err)
-	} else {
-		llmCtx.Feedbacks = feedbacks
-	}
-
-	if topics, err := fp.classificationManager.GetTopics(ctx); err != nil {
-		lgr.Printf("[WARN] %s: failed to get canonical topics: %v", label, err)
-	} else {
-		llmCtx.CanonicalTopics = topics
-	}
-
-	if summary, err := fp.settingManager.GetSetting(ctx, "preference_summary"); err != nil {
-		lgr.Printf("[WARN] %s: failed to get preference summary: %v", label, err)
-	} else {
-		llmCtx.PreferenceSummary = summary
-	}
-
-	llmCtx.PreferredTopics, llmCtx.AvoidedTopics = fp.getTopicPreferences(ctx, label)
-	return llmCtx
-}
-
-// getSummaryThreshold returns the configured phase-2 threshold, falling back
-// to domain.DefaultSummaryThreshold when unset or unparseable.
-func (fp *FeedProcessor) getSummaryThreshold(ctx context.Context) float64 {
-	raw, err := fp.settingManager.GetSetting(ctx, domain.SettingSummaryThreshold)
-	if err != nil {
-		lgr.Printf("[WARN] failed to read summary_threshold: %v", err)
-		return domain.DefaultSummaryThreshold
-	}
-	if raw == "" {
-		return domain.DefaultSummaryThreshold
-	}
-	v, err := strconv.ParseFloat(raw, 64)
-	if err != nil {
-		lgr.Printf("[WARN] invalid summary_threshold %q, falling back to %.1f", raw, domain.DefaultSummaryThreshold)
-		return domain.DefaultSummaryThreshold
-	}
-	return v
+	// process as single-item batch
+	fp.ProcessBatch(ctx, []domain.Item{*item})
 }
 
 // UpdateAllFeeds fetches and updates all enabled feeds concurrently.
@@ -517,23 +422,6 @@ func (fp *FeedProcessor) ExtractContentNow(ctx context.Context, itemID int64) er
 	}
 
 	fp.ProcessItem(ctx, item)
-	return nil
-}
-
-// SummarizeItemNow runs Phase 2 (content extraction + LLM summary) for an item
-// on demand. Used for manual user triggers when the item's Phase 1 score was
-// below the auto-summarize threshold but the user wants a summary anyway.
-func (fp *FeedProcessor) SummarizeItemNow(ctx context.Context, itemID int64) error {
-	lgr.Printf("[DEBUG] triggering on-demand summarization for item %d", itemID)
-	item, err := fp.itemManager.GetItem(ctx, itemID)
-	if err != nil {
-		return fmt.Errorf("get item %d: %w", itemID, err)
-	}
-
-	llmCtx := fp.loadClassificationContext(ctx, "summarize")
-	if ok := fp.runPhase2(ctx, item, llmCtx); !ok {
-		return fmt.Errorf("phase-2 summarization failed for item %d", itemID)
-	}
 	return nil
 }
 
