@@ -1538,20 +1538,6 @@ html.dark-theme .moon-icon { opacity: 1; }
     background-color: var(--border-primary);
 }
 
-/* Swipe feedback */
-.article-card.swipe-fired {
-    transition: transform 0.2s ease, opacity 0.2s ease;
-    opacity: 0.4;
-}
-
-.article-card.swipe-fired.swipe-left {
-    transform: translateX(-120%) !important;
-}
-
-.article-card.swipe-fired.swipe-right {
-    transform: translateX(120%) !important;
-}
-
 /* Toast notifications */
 #toast-host {
     position: fixed;
@@ -1802,6 +1788,7 @@ html.dark-theme .moon-icon { opacity: 1; }
     .layout-main {
         margin: 0;
         margin-bottom: 60px;
+        padding-top: 0;
         max-width: 100%;
         border-right: none;
         border-radius: 0;
