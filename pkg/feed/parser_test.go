@@ -42,7 +42,7 @@ func TestParser_Parse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	parser := NewParser(5*time.Second, "TestAgent/1.0")
+	parser := NewParser(5*time.Second, "TestAgent/1.0", "")
 	feed, err := parser.Parse(context.Background(), server.URL)
 	require.NoError(t, err)
 
@@ -93,7 +93,7 @@ func TestParser_Parse_AtomFeed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	parser := NewParser(5*time.Second, "TestAgent/1.0")
+	parser := NewParser(5*time.Second, "TestAgent/1.0", "")
 	feed, err := parser.Parse(context.Background(), server.URL)
 	require.NoError(t, err)
 
@@ -115,7 +115,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		parser := NewParser(5*time.Second, "TestAgent/1.0")
+		parser := NewParser(5*time.Second, "TestAgent/1.0", "")
 		_, err := parser.Parse(context.Background(), server.URL)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "unexpected status code: 500")
@@ -127,7 +127,7 @@ func TestParser_Parse_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		parser := NewParser(5*time.Second, "TestAgent/1.0")
+		parser := NewParser(5*time.Second, "TestAgent/1.0", "")
 		_, err := parser.Parse(context.Background(), server.URL)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "parse feed")
@@ -140,13 +140,13 @@ func TestParser_Parse_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		parser := NewParser(100*time.Millisecond, "TestAgent/1.0")
+		parser := NewParser(100*time.Millisecond, "TestAgent/1.0", "")
 		_, err := parser.Parse(context.Background(), server.URL)
 		require.Error(t, err)
 	})
 
 	t.Run("Invalid URL", func(t *testing.T) {
-		parser := NewParser(5*time.Second, "TestAgent/1.0")
+		parser := NewParser(5*time.Second, "TestAgent/1.0", "")
 		_, err := parser.Parse(context.Background(), "not-a-url")
 		require.Error(t, err)
 	})
@@ -169,7 +169,7 @@ func TestParser_Parse_NoGUID(t *testing.T) {
 	}))
 	defer server.Close()
 
-	parser := NewParser(5*time.Second, "TestAgent/1.0")
+	parser := NewParser(5*time.Second, "TestAgent/1.0", "")
 	feed, err := parser.Parse(context.Background(), server.URL)
 	require.NoError(t, err)
 
@@ -199,7 +199,7 @@ func TestParser_UserAgent(t *testing.T) {
 	defer server.Close()
 
 	expectedUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-	parser := NewParser(5*time.Second, expectedUA)
+	parser := NewParser(5*time.Second, expectedUA, "")
 	_, err := parser.Parse(context.Background(), server.URL)
 	require.NoError(t, err)
 
@@ -210,4 +210,99 @@ func TestParser_UserAgent(t *testing.T) {
 	assert.Contains(t, capturedHeaders.Get("Accept"), "application/rss+xml")
 	assert.NotEmpty(t, capturedHeaders.Get("Accept-Language"))
 	assert.Equal(t, "keep-alive", capturedHeaders.Get("Connection"))
+}
+
+func TestParser_resolveURL(t *testing.T) {
+	tests := []struct {
+		name       string
+		rsshubHost string
+		input      string
+		want       string
+		wantErr    string
+	}{
+		{
+			name:       "non-rsshub URL passes through",
+			rsshubHost: "https://rsshub.app",
+			input:      "https://example.com/feed.xml",
+			want:       "https://example.com/feed.xml",
+		},
+		{
+			name:       "rsshub scheme expanded against host",
+			rsshubHost: "https://rsshub.app",
+			input:      "rsshub:///telegram/channel/durov",
+			want:       "https://rsshub.app/telegram/channel/durov",
+		},
+		{
+			name:       "rsshub scheme without leading slash in path",
+			rsshubHost: "https://rsshub.app",
+			input:      "rsshub://telegram/channel/durov",
+			want:       "https://rsshub.app/telegram/channel/durov",
+		},
+		{
+			name:       "trailing slash on host is trimmed",
+			rsshubHost: "https://rsshub.app/",
+			input:      "rsshub://telegram/channel/durov",
+			want:       "https://rsshub.app/telegram/channel/durov",
+		},
+		{
+			name:       "empty host returns error for rsshub scheme",
+			rsshubHost: "",
+			input:      "rsshub://telegram/channel/durov",
+			wantErr:    "rsshub.host to be configured",
+		},
+		{
+			name:       "empty host passes through plain URLs",
+			rsshubHost: "",
+			input:      "https://example.com/feed.xml",
+			want:       "https://example.com/feed.xml",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := NewParser(time.Second, "UA", tc.rsshubHost)
+			got, err := p.resolveURL(tc.input)
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestParser_Parse_RSSHubScheme(t *testing.T) {
+	rssContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+	<title>RSSHub Feed</title>
+	<link>http://example.com</link>
+	<description>Test</description>
+	<item><title>Item</title><link>http://example.com/1</link></item>
+</channel>
+</rss>`
+
+	var capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Write([]byte(rssContent))
+	}))
+	defer server.Close()
+
+	parser := NewParser(5*time.Second, "TestAgent/1.0", server.URL)
+	feed, err := parser.Parse(context.Background(), "rsshub://telegram/channel/durov")
+	require.NoError(t, err)
+
+	assert.Equal(t, "/telegram/channel/durov", capturedPath)
+	assert.Equal(t, "RSSHub Feed", feed.Title)
+}
+
+func TestParser_Parse_RSSHubScheme_EmptyHost(t *testing.T) {
+	parser := NewParser(5*time.Second, "TestAgent/1.0", "")
+	_, err := parser.Parse(context.Background(), "rsshub://telegram/channel/durov")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rsshub.host to be configured")
 }

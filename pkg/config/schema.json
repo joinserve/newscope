@@ -217,6 +217,10 @@
         "extraction": {
           "$ref": "#/$defs/ExtractionConfig",
           "description": "Content extraction configuration"
+        },
+        "rsshub": {
+          "$ref": "#/$defs/RSSHubConfig",
+          "description": "RSSHub integration for rsshub:// URL scheme"
         }
       },
       "additionalProperties": false,
@@ -226,7 +230,8 @@
         "database",
         "schedule",
         "llm",
-        "extraction"
+        "extraction",
+        "rsshub"
       ]
     },
     "ExtractionConfig": {
@@ -342,6 +347,19 @@
         "system_prompt",
         "use_streaming",
         "classification"
+      ]
+    },
+    "RSSHubConfig": {
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "Base URL of the RSSHub instance used to expand rsshub:// feed URLs (e.g. https://rsshub.app)"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "host"
       ]
     }
   }

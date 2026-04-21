@@ -88,6 +88,7 @@ type Scheduler interface {
 	ExtractContentNow(ctx context.Context, itemID int64) error
 	UpdatePreferenceSummary(ctx context.Context) error
 	TriggerPreferenceUpdate()
+	ParseFeed(ctx context.Context, feedURL string) (*domain.ParsedFeed, error)
 }
 
 // ConfigProvider provides server configuration
@@ -247,14 +248,15 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/topic-tags.html",
 		"templates/topic-dropdowns.html",
 		"templates/controls.html",
-		"templates/preference-summary.html")
+		"templates/preference-summary.html",
+		"templates/feed-preview.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 	}
 
 	// parse page templates
 	pageTemplates := make(map[string]*template.Template)
-	pageNames := []string{"articles.html", "feeds.html", "settings.html", "rss-help.html"}
+	pageNames := []string{"articles.html", "feeds.html", "settings.html", "rss-help.html", "source.html", "rsshub-explorer.html"}
 
 	for _, pageName := range pageNames {
 		tmpl := template.New("").Funcs(funcMap)
@@ -353,7 +355,9 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /", s.articlesHandler)
 	s.router.HandleFunc("GET /articles", s.articlesHandler)
 	s.router.HandleFunc("GET /search", s.searchHandler)
+	s.router.HandleFunc("GET /source/{name}", s.sourceHandler)
 	s.router.HandleFunc("GET /feeds", s.feedsHandler)
+	s.router.HandleFunc("GET /feeds/rsshub", s.rsshubExplorerHandler)
 	s.router.HandleFunc("GET /settings", s.settingsHandler)
 	s.router.HandleFunc("GET /rss-help", s.rssHelpHandler)
 	s.router.HandleFunc("GET /api/v1/rss-builder", s.rssBuilderHandler)
@@ -389,6 +393,13 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /preferences/save", s.preferenceSaveHandler)
 		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
 		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
+
+		// RSSHub integration
+		r.HandleFunc("GET /rsshub/radar/", s.radarProxyHandler)
+		r.HandleFunc("GET /rsshub/categories", s.rsshubCategoriesHandler)
+		r.HandleFunc("GET /rsshub/namespaces", s.rsshubNamespacesHandler)
+		r.HandleFunc("GET /rsshub/namespaces/{name}", s.rsshubNamespaceDetailHandler)
+		r.HandleFunc("GET /rsshub/preview", s.rsshubPreviewHandler)
 	})
 
 	// RSS routes

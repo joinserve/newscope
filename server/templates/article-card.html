@@ -34,7 +34,7 @@
 
     <div class="card-main">
         <header class="card-head">
-            <a href="/search?q={{.FeedName}}" class="feed-name" title="搜尋 {{.FeedName}}">{{.FeedName}}</a>
+            <a href="/source/{{.FeedName}}" class="feed-name" title="顯示 {{.FeedName}} 的文章">{{.FeedName}}</a>
             
             {{if .GetTopics}}
             {{$primaryTopic := index .GetTopics 0}}

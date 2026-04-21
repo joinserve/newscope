@@ -97,7 +97,7 @@ func run(ctx context.Context, opts Opts) error {
 	}
 
 	// setup feed parser and content extractor
-	feedParser := feed.NewParser(cfg.Server.Timeout, cfg.Extraction.UserAgent)
+	feedParser := feed.NewParser(cfg.Server.Timeout, cfg.Extraction.UserAgent, cfg.RSSHub.Host)
 
 	var contentExtractor *content.HTTPExtractor
 	if cfg.Extraction.Enabled {

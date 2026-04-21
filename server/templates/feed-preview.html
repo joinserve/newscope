@@ -1,0 +1,26 @@
+{{if .Error}}
+<div style="padding: 1rem; border-radius: 12px; background-color: var(--danger-color); color: white; margin-bottom: 1rem; font-size: 0.9375rem;">
+    Error fetching feed: {{.Error}}
+</div>
+{{else}}
+<div style="margin-bottom: 1rem; padding: 1.5rem; background-color: var(--bg-tertiary); border: 1px solid var(--border-secondary); border-radius: 16px;">
+    <h4 style="margin-top: 0; margin-bottom: 0.5rem; color: var(--text-primary);">Preview: {{.FeedTitle}}</h4>
+    {{if .FeedDescription}}
+    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">{{.FeedDescription}}</p>
+    {{end}}
+    <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9rem;">
+        {{range .Items}}
+        <li style="margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-secondary);">
+            <a href="{{.Link}}" target="_blank" style="color: var(--text-primary); text-decoration: none; font-weight: 500; display: block; margin-bottom: 0.25rem;">{{.Title}}</a>
+            <div style="color: var(--text-tertiary); font-size: 0.8rem;">
+                {{if not .Published.IsZero}}
+                {{.Published.Format "2006-01-02 15:04"}}
+                {{end}}
+            </div>
+        </li>
+        {{else}}
+        <li style="color: var(--text-secondary);">No items found in this feed.</li>
+        {{end}}
+    </ul>
+</div>
+{{end}}

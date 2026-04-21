@@ -171,7 +171,7 @@ func TestServer_articlesHandler(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w4.Code)
 	assert.Contains(t, w4.Body.String(), "Liked Article")
-	assert.Contains(t, w4.Body.String(), `id="liked-toggle"`) // liked toggle pill is rendered
+	assert.Contains(t, w4.Body.String(), `id="liked-toggle-sidebar"`) // liked toggle pill is rendered
 
 	// test with liked filter using "true" value
 	req5 := httptest.NewRequest("GET", "/articles?liked=true", http.NoBody)
@@ -187,6 +187,11 @@ func TestServer_feedsHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				RSSHub: config.RSSHubConfig{Host: "https://rsshub.app"},
+			}
 		},
 	}
 

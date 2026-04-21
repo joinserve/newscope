@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -363,7 +364,8 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data
 	data := struct {
 		commonPageData
-		Feeds []domain.Feed
+		Feeds      []domain.Feed
+		RSSHubHost string
 	}{
 		commonPageData: commonPageData{
 			ActivePage:   "feeds",
@@ -375,11 +377,52 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 			FilterTopics: topics,
 			FilterFeeds:  activeFeeds,
 		},
-		Feeds: feeds,
+		Feeds:      feeds,
+		RSSHubHost: s.config.GetFullConfig().RSSHub.Host,
 	}
 
 	// render page with base template
 	if err := s.renderPage(w, "feeds.html", data); err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		return
+	}
+}
+
+// rsshubExplorerHandler displays the RSSHub integration page
+func (s *Server) rsshubExplorerHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// check if RSSHub is enabled
+	cfg := s.config.GetFullConfig()
+	if cfg.RSSHub.Host == "" {
+		s.respondWithError(w, http.StatusServiceUnavailable, "RSSHub integration is not configured", nil)
+		return
+	}
+
+	// get topics and feeds for sidebar filters
+	topics, _ := s.db.GetTopicsFiltered(ctx, 0.0)
+	activeFeeds, _ := s.db.GetActiveFeedNames(ctx, 0.0)
+
+	// prepare template data
+	data := struct {
+		commonPageData
+		RSSHubHost string
+	}{
+		commonPageData: commonPageData{
+			ActivePage:   "feeds",
+			IsSearch:     false,
+			SearchQuery:  "",
+			SelectedSort: "",
+			MinScore:     0.0,
+			DateRange:    "all",
+			FilterTopics: topics,
+			FilterFeeds:  activeFeeds,
+		},
+		RSSHubHost: cfg.RSSHub.Host,
+	}
+
+	// render page with base template
+	if err := s.renderPage(w, "rsshub-explorer.html", data); err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
 		return
 	}
@@ -1298,4 +1341,57 @@ func (s *Server) preferenceToggleHandler(w http.ResponseWriter, r *http.Request)
 
 	// return updated view
 	s.preferenceViewHandler(w, r)
+}
+
+// sourceHandler handles requests for a specific feed source page
+func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	feedName := r.PathValue("name")
+
+	feedName, _ = url.QueryUnescape(feedName)
+
+	limit := 100 // Reasonable limit for a single feed view
+
+	// Fetch unread articles
+	unreadReq := domain.ArticlesRequest{
+		FeedName:      feedName,
+		ShowProcessed: false,
+		Limit:         limit,
+	}
+	unreadArticles, err := s.db.GetClassifiedItemsWithFilters(ctx, unreadReq)
+	if err != nil {
+		log.Printf("[ERROR] failed to fetch unread items for source %q: %v", feedName, err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to load unread articles", err)
+		return
+	}
+
+	// Fetch read articles
+	readReq := domain.ArticlesRequest{
+		FeedName:      feedName,
+		ShowProcessed: true,
+		Limit:         limit,
+	}
+	readArticles, err := s.db.GetClassifiedItemsWithFilters(ctx, readReq)
+	if err != nil {
+		log.Printf("[ERROR] failed to fetch read items for source %q: %v", feedName, err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to load read articles", err)
+		return
+	}
+
+	data := struct {
+		ActivePage     string
+		FeedName       string
+		UnreadArticles []domain.ClassifiedItem
+		ReadArticles   []domain.ClassifiedItem
+	}{
+		ActivePage:     feedName, // Display the feed name in the header
+		FeedName:       feedName,
+		UnreadArticles: unreadArticles,
+		ReadArticles:   readArticles,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.pageTemplates["source.html"].Execute(w, data); err != nil {
+		log.Printf("[WARN] failed to render source page: %v", err)
+	}
 }

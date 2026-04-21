@@ -7,6 +7,12 @@ server:
   timeout: "30s"
   page_size: 50              # Articles per page for pagination
   base_url: "http://localhost:8080"  # Base URL for RSS feeds and external links
+  
+# RSSHub integration: when set, feed URLs using the custom
+# rsshub:// scheme are expanded against this host at fetch time.
+# Example: rsshub://telegram/channel/durov -> <host>/telegram/channel/durov
+rsshub:
+  host: ""
 
 database:
   dsn: "./var/newscope.db"

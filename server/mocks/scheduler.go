@@ -6,6 +6,8 @@ package mocks
 import (
 	"context"
 	"sync"
+
+	"github.com/umputun/newscope/pkg/domain"
 )
 
 // SchedulerMock is a mock implementation of server.Scheduler.
@@ -16,6 +18,9 @@ import (
 //		mockedScheduler := &SchedulerMock{
 //			ExtractContentNowFunc: func(ctx context.Context, itemID int64) error {
 //				panic("mock out the ExtractContentNow method")
+//			},
+//			ParseFeedFunc: func(ctx context.Context, feedURL string) (*domain.ParsedFeed, error) {
+//				panic("mock out the ParseFeed method")
 //			},
 //			TriggerPreferenceUpdateFunc: func()  {
 //				panic("mock out the TriggerPreferenceUpdate method")
@@ -36,6 +41,9 @@ type SchedulerMock struct {
 	// ExtractContentNowFunc mocks the ExtractContentNow method.
 	ExtractContentNowFunc func(ctx context.Context, itemID int64) error
 
+	// ParseFeedFunc mocks the ParseFeed method.
+	ParseFeedFunc func(ctx context.Context, feedURL string) (*domain.ParsedFeed, error)
+
 	// TriggerPreferenceUpdateFunc mocks the TriggerPreferenceUpdate method.
 	TriggerPreferenceUpdateFunc func()
 
@@ -54,6 +62,13 @@ type SchedulerMock struct {
 			// ItemID is the itemID argument value.
 			ItemID int64
 		}
+		// ParseFeed holds details about calls to the ParseFeed method.
+		ParseFeed []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// FeedURL is the feedURL argument value.
+			FeedURL string
+		}
 		// TriggerPreferenceUpdate holds details about calls to the TriggerPreferenceUpdate method.
 		TriggerPreferenceUpdate []struct {
 		}
@@ -71,6 +86,7 @@ type SchedulerMock struct {
 		}
 	}
 	lockExtractContentNow       sync.RWMutex
+	lockParseFeed               sync.RWMutex
 	lockTriggerPreferenceUpdate sync.RWMutex
 	lockUpdateFeedNow           sync.RWMutex
 	lockUpdatePreferenceSummary sync.RWMutex
@@ -109,6 +125,42 @@ func (mock *SchedulerMock) ExtractContentNowCalls() []struct {
 	mock.lockExtractContentNow.RLock()
 	calls = mock.calls.ExtractContentNow
 	mock.lockExtractContentNow.RUnlock()
+	return calls
+}
+
+// ParseFeed calls ParseFeedFunc.
+func (mock *SchedulerMock) ParseFeed(ctx context.Context, feedURL string) (*domain.ParsedFeed, error) {
+	if mock.ParseFeedFunc == nil {
+		panic("SchedulerMock.ParseFeedFunc: method is nil but Scheduler.ParseFeed was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		FeedURL string
+	}{
+		Ctx:     ctx,
+		FeedURL: feedURL,
+	}
+	mock.lockParseFeed.Lock()
+	mock.calls.ParseFeed = append(mock.calls.ParseFeed, callInfo)
+	mock.lockParseFeed.Unlock()
+	return mock.ParseFeedFunc(ctx, feedURL)
+}
+
+// ParseFeedCalls gets all the calls that were made to ParseFeed.
+// Check the length with:
+//
+//	len(mockedScheduler.ParseFeedCalls())
+func (mock *SchedulerMock) ParseFeedCalls() []struct {
+	Ctx     context.Context
+	FeedURL string
+} {
+	var calls []struct {
+		Ctx     context.Context
+		FeedURL string
+	}
+	mock.lockParseFeed.RLock()
+	calls = mock.calls.ParseFeed
+	mock.lockParseFeed.RUnlock()
 	return calls
 }
 

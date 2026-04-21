@@ -1,0 +1,595 @@
+{{template "base.html" .}}
+
+{{define "title"}}RSSHub Explorer - Newscope{{end}}
+
+{{define "content"}}
+<div class="feeds-header" style="padding: 1.5rem 1.5rem 0 1.5rem;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <a href="/feeds" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem; border-radius: 8px;">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        </a>
+        <h2 style="margin: 0; font-size: 1.25rem;">RSSHub Explorer</h2>
+    </div>
+</div>
+
+<style>
+.rsshub-page {
+    background-color: var(--bg-primary);
+    min-height: 100vh;
+}
+.view-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+.back-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s;
+}
+.back-btn:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+.rsshub-list {
+    display: flex;
+    flex-direction: column;
+}
+.rsshub-list-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-primary);
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-align: left;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    width: 100%;
+    color: var(--text-primary);
+}
+.rsshub-list-item:hover {
+    background-color: var(--bg-hover);
+}
+.rsshub-list-item:last-child {
+    border-bottom: none;
+}
+.rsshub-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    object-fit: cover;
+}
+.rsshub-avatar-fallback {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+.rsshub-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.rsshub-item-title {
+    font-weight: 600;
+    font-size: 1rem;
+    margin: 0;
+}
+.rsshub-item-desc {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin: 0;
+}
+</style>
+
+<div class="rsshub-page">
+    
+    <!-- Step 1: Categories View -->
+    <div id="view-categories" class="rsshub-content">
+        <h4 style="color: var(--text-secondary); font-size: 0.9375rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; margin-top: 0;">Categories</h4>
+        <div id="categories-grid" class="rsshub-list">
+            <p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading categories...</p>
+        </div>
+    </div>
+
+    <!-- Step 2: Platforms View -->
+    <div id="view-platforms" class="rsshub-content" style="display: none;">
+        <div class="view-header" style="margin-bottom: 1.5rem;">
+            <button class="back-btn" onclick="showView('categories')">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <div>
+                <h3 id="current-category-name" style="margin: 0 0 0.25rem 0; font-size: 1.25rem; text-transform: capitalize;"></h3>
+                <p style="margin: 0; color: var(--text-tertiary); font-size: 0.9375rem;">Platforms</p>
+            </div>
+        </div>
+        <div style="margin-bottom: 1.5rem;">
+            <input type="text" id="rsshub-search" placeholder="Search platforms by name or domain..." class="form-control" style="width: 100%; padding: 1rem 1.25rem; border-radius: 12px; font-size: 1rem; box-sizing: border-box;">
+        </div>
+        <div id="platforms-grid" class="rsshub-list">
+            <p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading platforms...</p>
+        </div>
+    </div>
+
+    <!-- Step 3: Routes View -->
+    <div id="view-routes" class="rsshub-content" style="display: none;">
+        <div class="view-header" style="margin-bottom: 1.5rem;">
+            <button class="back-btn" onclick="showView('platforms')">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div id="current-platform-avatar"></div>
+                <div>
+                    <h3 id="current-platform-name" style="margin: 0 0 0.25rem 0; font-size: 1.25rem;"></h3>
+                    <p id="current-platform-domain" style="margin: 0; color: var(--text-tertiary); font-size: 0.9375rem;"></p>
+                </div>
+            </div>
+        </div>
+        <h4 style="color: var(--text-secondary); font-size: 0.9375rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; margin-top: 0;">Available Resources</h4>
+        <div id="routes-list" class="rsshub-list">
+            <p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading routes...</p>
+        </div>
+    </div>
+
+    <!-- Step 4: Configure Form View -->
+    <div id="view-form" style="display: none;">
+        <div class="rsshub-content" style="padding-bottom: 0;">
+            <div class="view-header" style="margin-bottom: 1rem;">
+                <button class="back-btn" onclick="showView('routes')">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                </button>
+                <div>
+                    <h3 id="current-route-title" style="margin: 0 0 0.25rem 0; font-size: 1.25rem;"></h3>
+                    <p style="margin: 0; color: var(--text-tertiary); font-size: 0.9375rem; font-family: ui-monospace, monospace;" id="current-route-target"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="rsshub-content" style="background-color: var(--bg-primary); border-top: 1px solid var(--border-primary); padding-bottom: 2rem; margin: 0 -1.5rem; padding-left: 1.5rem; padding-right: 1.5rem; padding-top: 1.5rem;">
+            <form hx-post="/api/v1/feeds" 
+                  hx-target="body" 
+                  hx-swap="none"
+                  hx-on::after-request="if(event.detail.xhr.status === 200) { window.location.href='/feeds'; } else { alert('Failed to add feed. Check console.'); console.error(event.detail.xhr.responseText); }">
+                
+                <input type="hidden" id="rsshub-final-url" name="url" required>
+                
+                <div id="params-container"></div>
+                
+                <div class="form-group" style="margin-bottom: 2rem;">
+                    <label style="font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; display: block;">Generated URL Preview:</label>
+                    <code id="rsshub-preview" style="display: block; padding: 1rem; background: var(--bg-tertiary); border-radius: 12px; word-break: break-all; color: var(--text-primary); font-size: 0.9375rem; font-family: ui-monospace, monospace; margin-bottom: 1rem;"></code>
+                    
+                    <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+                        <button type="button" id="btn-preview" class="btn-secondary" onclick="runRSSHubPreview()" style="padding: 0.75rem 1.5rem;">Preview</button>
+                        <div id="preview-status" style="font-size: 0.9375rem; font-weight: 500;"></div>
+                    </div>
+                    <div id="preview-content-container"></div>
+                </div>
+
+                <h4 style="color: var(--text-secondary); font-size: 0.9375rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid var(--border-primary); margin: 0 0 1.5rem 0; padding-top: 1.5rem;">Feed Details</h4>
+
+                <div style="display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 2rem;">
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; display: block;">Title:</label>
+                        <input type="text" id="feed-title-input" name="title" placeholder="Feed title" class="form-control" style="width: 100%; box-sizing: border-box; padding: 0.875rem 1.25rem;">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; display: block;">Icon / Domain:</label>
+                            <input type="text" id="feed-icon-input" name="icon_url" class="form-control" style="width: 100%; box-sizing: border-box; padding: 0.875rem 1.25rem;">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; display: block;">Update Interval (min):</label>
+                            <input type="number" name="fetch_interval" value="30" min="5" max="1440" class="form-control" style="width: 100%; box-sizing: border-box; padding: 0.875rem 1.25rem;">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-actions" style="margin: 0;">
+                    <button type="submit" id="btn-submit" class="btn-primary" disabled style="width: 100%; padding: 1rem; font-size: 1rem; opacity: 0.5; cursor: not-allowed;">Save and Follow</button>
+                    <p id="submit-hint" style="text-align: center; font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem; margin-bottom: 0;">Please test connection to enable saving.</p>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentCategory = null;
+let selectedPlatform = null;
+let selectedRouteTarget = null;
+let currentPlatformRoutesData = null;
+let allPlatforms = [];
+
+    async function initRSSHubExplorer() {
+        try {
+            const response = await fetch('/api/v1/rsshub/categories');
+            if (!response.ok) throw new Error('Failed to fetch categories');
+            const categories = await response.json();
+            
+            renderCategories(categories);
+        } catch (error) {
+            console.error('Error loading RSSHub categories:', error);
+            document.getElementById('categories-grid').innerHTML = '<p style="color: var(--danger-color); padding: 1rem 0; margin: 0;">Error loading categories. Ensure RSSHub is accessible via the configured proxy.</p>';
+        }
+    }
+
+    function renderCategories(categories) {
+        const grid = document.getElementById('categories-grid');
+        grid.innerHTML = '';
+        
+        if (!categories || categories.length === 0) {
+            grid.innerHTML = '<p style="color: var(--text-secondary); padding: 1rem 0; margin: 0;">No categories found.</p>';
+            return;
+        }
+    
+    categories.forEach(category => {
+        const btn = document.createElement('button');
+        btn.className = 'rsshub-list-item';
+        btn.innerHTML = `<div class="rsshub-item-content"><p class="rsshub-item-title" style="text-transform: capitalize;">${category}</p></div>`;
+        btn.onclick = () => loadPlatformsForCategory(category);
+        grid.appendChild(btn);
+    });
+}
+
+async function loadPlatformsForCategory(category) {
+    currentCategory = category;
+    document.getElementById('current-category-name').textContent = category;
+    showView('platforms');
+    
+    document.getElementById('platforms-grid').innerHTML = '<p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading platforms...</p>';
+    document.getElementById('rsshub-search').value = '';
+    
+    try {
+        const response = await fetch(`/api/v1/rsshub/namespaces?category=${encodeURIComponent(category)}`);
+        if (!response.ok) throw new Error('Failed to fetch platforms');
+        allPlatforms = await response.json();
+        renderPlatforms(allPlatforms);
+    } catch (error) {
+        console.error('Error loading RSSHub platforms:', error);
+        document.getElementById('platforms-grid').innerHTML = '<p style="color: var(--danger-color); margin: 0; padding: 1rem 1.5rem;">Error loading platforms.</p>';
+    }
+}
+
+function getAvatarHtml(platformKey, platformName) {
+    return `
+        <img src="https://www.google.com/s2/favicons?domain=${platformKey}&sz=128" 
+             alt="${platformName}" 
+             class="rsshub-avatar" 
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="rsshub-avatar-fallback" style="display:none;">${platformName ? platformName.slice(0,1) : platformKey.slice(0,1)}</div>
+    `;
+}
+
+function renderPlatforms(platforms) {
+    const grid = document.getElementById('platforms-grid');
+    grid.innerHTML = '';
+    
+    if (platforms.length === 0) {
+        grid.innerHTML = '<p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">No platforms found.</p>';
+        return;
+    }
+    
+    platforms.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'rsshub-list-item';
+        const displayName = p.name || p.key;
+        const iconDomain = p.url || p.key;
+        btn.innerHTML = `
+            ${getAvatarHtml(iconDomain, displayName)}
+            <div class="rsshub-item-content">
+                <p class="rsshub-item-title">${displayName}</p>
+                <p class="rsshub-item-desc">${p.key}</p>
+            </div>
+        `;
+        btn.onclick = () => loadPlatformDetails(p);
+        grid.appendChild(btn);
+    });
+}
+
+async function loadPlatformDetails(platform) {
+    selectedPlatform = platform;
+    const displayName = platform.name || platform.key;
+    document.getElementById('current-platform-name').textContent = displayName;
+    document.getElementById('current-platform-domain').textContent = platform.key;
+    
+    showView('routes');
+    const list = document.getElementById('routes-list');
+    list.innerHTML = '<p style="color: var(--text-secondary); padding: 1rem 1.5rem; margin: 0;">Loading routes...</p>';
+    
+    try {
+        const response = await fetch(`/api/v1/rsshub/namespaces/${encodeURIComponent(platform.key)}`);
+        if (!response.ok) throw new Error('Failed to fetch platform details');
+        const detailData = await response.json();
+        
+        // Ensure detailData matches expected rsshubNamespace shape
+        if (!detailData || !detailData.routes) {
+            throw new Error('Invalid platform detail response');
+        }
+        
+        currentPlatformRoutesData = detailData;
+        const iconDomain = detailData.url || platform.key;
+        document.getElementById('current-platform-avatar').innerHTML = getAvatarHtml(iconDomain, displayName);
+
+        renderRoutes(detailData);
+        
+    } catch (error) {
+        console.error('Error loading RSSHub platform details:', error);
+        document.getElementById('routes-list').innerHTML = '<p style="color: var(--danger-color); padding: 1rem 1.5rem; margin: 0;">Error loading routes.</p>';
+    }
+}
+
+function renderRoutes(platformData) {
+    const list = document.getElementById('routes-list');
+    list.innerHTML = '';
+    
+    let hasRoutes = false;
+    
+    // Convert object values to an array for rendering
+    const routesToRender = [];
+    
+    // Handle the specific structure: platformData is an rsshubNamespace object
+    // It has a "routes" map where keys are specific paths, and values are rsshubRoute objects
+    // However, looking closely at your server/rsshub.go, the fetchRSSHubNamespaces returns a map of rsshubNamespace.
+    // The single namespace endpoint /api/namespace/:name returns the rsshubNamespace directly.
+    
+    if (platformData && platformData.routes) {
+        for (const [routePath, routeDef] of Object.entries(platformData.routes)) {
+            // Check if this route matches the current category
+            let matchesCategory = false;
+            if (routeDef.categories && routeDef.categories.length > 0) {
+                matchesCategory = routeDef.categories.includes(currentCategory);
+            }
+            
+            // If we are filtering by category, only show matching routes
+            if (currentCategory && !matchesCategory && routeDef.categories && routeDef.categories.length > 0) {
+                continue;
+            }
+
+            hasRoutes = true;
+            // The route name/title is in routeDef.title in the new /api/namespace/:name endpoint, but it might be nested or undefined.
+            // Let's check for routeDef.name, routeDef.title or default to the path
+            const targetTemplate = routePath;
+            // The title in rsshub namespace response is usually in an array of docs or directly as title.
+            // We'll try to extract it, or use the path.
+            let routeTitle = targetTemplate;
+            if (routeDef.name) routeTitle = routeDef.name;
+            else if (routeDef.title) routeTitle = routeDef.title;
+            else if (routeDef.categories && routeDef.categories.length > 0) routeTitle = targetTemplate + ' (' + routeDef.categories[0] + ')';
+            
+            const btn = document.createElement('button');
+            btn.className = 'rsshub-list-item';
+            btn.innerHTML = `
+                <div class="rsshub-item-content" style="flex: 1;">
+                    <p class="rsshub-item-title">${routeTitle}</p>
+                    <p class="rsshub-item-desc" style="font-family: ui-monospace, monospace;">${targetTemplate}</p>
+                </div>
+                <div style="color: var(--text-tertiary);">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </div>
+            `;
+            btn.onclick = () => selectRoute(routeTitle, targetTemplate);
+            list.appendChild(btn);
+        }
+    }
+    
+    if (!hasRoutes) {
+        list.innerHTML = '<p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">No valid routes found for this platform in this category.</p>';
+    }
+}
+
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function selectRoute(title, targetTemplate) {
+    selectedRouteTarget = targetTemplate;
+    document.getElementById('current-route-title').textContent = title;
+    document.getElementById('current-route-target').textContent = targetTemplate;
+
+    // pre-fill form fields
+    document.getElementById('feed-title-input').value = title;
+    document.getElementById('feed-icon-input').value = currentPlatformRoutesData.url || selectedPlatform.key;
+
+    // look up the route definition so we can surface example/parameter hints
+    const routeDef = (currentPlatformRoutesData && currentPlatformRoutesData.routes && currentPlatformRoutesData.routes[targetTemplate]) || {};
+    const paramHints = (routeDef && typeof routeDef.parameters === 'object' && routeDef.parameters) || {};
+
+    const paramsContainer = document.getElementById('params-container');
+    const paramRegex = /:([a-zA-Z0-9_]+)(\?)?/g;
+    let match;
+    const params = [];
+    paramRegex.lastIndex = 0;
+    while ((match = paramRegex.exec(targetTemplate)) !== null) {
+        if (!params.find(p => p.name === match[1])) {
+            params.push({ name: match[1], optional: !!match[2] });
+        }
+    }
+
+    let paramsHtml = '';
+    if (params.length > 0) {
+        paramsHtml = '<div style="margin-bottom: 2rem; background: var(--bg-tertiary); padding: 1.5rem; border-radius: 12px; margin-left: 0; margin-right: 0;"><h4 style="margin: 0 0 1.25rem 0; color: var(--text-secondary); font-size: 0.9375rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 0;">Route Parameters</h4>';
+        params.forEach(p => {
+            const rawHint = paramHints[p.name];
+            const hintText = typeof rawHint === 'string' ? rawHint : (rawHint && (rawHint.description || rawHint.default)) || '';
+            const hintHtml = hintText
+                ? `<p style="margin: 0.25rem 0 0.5rem; color: var(--text-secondary); font-size: 0.8125rem; line-height: 1.4; white-space: pre-wrap;">${escapeHtml(hintText)}</p>`
+                : '';
+            paramsHtml += `
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+                <label style="display: flex; justify-content: space-between; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">
+                    <span>${escapeHtml(p.name)} ${p.optional ? '<span class="text-muted" style="font-weight: normal;">(optional)</span>' : '<span style="color:var(--danger-color)">*</span>'}</span>
+                </label>
+                ${hintHtml}
+                <input type="text" data-param-name="${escapeHtml(p.name)}" data-param-optional="${p.optional}" class="rsshub-dynamic-param form-control" oninput="updateRoutePreview()" ${p.optional ? '' : 'required'} style="width: 100%; box-sizing: border-box; padding: 0.875rem 1.25rem; font-family: ui-monospace, monospace;">
+            </div>
+            `;
+        });
+        paramsHtml += '</div>';
+    }
+
+    if (routeDef.example) {
+        paramsHtml += `<p style="margin: 0 0 1rem; color: var(--text-secondary); font-size: 0.8125rem;">Example: <code style="background: var(--bg-tertiary); padding: 0.1rem 0.35rem; border-radius: 4px;">${escapeHtml(routeDef.example)}</code></p>`;
+    }
+
+    paramsContainer.innerHTML = paramsHtml;
+    
+    updateRoutePreview();
+    
+    // Use HTMX API to process dynamically added inputs if needed
+    if (window.htmx) {
+        htmx.process(document.getElementById('view-form'));
+    }
+    
+    showView('form');
+}
+
+function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+window.updateRoutePreview = function() {
+    if (!selectedRouteTarget) return;
+
+    const inputs = document.querySelectorAll('.rsshub-dynamic-param');
+    let finalPath = selectedRouteTarget;
+
+    inputs.forEach(input => {
+        const paramName = input.dataset.paramName;
+        const isOptional = input.dataset.paramOptional === 'true';
+        const val = input.value.trim();
+        const encodedVal = val ? encodeURIComponent(val) : '';
+        const namePattern = escapeRegExp(paramName);
+
+        if (val) {
+            // replace every occurrence (optional and non-optional variants)
+            finalPath = finalPath.replace(new RegExp(`:${namePattern}\\?`, 'g'), encodedVal);
+            finalPath = finalPath.replace(new RegExp(`:${namePattern}(?![a-zA-Z0-9_])`, 'g'), encodedVal);
+        } else if (isOptional) {
+            // strip optional segments, including the leading slash so we don't leave "//"
+            finalPath = finalPath.replace(new RegExp(`/:${namePattern}\\?`, 'g'), '');
+            finalPath = finalPath.replace(new RegExp(`:${namePattern}\\?`, 'g'), '');
+        }
+    });
+
+    finalPath = finalPath.replace(/\/+/g, '/').replace(/\/$/, '');
+    // the route template is relative to the namespace; prepend the platform key so the URL resolves upstream
+    const nsKey = (selectedPlatform && selectedPlatform.key) || '';
+    const pathSegment = finalPath.startsWith('/') ? finalPath : '/' + finalPath;
+    const finalUrl = `rsshub://${nsKey}${pathSegment}`.replace(/\/+$/, '');
+    
+    document.getElementById('rsshub-preview').textContent = finalUrl;
+    document.getElementById('rsshub-final-url').value = finalUrl;
+    
+    // Reset preview status when inputs change
+    document.getElementById('preview-status').textContent = '';
+    document.getElementById('preview-content-container').innerHTML = '';
+    const btnSubmit = document.getElementById('btn-submit');
+    btnSubmit.disabled = true;
+    btnSubmit.style.opacity = '0.5';
+    btnSubmit.style.cursor = 'not-allowed';
+    document.getElementById('submit-hint').style.display = 'block';
+};
+
+window.runRSSHubPreview = async function() {
+    const btnPreview = document.getElementById('btn-preview');
+    const statusDiv = document.getElementById('preview-status');
+    const contentContainer = document.getElementById('preview-content-container');
+    const btnSubmit = document.getElementById('btn-submit');
+    const hint = document.getElementById('submit-hint');
+    
+    // Check if required inputs are filled
+    const inputs = document.querySelectorAll('.rsshub-dynamic-param[required]');
+    let allValid = true;
+    inputs.forEach(input => {
+        if (!input.value.trim()) allValid = false;
+    });
+    if (!allValid) {
+        statusDiv.innerHTML = '<span style="color: var(--danger-color);">Please fill in all required parameters first.</span>';
+        contentContainer.innerHTML = '';
+        return;
+    }
+
+    const finalPath = document.getElementById('rsshub-final-url').value;
+    
+    btnPreview.disabled = true;
+    btnPreview.style.opacity = '0.5';
+    statusDiv.innerHTML = '<span style="color: var(--text-secondary);">Loading preview...</span>';
+    contentContainer.innerHTML = '';
+    
+    try {
+        const response = await fetch(`/api/v1/rsshub/preview?url=${encodeURIComponent(finalPath)}`);
+        const html = await response.text();
+        
+        contentContainer.innerHTML = html;
+        
+        // If the response contains an error block (based on the template), we consider it failed
+        if (html.includes('Error fetching feed')) {
+            statusDiv.innerHTML = `<span style="color: var(--danger-color);">✗ Preview failed</span>`;
+            btnSubmit.disabled = true;
+            btnSubmit.style.opacity = '0.5';
+            btnSubmit.style.cursor = 'not-allowed';
+            hint.style.display = 'block';
+        } else {
+            statusDiv.innerHTML = '<span style="color: var(--success-color);">✓ Preview loaded</span>';
+            btnSubmit.disabled = false;
+            btnSubmit.style.opacity = '1';
+            btnSubmit.style.cursor = 'pointer';
+            hint.style.display = 'none';
+        }
+    } catch (error) {
+        statusDiv.innerHTML = '<span style="color: var(--danger-color);">✗ Error connecting to server.</span>';
+        contentContainer.innerHTML = '';
+        console.error('Preview error:', error);
+    } finally {
+        btnPreview.disabled = false;
+        btnPreview.style.opacity = '1';
+    }
+};
+
+function showView(viewName) {
+    document.getElementById('view-categories').style.display = 'none';
+    document.getElementById('view-platforms').style.display = 'none';
+    document.getElementById('view-routes').style.display = 'none';
+    document.getElementById('view-form').style.display = 'none';
+    
+    document.getElementById(`view-${viewName}`).style.display = 'block';
+    window.scrollTo(0, 0);
+}
+
+document.getElementById('rsshub-search').addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    const filtered = allPlatforms.filter(p => {
+        const pName = p.name ? p.name.toLowerCase() : '';
+        const pKey = p.key ? p.key.toLowerCase() : '';
+        return pName.includes(term) || pKey.includes(term);
+    });
+    renderPlatforms(filtered);
+});
+
+document.addEventListener('DOMContentLoaded', initRSSHubExplorer);
+</script>
+{{end}}

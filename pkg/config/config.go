@@ -41,6 +41,13 @@ type Config struct {
 	LLM LLMConfig `yaml:"llm" json:"llm" jsonschema:"description=LLM configuration for article classification"`
 
 	Extraction ExtractionConfig `yaml:"extraction" json:"extraction" jsonschema:"description=Content extraction configuration"`
+
+	RSSHub RSSHubConfig `yaml:"rsshub" json:"rsshub" jsonschema:"description=RSSHub integration for rsshub:// URL scheme"`
+}
+
+// RSSHubConfig holds RSSHub integration settings
+type RSSHubConfig struct {
+	Host string `yaml:"host" json:"host" jsonschema:"description=Base URL of the RSSHub instance used to expand rsshub:// feed URLs (e.g. https://rsshub.app)"`
 }
 
 // ClassificationConfig holds classification-specific settings

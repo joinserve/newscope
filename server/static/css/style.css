@@ -312,6 +312,15 @@ body {
     padding: 0 !important; /* Allow edge-to-edge content */
 }
 
+/* Base style for the content that should look like it's inside the frame */
+.settings-page,
+.feeds-page,
+.rss-help-page,
+.rsshub-page {
+    background-color: transparent;
+    min-height: 100%;
+}
+
 /* Ensure padding is applied to all container inside content-frame */
 .content-frame .container {
     padding: 0 !important;
@@ -337,6 +346,7 @@ footer {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     padding: 0;
     border-right: none;
     background-color: transparent;
@@ -353,11 +363,13 @@ footer {
 
 .sidebar-top {
     height: 60px;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: auto;
-    width: 100%;
 }
 
 .logo-link {
@@ -380,12 +392,13 @@ footer {
     flex-direction: column;
     gap: 1.25rem;
     align-items: center;
-    margin: auto 0;
+    margin: 0;
 }
 
 .sidebar-nav > a,
 .search-toggle,
 .filter-toggle,
+.sidebar-liked-toggle,
 .more-toggle {
     color: var(--text-tertiary);
     text-decoration: none;
@@ -403,6 +416,7 @@ footer {
 .sidebar-nav > a:hover,
 .search-toggle:hover,
 .filter-toggle:hover,
+.sidebar-liked-toggle:hover,
 .more-toggle:hover {
     color: var(--text-primary);
     background-color: var(--bg-tertiary);
@@ -596,6 +610,12 @@ html.dark-theme .moon-icon { opacity: 1; }
     padding: 0;
 }
 
+/* Base style for the new RSSHub Explorer content structure */
+.rsshub-page {
+    background-color: transparent;
+    min-height: 100%;
+}
+
 /* Page Headers (Settings, Feeds, RSS Help) */
 .feeds-header, .rss-help-header, .settings-header {
     padding: 1.5rem 1.5rem 1rem;
@@ -624,8 +644,47 @@ html.dark-theme .moon-icon { opacity: 1; }
 }
 
 /* Content Area for other pages */
-.feeds-list, .rss-help-content, .settings-tab-content {
+.feeds-list, .rss-help-content, .settings-tab-content, .rsshub-page {
     padding: 1.5rem;
+}
+
+.rsshub-page {
+    padding: 1.5rem;
+}
+
+.rsshub-content {
+    margin: 0;
+}
+
+.rsshub-list {
+    border-top: 1px solid var(--border-primary);
+    border-bottom: 1px solid var(--border-primary);
+    margin: 0 -1.5rem;
+}
+
+.rsshub-list-item {
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border-primary);
+    cursor: pointer;
+    transition: background-color 0.2s;
+    text-align: left;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    width: 100%;
+    color: var(--text-primary);
+}
+
+.rsshub-list-item:hover {
+    background-color: var(--bg-hover);
+}
+
+.rsshub-list-item:last-child {
+    border-bottom: none;
 }
 
 /* Settings Tabs */
@@ -846,7 +905,10 @@ html.dark-theme .moon-icon { opacity: 1; }
 }
 
 .feed-actions button,
-.form-actions button {
+.form-actions button,
+.btn-primary,
+.btn-secondary,
+.btn-danger {
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
     font-weight: 600;
@@ -854,6 +916,10 @@ html.dark-theme .moon-icon { opacity: 1; }
     cursor: pointer;
     border: none;
     transition: background-color 0.2s, opacity 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-primary {
@@ -1140,6 +1206,35 @@ html.dark-theme .moon-icon { opacity: 1; }
 }
 
 /* Ensure article cards don't get double padding and look consistent */
+.no-articles {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+    font-size: 0.9375rem;
+}
+
+/* Source Page */
+.source-page-container {
+    padding: 0;
+    width: 100%;
+}
+.source-section-title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    padding: 1.5rem 1.5rem 0.5rem;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.source-separator {
+    height: 12px;
+    background-color: var(--bg-tertiary);
+    border-top: 1px solid var(--border-primary);
+    border-bottom: 1px solid var(--border-primary);
+    margin: 1rem 0;
+}
+
 .article-card {
     display: grid;
     grid-template-columns: 48px 1fr;

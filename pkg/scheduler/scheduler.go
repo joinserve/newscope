@@ -248,6 +248,11 @@ func (s *Scheduler) feedUpdateWorker(ctx context.Context, processCh chan<- domai
 	}
 }
 
+// ParseFeed parses a feed url immediately without saving
+func (s *Scheduler) ParseFeed(ctx context.Context, feedURL string) (*domain.ParsedFeed, error) {
+	return s.feedProcessor.parser.Parse(ctx, feedURL)
+}
+
 // UpdateFeedNow triggers immediate update of a specific feed
 func (s *Scheduler) UpdateFeedNow(ctx context.Context, feedID int64) error {
 	return s.feedProcessor.UpdateFeedNow(ctx, feedID)
