@@ -1855,6 +1855,15 @@ html.dark-theme .moon-icon { opacity: 1; }
         transform: none;
     }
 
+    .more-menu {
+        bottom: calc(100% + 10px);
+        left: auto;
+        right: 0;
+        margin-left: 0;
+        width: 200px;
+        box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
+    }
+
     .preference-summary-header {
         flex-direction: column;
         gap: 1rem;
