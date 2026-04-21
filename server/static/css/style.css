@@ -383,7 +383,7 @@ footer {
     margin: auto 0;
 }
 
-.sidebar-nav a,
+.sidebar-nav > a,
 .search-toggle,
 .filter-toggle,
 .more-toggle {
@@ -400,7 +400,7 @@ footer {
     border-radius: 12px;
 }
 
-.sidebar-nav a:hover,
+.sidebar-nav > a:hover,
 .search-toggle:hover,
 .filter-toggle:hover,
 .more-toggle:hover {
@@ -408,7 +408,7 @@ footer {
     background-color: var(--bg-tertiary);
 }
 
-.sidebar-nav a.active {
+.sidebar-nav > a.active {
     color: var(--text-primary);
 }
 
