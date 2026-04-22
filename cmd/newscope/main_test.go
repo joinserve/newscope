@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -123,31 +124,48 @@ func TestRun_ServerStartStop(t *testing.T) {
 
 func TestSetupLog(t *testing.T) {
 	t.Run("debug mode enabled", func(t *testing.T) {
-		// capture log output to verify debug mode
-		setupLog(true, false)
-		// the function should complete without panic
-		// we can't easily test logger configuration directly
+		closer, err := setupLog(true, false, "")
+		require.NoError(t, err)
+		closer()
 	})
 
 	t.Run("debug mode disabled", func(t *testing.T) {
-		setupLog(false, false)
-		// the function should complete without panic
+		closer, err := setupLog(false, false, "")
+		require.NoError(t, err)
+		closer()
 	})
 
 	t.Run("with secrets", func(t *testing.T) {
-		// test that secrets are passed through to logger
-		setupLog(true, false, "secret1", "secret2")
-		// the function should complete without panic
-		// secrets configuration is internal to lgr
+		closer, err := setupLog(true, false, "", "secret1", "secret2")
+		require.NoError(t, err)
+		closer()
 	})
 
 	t.Run("no color mode", func(t *testing.T) {
-		// test that the function works without color
 		oldNoColor := os.Getenv("NO_COLOR")
 		os.Setenv("NO_COLOR", "1")
 		defer os.Setenv("NO_COLOR", oldNoColor)
 
-		setupLog(false, false)
-		// the function should complete without panic
+		closer, err := setupLog(false, false, "")
+		require.NoError(t, err)
+		closer()
+	})
+
+	t.Run("log to file with rotation", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.log")
+		// pre-create a stale file to verify rotation
+		require.NoError(t, os.WriteFile(path, []byte("old\n"), 0o644))
+
+		closer, err := setupLog(false, true, path)
+		require.NoError(t, err)
+		defer closer()
+
+		_, err = os.Stat(path)
+		require.NoError(t, err, "fresh log file must exist")
+
+		matches, err := filepath.Glob(path + ".*")
+		require.NoError(t, err)
+		require.Len(t, matches, 1, "previous log should be rotated to a timestamped file")
 	})
 }
