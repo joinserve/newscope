@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -229,6 +230,119 @@ func (r *BeatRepository) pickAttachableBeat(ctx context.Context, tx *sqlx.Tx, ve
 		return c.id, nil
 	}
 	return 0, nil
+}
+
+// ListPendingMerge returns up to limit beats that have no canonical_summary yet
+// and have more than one member, with their member items loaded. The returned
+// ClassifiedItems are populated with Title, Summary, and Topics only — sufficient
+// for the Merger to produce a canonical representation.
+func (r *BeatRepository) ListPendingMerge(ctx context.Context, limit int) ([]domain.Beat, error) {
+	beatIDs, err := r.pendingMergeIDs(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(beatIDs) == 0 {
+		return nil, nil
+	}
+	return r.loadBeatMembers(ctx, beatIDs)
+}
+
+// pendingMergeIDs returns IDs of beats with canonical_summary IS NULL and >1 member.
+func (r *BeatRepository) pendingMergeIDs(ctx context.Context, limit int) ([]int64, error) {
+	rows, err := r.db.QueryxContext(ctx, `
+		SELECT b.id
+		FROM beats b
+		WHERE b.canonical_summary IS NULL
+		  AND (SELECT COUNT(*) FROM beat_members WHERE beat_id = b.id) > 1
+		ORDER BY b.id
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list pending merge ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan beat id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// loadBeatMembers fetches member items for the given beat IDs and assembles []domain.Beat.
+func (r *BeatRepository) loadBeatMembers(ctx context.Context, beatIDs []int64) ([]domain.Beat, error) {
+	// build IN clause — beatIDs are int64 from the DB, no user input
+	query, args, err := sqlx.In(`
+		SELECT bm.beat_id, i.id AS item_id, i.title, i.summary, i.topics
+		FROM beat_members bm
+		JOIN items i ON i.id = bm.item_id
+		WHERE bm.beat_id IN (?)
+		ORDER BY bm.beat_id, bm.added_at`, beatIDs)
+	if err != nil {
+		return nil, fmt.Errorf("build members query: %w", err)
+	}
+	query = r.db.Rebind(query)
+
+	rows, err := r.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("load beat members: %w", err)
+	}
+	defer rows.Close()
+
+	beatMap := make(map[int64]*domain.Beat, len(beatIDs))
+	for _, id := range beatIDs {
+		beatMap[id] = &domain.Beat{ID: id}
+	}
+
+	for rows.Next() {
+		var row struct {
+			BeatID  int64  `db:"beat_id"`
+			ItemID  int64  `db:"item_id"`
+			Title   string `db:"title"`
+			Summary string `db:"summary"`
+			Topics  string `db:"topics"` // JSON array
+		}
+		if err := rows.StructScan(&row); err != nil {
+			return nil, fmt.Errorf("scan beat member: %w", err)
+		}
+		var topics []string
+		if row.Topics != "" && row.Topics != "null" {
+			if err := json.Unmarshal([]byte(row.Topics), &topics); err != nil {
+				topics = nil // tolerate malformed JSON
+			}
+		}
+		b := beatMap[row.BeatID]
+		item := domain.Item{ID: row.ItemID, Title: row.Title, Summary: row.Summary}
+		b.Members = append(b.Members, domain.ClassifiedItem{
+			Item:           &item,
+			Classification: &domain.Classification{Topics: topics, Summary: row.Summary},
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("beat member rows: %w", err)
+	}
+
+	beats := make([]domain.Beat, 0, len(beatIDs))
+	for _, id := range beatIDs {
+		beats = append(beats, *beatMap[id])
+	}
+	return beats, nil
+}
+
+// SaveCanonical stores the LLM-generated canonical title and summary for a beat.
+func (r *BeatRepository) SaveCanonical(ctx context.Context, beatID int64, c domain.BeatCanonical) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE beats SET canonical_title = ?, canonical_summary = ?,
+		  updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+		 WHERE id = ?`,
+		c.Title, c.Summary, beatID)
+	if err != nil {
+		return fmt.Errorf("save canonical: %w", err)
+	}
+	return nil
 }
 
 // MarkViewed records that the user has viewed this beat at the current time;

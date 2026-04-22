@@ -8,6 +8,7 @@
 //go:generate moq -out mocks/embedder.go -pkg mocks -skip-ensure -fmt goimports . Embedder
 //go:generate moq -out mocks/embed_store.go -pkg mocks -skip-ensure -fmt goimports . EmbedStore
 //go:generate moq -out mocks/beat_store.go -pkg mocks -skip-ensure -fmt goimports . BeatStore
+//go:generate moq -out mocks/merger.go -pkg mocks -skip-ensure -fmt goimports . Merger
 
 package scheduler
 
@@ -31,6 +32,7 @@ type Scheduler struct {
 	preferenceManager *PreferenceManager
 	embedWorker       *EmbedWorker
 	beatWorker        *BeatWorker
+	mergeWorker       *MergeWorker
 	itemManager       ItemManager
 
 	updateInterval     time.Duration
@@ -94,6 +96,16 @@ type BeatStore interface {
 	// beat was created for this item; seeded=false when the item was attached
 	// to an existing beat.
 	AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (beatID int64, seeded bool, err error)
+	// ListPendingMerge returns up to limit beats that have no canonical_summary
+	// and more than one member, with member items loaded for the Merger.
+	ListPendingMerge(ctx context.Context, limit int) ([]domain.Beat, error)
+	// SaveCanonical stores the LLM-generated canonical title and summary.
+	SaveCanonical(ctx context.Context, beatID int64, c domain.BeatCanonical) error
+}
+
+// Merger produces a canonical title and summary for a beat from its member items.
+type Merger interface {
+	Merge(ctx context.Context, members []domain.ClassifiedItem) (domain.BeatCanonical, error)
 }
 
 // ClassificationManager handles classification operations for scheduler
@@ -140,6 +152,7 @@ type Params struct {
 	Embedder   Embedder
 	EmbedStore EmbedStore
 	BeatStore  BeatStore
+	Merger     Merger
 
 	// configuration
 	UpdateInterval             time.Duration
@@ -158,6 +171,9 @@ type Params struct {
 	BeatMaxMembers int
 	BeatInterval   time.Duration
 	BeatBatchSize  int
+	// merge worker configuration
+	MergeInterval  time.Duration
+	MergeBatchSize int
 	// retry configuration for database operations
 	RetryAttempts     int           // number of retry attempts (default: 5)
 	RetryInitialDelay time.Duration // initial retry delay (default: 100ms)
@@ -241,6 +257,20 @@ func NewScheduler(params Params) *Scheduler {
 		})
 	}
 
+	// initialize merge worker when beats feature and merger are both enabled
+	if params.BeatStore != nil && params.Merger != nil {
+		interval := params.MergeInterval
+		if interval <= 0 {
+			interval = params.UpdateInterval
+		}
+		s.mergeWorker = NewMergeWorker(MergeWorkerConfig{
+			Store:     params.BeatStore,
+			Merger:    params.Merger,
+			Interval:  interval,
+			BatchSize: params.MergeBatchSize,
+		})
+	}
+
 	return s
 }
 
@@ -288,6 +318,15 @@ func (s *Scheduler) Start(ctx context.Context) {
 		go func() {
 			defer s.wg.Done()
 			s.beatWorker.Run(ctx)
+		}()
+	}
+
+	// start merge worker if beats feature and merger are enabled
+	if s.mergeWorker != nil {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.mergeWorker.Run(ctx)
 		}()
 	}
 

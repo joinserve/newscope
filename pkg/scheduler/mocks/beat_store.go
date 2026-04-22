@@ -23,6 +23,12 @@ import (
 //			GetUnbeatItemsFunc: func(ctx context.Context, limit int) ([]domain.BeatCandidate, error) {
 //				panic("mock out the GetUnbeatItems method")
 //			},
+//			ListPendingMergeFunc: func(ctx context.Context, limit int) ([]domain.Beat, error) {
+//				panic("mock out the ListPendingMerge method")
+//			},
+//			SaveCanonicalFunc: func(ctx context.Context, beatID int64, c domain.BeatCanonical) error {
+//				panic("mock out the SaveCanonical method")
+//			},
 //		}
 //
 //		// use mockedBeatStore in code that requires scheduler.BeatStore
@@ -35,6 +41,12 @@ type BeatStoreMock struct {
 
 	// GetUnbeatItemsFunc mocks the GetUnbeatItems method.
 	GetUnbeatItemsFunc func(ctx context.Context, limit int) ([]domain.BeatCandidate, error)
+
+	// ListPendingMergeFunc mocks the ListPendingMerge method.
+	ListPendingMergeFunc func(ctx context.Context, limit int) ([]domain.Beat, error)
+
+	// SaveCanonicalFunc mocks the SaveCanonical method.
+	SaveCanonicalFunc func(ctx context.Context, beatID int64, c domain.BeatCanonical) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -58,9 +70,27 @@ type BeatStoreMock struct {
 			// Limit is the limit argument value.
 			Limit int
 		}
+		// ListPendingMerge holds details about calls to the ListPendingMerge method.
+		ListPendingMerge []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Limit is the limit argument value.
+			Limit int
+		}
+		// SaveCanonical holds details about calls to the SaveCanonical method.
+		SaveCanonical []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// BeatID is the beatID argument value.
+			BeatID int64
+			// C is the c argument value.
+			C domain.BeatCanonical
+		}
 	}
-	lockAttachOrSeed   sync.RWMutex
-	lockGetUnbeatItems sync.RWMutex
+	lockAttachOrSeed     sync.RWMutex
+	lockGetUnbeatItems   sync.RWMutex
+	lockListPendingMerge sync.RWMutex
+	lockSaveCanonical    sync.RWMutex
 }
 
 // AttachOrSeed calls AttachOrSeedFunc.
@@ -144,5 +174,81 @@ func (mock *BeatStoreMock) GetUnbeatItemsCalls() []struct {
 	mock.lockGetUnbeatItems.RLock()
 	calls = mock.calls.GetUnbeatItems
 	mock.lockGetUnbeatItems.RUnlock()
+	return calls
+}
+
+// ListPendingMerge calls ListPendingMergeFunc.
+func (mock *BeatStoreMock) ListPendingMerge(ctx context.Context, limit int) ([]domain.Beat, error) {
+	if mock.ListPendingMergeFunc == nil {
+		panic("BeatStoreMock.ListPendingMergeFunc: method is nil but BeatStore.ListPendingMerge was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Limit int
+	}{
+		Ctx:   ctx,
+		Limit: limit,
+	}
+	mock.lockListPendingMerge.Lock()
+	mock.calls.ListPendingMerge = append(mock.calls.ListPendingMerge, callInfo)
+	mock.lockListPendingMerge.Unlock()
+	return mock.ListPendingMergeFunc(ctx, limit)
+}
+
+// ListPendingMergeCalls gets all the calls that were made to ListPendingMerge.
+// Check the length with:
+//
+//	len(mockedBeatStore.ListPendingMergeCalls())
+func (mock *BeatStoreMock) ListPendingMergeCalls() []struct {
+	Ctx   context.Context
+	Limit int
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Limit int
+	}
+	mock.lockListPendingMerge.RLock()
+	calls = mock.calls.ListPendingMerge
+	mock.lockListPendingMerge.RUnlock()
+	return calls
+}
+
+// SaveCanonical calls SaveCanonicalFunc.
+func (mock *BeatStoreMock) SaveCanonical(ctx context.Context, beatID int64, c domain.BeatCanonical) error {
+	if mock.SaveCanonicalFunc == nil {
+		panic("BeatStoreMock.SaveCanonicalFunc: method is nil but BeatStore.SaveCanonical was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		BeatID int64
+		C      domain.BeatCanonical
+	}{
+		Ctx:    ctx,
+		BeatID: beatID,
+		C:      c,
+	}
+	mock.lockSaveCanonical.Lock()
+	mock.calls.SaveCanonical = append(mock.calls.SaveCanonical, callInfo)
+	mock.lockSaveCanonical.Unlock()
+	return mock.SaveCanonicalFunc(ctx, beatID, c)
+}
+
+// SaveCanonicalCalls gets all the calls that were made to SaveCanonical.
+// Check the length with:
+//
+//	len(mockedBeatStore.SaveCanonicalCalls())
+func (mock *BeatStoreMock) SaveCanonicalCalls() []struct {
+	Ctx    context.Context
+	BeatID int64
+	C      domain.BeatCanonical
+} {
+	var calls []struct {
+		Ctx    context.Context
+		BeatID int64
+		C      domain.BeatCanonical
+	}
+	mock.lockSaveCanonical.RLock()
+	calls = mock.calls.SaveCanonical
+	mock.lockSaveCanonical.RUnlock()
 	return calls
 }

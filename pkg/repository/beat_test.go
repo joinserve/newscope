@@ -159,9 +159,9 @@ func TestBeatRepository_AttachOrSeed_SpillsToSecondBestWhenNearestFull(t *testin
 
 	// 2D vectors at known angles from the x-axis so both beats sit above
 	// threshold for B while A is clearly the nearest.
-	vecA := []float32{1, 0, 0}                 // 0° — seeds beat A
-	vecC := []float32{0.819, 0.574, 0}         // 35° — cos(A,C)=0.819 < 0.85, separate beat
-	vecB := []float32{0.966, 0.259, 0}         // 15° — cos(A,B)=0.966, cos(C,B)=cos(20°)=0.940
+	vecA := []float32{1, 0, 0}         // 0° — seeds beat A
+	vecC := []float32{0.819, 0.574, 0} // 35° — cos(A,C)=0.819 < 0.85, separate beat
+	vecB := []float32{0.966, 0.259, 0} // 15° — cos(A,B)=0.966, cos(C,B)=cos(20°)=0.940
 
 	a1 := mkItem(pub, "a1", vecA)
 	a2 := mkItem(pub.Add(time.Hour), "a2", vecA)
@@ -176,13 +176,13 @@ func TestBeatRepository_AttachOrSeed_SpillsToSecondBestWhenNearestFull(t *testin
 		domain.BeatCandidate{ItemID: a2, Vector: vecA, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 2)
 	require.NoError(t, err)
 	require.Equal(t, beatA, beatA2)
-	// C is below threshold to A — seeds beat C
+	// c is below threshold to A — seeds beat C
 	beatC, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: c1, Vector: vecC, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 2)
 	require.NoError(t, err)
 	require.NotEqual(t, beatA, beatC)
 
-	// B's nearest is beat A (full) — must spill to beat C, not seed a third
+	// b's nearest is beat A (full) — must spill to beat C, not seed a third
 	beatB, seededB, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: b1, Vector: vecB, PublishedAt: pub.Add(3 * time.Hour)}, 0.85, 48*time.Hour, 2)
 	require.NoError(t, err)
@@ -345,4 +345,122 @@ func TestBeatRepository_PropertyEveryItemInExactlyOneBeat(t *testing.T) {
 			`SELECT COUNT(*) FROM beat_members WHERE item_id = ?`, id))
 		assert.Equal(t, 1, n, "item %d must be in exactly one beat", id)
 	}
+}
+
+func TestBeatRepository_ListPendingMerge_OnlyMultiMember(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	// beat with 2 members — qualifies for merge
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	b1, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// singleton beat — must not appear in pending
+	id3 := mkItem(pub.Add(2*time.Hour), "c", []float32{0, 1, 0})
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id3, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, beats, 1, "only the 2-member beat should be pending")
+	assert.Equal(t, b1, beats[0].ID)
+	assert.Len(t, beats[0].Members, 2)
+	// members carry title and topics
+	titles := []string{beats[0].Members[0].Title, beats[0].Members[1].Title}
+	assert.ElementsMatch(t, []string{"a", "b"}, titles)
+}
+
+func TestBeatRepository_ListPendingMerge_ExcludesAlreadyMerged(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// once canonical_summary is set, beat must not appear again
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "Title", Summary: "Summary"}))
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	assert.Empty(t, beats, "merged beat must not be returned again")
+}
+
+func TestBeatRepository_ListPendingMerge_RespectsLimit(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	// create 3 separate 2-member beats via distinct vectors
+	vecs := [][2][]float32{
+		{{1, 0, 0}, {1, 0, 0}},
+		{{0, 1, 0}, {0, 1, 0}},
+		{{0, 0, 1}, {0, 0, 1}},
+	}
+	for i, pair := range vecs {
+		offset := time.Duration(i*4) * time.Hour
+		i1 := mkItem(pub.Add(offset), fmt.Sprintf("x%d", i*2), pair[0])
+		i2 := mkItem(pub.Add(offset+time.Hour), fmt.Sprintf("x%d", i*2+1), pair[1])
+		_, _, err := repos.Beat.AttachOrSeed(ctx,
+			domain.BeatCandidate{ItemID: i1, Vector: pair[0], PublishedAt: pub.Add(offset)}, 0.85, 48*time.Hour, 20)
+		require.NoError(t, err)
+		_, _, err = repos.Beat.AttachOrSeed(ctx,
+			domain.BeatCandidate{ItemID: i2, Vector: pair[1], PublishedAt: pub.Add(offset + time.Hour)}, 0.85, 48*time.Hour, 20)
+		require.NoError(t, err)
+	}
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 2)
+	require.NoError(t, err)
+	assert.Len(t, beats, 2, "limit should be respected")
+}
+
+func TestBeatRepository_SaveCanonical(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	err = repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "Canonical Title",
+		Summary: "Canonical summary of the beat.",
+	})
+	require.NoError(t, err)
+
+	var title, summary string
+	require.NoError(t, repos.DB.GetContext(ctx, &title,
+		`SELECT canonical_title FROM beats WHERE id = ?`, beatID))
+	require.NoError(t, repos.DB.GetContext(ctx, &summary,
+		`SELECT canonical_summary FROM beats WHERE id = ?`, beatID))
+	assert.Equal(t, "Canonical Title", title)
+	assert.Equal(t, "Canonical summary of the beat.", summary)
 }
