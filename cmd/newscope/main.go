@@ -17,6 +17,7 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/content"
+	"github.com/umputun/newscope/pkg/features"
 	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/pkg/llm"
 	"github.com/umputun/newscope/pkg/repository"
@@ -142,6 +143,13 @@ func run(ctx context.Context, opts Opts) error {
 		RetryInitialDelay:          cfg.Schedule.RetryInitialDelay,
 		RetryMaxDelay:              cfg.Schedule.RetryMaxDelay,
 		RetryJitter:                cfg.Schedule.RetryJitter,
+	}
+
+	if features.BeatsEnabled(*cfg) {
+		embedder := scheduler.NewOpenAIEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Endpoint, cfg.Embedding.Model)
+		params.Embedder = embedder
+		params.EmbedStore = repos.Embedding
+		params.EmbedModel = cfg.Embedding.Model
 	}
 	sched := scheduler.NewScheduler(params)
 	sched.Start(ctx)

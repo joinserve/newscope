@@ -20,8 +20,10 @@ type Item struct {
 	Content     string
 	Author      string
 	Published   time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// summary is the LLM-generated article summary, set after classification.
+	Summary   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // ExtractedContent represents extracted article content

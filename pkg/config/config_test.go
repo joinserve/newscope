@@ -404,4 +404,143 @@ func TestConfig_ValidateEdgeCases(t *testing.T) {
 		err := validate(cfg)
 		assert.NoError(t, err)
 	})
+
+	t.Run("embedding provider set without model", func(t *testing.T) {
+		cfg := &Config{
+			LLM: LLMConfig{
+				Endpoint: "https://api.openai.com/v1",
+				APIKey:   "test-key",
+				Model:    "gpt-4",
+			},
+			Server: struct {
+				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+			}{
+				Timeout:  time.Second,
+				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
+			},
+			Embedding: EmbeddingConfig{Provider: "openai"},
+			Beats:     BeatsConfig{SimThreshold: 0.85, MaxMembers: 20},
+		}
+		err := validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "embedding.model is required")
+	})
+
+	t.Run("beats sim_threshold out of range", func(t *testing.T) {
+		cfg := &Config{
+			LLM: LLMConfig{
+				Endpoint: "https://api.openai.com/v1",
+				APIKey:   "test-key",
+				Model:    "gpt-4",
+			},
+			Server: struct {
+				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+			}{
+				Timeout:  time.Second,
+				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
+			},
+			Beats: BeatsConfig{SimThreshold: 1.5, MaxMembers: 20},
+		}
+		err := validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "beats.sim_threshold must be between 0 and 1")
+	})
+
+	t.Run("beats max_members too low", func(t *testing.T) {
+		cfg := &Config{
+			LLM: LLMConfig{
+				Endpoint: "https://api.openai.com/v1",
+				APIKey:   "test-key",
+				Model:    "gpt-4",
+			},
+			Server: struct {
+				Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+				Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+				PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+				BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+			}{
+				Timeout:  time.Second,
+				PageSize: 1,
+				BaseURL:  "http://localhost:8080",
+			},
+			Beats: BeatsConfig{SimThreshold: 0.85, MaxMembers: -1},
+		}
+		err := validate(cfg)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "beats.max_members must be at least 1")
+	})
+}
+
+func TestLoad_BeatsConfig(t *testing.T) {
+	baseConfig := `
+llm:
+  endpoint: http://localhost:11434/v1
+  api_key: test-api-key
+  model: llama3
+`
+
+	t.Run("beats defaults applied when absent", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		err := os.WriteFile(configPath, []byte(baseConfig), 0o644)
+		require.NoError(t, err)
+
+		cfg, err := Load(configPath)
+		require.NoError(t, err)
+
+		assert.Empty(t, cfg.Embedding.Provider)
+		assert.InEpsilon(t, 0.85, cfg.Beats.SimThreshold, 1e-9)
+		assert.Equal(t, 48*time.Hour, cfg.Beats.Window)
+		assert.Equal(t, 20, cfg.Beats.MaxMembers)
+	})
+
+	t.Run("explicit beats config overrides defaults", func(t *testing.T) {
+		content := baseConfig + `
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  api_key: sk-test
+beats:
+  sim_threshold: 0.9
+  window: 24h
+  max_members: 10
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		err := os.WriteFile(configPath, []byte(content), 0o644)
+		require.NoError(t, err)
+
+		cfg, err := Load(configPath)
+		require.NoError(t, err)
+
+		assert.Equal(t, "openai", cfg.Embedding.Provider)
+		assert.Equal(t, "text-embedding-3-small", cfg.Embedding.Model)
+		assert.InEpsilon(t, 0.9, cfg.Beats.SimThreshold, 1e-9)
+		assert.Equal(t, 24*time.Hour, cfg.Beats.Window)
+		assert.Equal(t, 10, cfg.Beats.MaxMembers)
+	})
+
+	t.Run("provider set without model fails validation", func(t *testing.T) {
+		content := baseConfig + `
+embedding:
+  provider: openai
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		err := os.WriteFile(configPath, []byte(content), 0o644)
+		require.NoError(t, err)
+
+		cfg, err := Load(configPath)
+		require.Error(t, err)
+		assert.Nil(t, cfg)
+		assert.Contains(t, err.Error(), "embedding.model is required")
+	})
 }

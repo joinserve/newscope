@@ -376,6 +376,27 @@ func (r *ItemRepository) GetItemWithExtractedContent(ctx context.Context, id int
 	return item, nil
 }
 
+// GetUnembeddedItems returns classified items that do not yet have an embedding vector.
+func (r *ItemRepository) GetUnembeddedItems(ctx context.Context, limit int) ([]domain.Item, error) {
+	query := `
+		SELECT * FROM items
+		WHERE classified_at IS NOT NULL
+		AND id NOT IN (SELECT item_id FROM item_embeddings)
+		ORDER BY classified_at ASC
+		LIMIT ?
+	`
+	var sqlItems []itemSQL
+	if err := r.db.SelectContext(ctx, &sqlItems, query, limit); err != nil {
+		return nil, fmt.Errorf("get unembedded items: %w", err)
+	}
+
+	items := make([]domain.Item, len(sqlItems))
+	for i, item := range sqlItems {
+		items[i] = *r.toDomainItem(&item)
+	}
+	return items, nil
+}
+
 // toDomainItem converts itemSQL to domain.Item
 func (r *ItemRepository) toDomainItem(sqlItem *itemSQL) *domain.Item {
 	return &domain.Item{
@@ -388,6 +409,7 @@ func (r *ItemRepository) toDomainItem(sqlItem *itemSQL) *domain.Item {
 		Content:     sqlItem.Content,
 		Author:      sqlItem.Author,
 		Published:   sqlItem.Published,
+		Summary:     sqlItem.Summary,
 		CreatedAt:   sqlItem.CreatedAt,
 		UpdatedAt:   sqlItem.UpdatedAt,
 	}

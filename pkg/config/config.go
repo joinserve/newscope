@@ -42,7 +42,25 @@ type Config struct {
 
 	Extraction ExtractionConfig `yaml:"extraction" json:"extraction" jsonschema:"description=Content extraction configuration"`
 
-	RSSHub RSSHubConfig `yaml:"rsshub" json:"rsshub" jsonschema:"description=RSSHub integration for rsshub:// URL scheme"`
+	RSSHub    RSSHubConfig    `yaml:"rsshub" json:"rsshub" jsonschema:"description=RSSHub integration for rsshub:// URL scheme"`
+	Embedding EmbeddingConfig `yaml:"embedding" json:"embedding" jsonschema:"description=Embedding configuration for beat aggregation"`
+	Beats     BeatsConfig     `yaml:"beats" json:"beats" jsonschema:"description=Beat aggregation configuration"`
+}
+
+// EmbeddingConfig holds embedding provider settings for beat aggregation.
+// An empty Provider disables the entire beats feature.
+type EmbeddingConfig struct {
+	Provider string `yaml:"provider" json:"provider" jsonschema:"description=Embedding provider (empty disables beats; e.g. 'openai')"`
+	Endpoint string `yaml:"endpoint" json:"endpoint" jsonschema:"description=OpenAI-compatible embedding API endpoint (leave empty for the provider default)"`
+	Model    string `yaml:"model" json:"model" jsonschema:"description=Embedding model name (e.g. text-embedding-3-small)"`
+	APIKey   string `yaml:"api_key" json:"api_key" jsonschema:"description=API key for the embedding provider"`
+}
+
+// BeatsConfig holds beat aggregation tuning parameters.
+type BeatsConfig struct {
+	SimThreshold float64       `yaml:"sim_threshold" json:"sim_threshold" jsonschema:"default=0.85,description=Cosine similarity threshold for grouping items into a beat"`
+	Window       time.Duration `yaml:"window" json:"window" jsonschema:"default=48h,description=Time window within which items can be grouped into a beat"`
+	MaxMembers   int           `yaml:"max_members" json:"max_members" jsonschema:"default=20,description=Maximum number of items per beat"`
 }
 
 // RSSHubConfig holds RSSHub integration settings
@@ -203,6 +221,17 @@ func Load(path string) (*Config, error) {
 		cfg.Extraction.MinTextLength = 100
 	}
 
+	// set defaults for beats
+	if cfg.Beats.SimThreshold == 0 {
+		cfg.Beats.SimThreshold = 0.85
+	}
+	if cfg.Beats.Window == 0 {
+		cfg.Beats.Window = 48 * time.Hour
+	}
+	if cfg.Beats.MaxMembers == 0 {
+		cfg.Beats.MaxMembers = 20
+	}
+
 	// validate configuration
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
@@ -242,6 +271,19 @@ func validate(cfg *Config) error {
 		if cfg.Extraction.MinTextLength < 0 {
 			return fmt.Errorf("extraction min_text_length must be non-negative")
 		}
+	}
+
+	// validate embedding config
+	if cfg.Embedding.Provider != "" && cfg.Embedding.Model == "" {
+		return fmt.Errorf("embedding.model is required when embedding.provider is set")
+	}
+
+	// validate beats config
+	if cfg.Beats.SimThreshold < 0 || cfg.Beats.SimThreshold > 1 {
+		return fmt.Errorf("beats.sim_threshold must be between 0 and 1")
+	}
+	if cfg.Beats.MaxMembers != 0 && cfg.Beats.MaxMembers < 1 {
+		return fmt.Errorf("beats.max_members must be at least 1")
 	}
 
 	// validate server config

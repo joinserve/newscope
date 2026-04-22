@@ -129,3 +129,32 @@ END;
 CREATE TRIGGER IF NOT EXISTS settings_updated_at AFTER UPDATE ON settings BEGIN
     UPDATE settings SET updated_at = CURRENT_TIMESTAMP WHERE key = new.key;
 END;
+
+-- Beat aggregation: embedding vectors for classified items
+CREATE TABLE IF NOT EXISTS item_embeddings (
+    item_id    INTEGER PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE,
+    model      TEXT    NOT NULL,
+    vector     BLOB    NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Beat aggregation: one beat groups several items reporting the same event
+CREATE TABLE IF NOT EXISTS beats (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    canonical_title   TEXT,
+    canonical_summary TEXT,
+    first_seen_at     DATETIME NOT NULL,
+    last_viewed_at    DATETIME,
+    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Beat aggregation: membership of items in beats; each item belongs to at most one beat
+CREATE TABLE IF NOT EXISTS beat_members (
+    beat_id  INTEGER NOT NULL REFERENCES beats(id) ON DELETE CASCADE,
+    item_id  INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (beat_id, item_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_beat_members_item ON beat_members(item_id);
+CREATE INDEX IF NOT EXISTS idx_beats_pending_merge ON beats(id) WHERE canonical_summary IS NULL;

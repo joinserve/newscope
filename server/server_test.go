@@ -326,3 +326,27 @@ func TestServer_respondWithError(t *testing.T) {
 		})
 	}
 }
+
+func TestServer_BeatsRouteNotMountedWhenFeatureOff(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{}
+		},
+	}
+
+	database := &mocks.DatabaseMock{}
+	scheduler := &mocks.SchedulerMock{
+		TriggerPreferenceUpdateFunc: func() {},
+	}
+
+	srv := New(cfg, database, scheduler, "test", false)
+
+	// /api/v1/beats must not be mounted when embedding.provider is empty
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/beats", http.NoBody)
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code, "beats route must not be mounted when feature is off")
+}
