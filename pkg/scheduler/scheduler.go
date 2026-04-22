@@ -5,6 +5,8 @@
 //go:generate moq -out mocks/parser.go -pkg mocks -skip-ensure -fmt goimports . Parser
 //go:generate moq -out mocks/extractor.go -pkg mocks -skip-ensure -fmt goimports . Extractor
 //go:generate moq -out mocks/classifier.go -pkg mocks -skip-ensure -fmt goimports . Classifier
+//go:generate moq -out mocks/embedder.go -pkg mocks -skip-ensure -fmt goimports . Embedder
+//go:generate moq -out mocks/embed_store.go -pkg mocks -skip-ensure -fmt goimports . EmbedStore
 
 package scheduler
 
@@ -26,6 +28,7 @@ import (
 type Scheduler struct {
 	feedProcessor     *FeedProcessor
 	preferenceManager *PreferenceManager
+	embedWorker       *EmbedWorker
 	itemManager       ItemManager
 
 	updateInterval     time.Duration
@@ -69,6 +72,17 @@ type ItemManager interface {
 	GetUnclassifiedItems(ctx context.Context, limit int) ([]domain.Item, error)
 	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]domain.Item, error)
 	GetItemWithExtractedContent(ctx context.Context, id int64) (*domain.Item, error)
+	GetUnembeddedItems(ctx context.Context, limit int) ([]domain.Item, error)
+}
+
+// Embedder computes an embedding vector for the given text.
+type Embedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
+
+// EmbedStore persists embedding vectors for items.
+type EmbedStore interface {
+	PutEmbedding(ctx context.Context, itemID int64, model string, v []float32) error
 }
 
 // ClassificationManager handles classification operations for scheduler
@@ -111,6 +125,9 @@ type Params struct {
 	Parser                Parser
 	Extractor             Extractor
 	Classifier            Classifier
+	// beats aggregation (nil = feature disabled)
+	Embedder  Embedder
+	EmbedStore EmbedStore
 
 	// configuration
 	UpdateInterval             time.Duration
@@ -119,6 +136,10 @@ type Params struct {
 	CleanupAge                 time.Duration
 	CleanupMinScore            float64
 	CleanupInterval            time.Duration
+	// embedding configuration
+	EmbedModel    string
+	EmbedInterval time.Duration
+	EmbedBatchSize int
 	// retry configuration for database operations
 	RetryAttempts     int           // number of retry attempts (default: 5)
 	RetryInitialDelay time.Duration // initial retry delay (default: 100ms)
@@ -170,6 +191,22 @@ func NewScheduler(params Params) *Scheduler {
 		RetryFunc:                  retryFunc,
 	})
 
+	// initialize embed worker when beats feature is enabled
+	if params.Embedder != nil && params.EmbedStore != nil {
+		interval := params.EmbedInterval
+		if interval <= 0 {
+			interval = params.UpdateInterval
+		}
+		s.embedWorker = NewEmbedWorker(EmbedWorkerConfig{
+			Embedder:  params.Embedder,
+			Store:     params.EmbedStore,
+			Items:     params.ItemManager,
+			Model:     params.EmbedModel,
+			Interval:  interval,
+			BatchSize: params.EmbedBatchSize,
+		})
+	}
+
 	return s
 }
 
@@ -201,6 +238,15 @@ func (s *Scheduler) Start(ctx context.Context) {
 		defer s.wg.Done()
 		s.preferenceManager.PreferenceUpdateWorker(ctx, s.preferenceUpdateCh)
 	}()
+
+	// start embed worker if beats feature is enabled
+	if s.embedWorker != nil {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.embedWorker.Run(ctx)
+		}()
+	}
 
 	// start cleanup worker if cleanup is enabled
 	if s.cleanupInterval > 0 {

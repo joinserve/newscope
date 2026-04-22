@@ -28,6 +28,7 @@ type Repositories struct {
 	Item           *ItemRepository
 	Classification *ClassificationRepository
 	Setting        *SettingRepository
+	Embedding      *EmbeddingRepository
 	DB             *sqlx.DB
 }
 
@@ -84,6 +85,7 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 		Item:           NewItemRepository(db),
 		Classification: NewClassificationRepository(db),
 		Setting:        NewSettingRepository(db),
+		Embedding:      NewEmbeddingRepository(db),
 		DB:             db,
 	}
 

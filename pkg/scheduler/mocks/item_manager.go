@@ -35,6 +35,9 @@ import (
 //			GetUnclassifiedItemsFunc: func(ctx context.Context, limit int) ([]domain.Item, error) {
 //				panic("mock out the GetUnclassifiedItems method")
 //			},
+//			GetUnembeddedItemsFunc: func(ctx context.Context, limit int) ([]domain.Item, error) {
+//				panic("mock out the GetUnembeddedItems method")
+//			},
 //			ItemExistsFunc: func(ctx context.Context, feedID int64, guid string) (bool, error) {
 //				panic("mock out the ItemExists method")
 //			},
@@ -71,6 +74,9 @@ type ItemManagerMock struct {
 
 	// GetUnclassifiedItemsFunc mocks the GetUnclassifiedItems method.
 	GetUnclassifiedItemsFunc func(ctx context.Context, limit int) ([]domain.Item, error)
+
+	// GetUnembeddedItemsFunc mocks the GetUnembeddedItems method.
+	GetUnembeddedItemsFunc func(ctx context.Context, limit int) ([]domain.Item, error)
 
 	// ItemExistsFunc mocks the ItemExists method.
 	ItemExistsFunc func(ctx context.Context, feedID int64, guid string) (bool, error)
@@ -130,6 +136,13 @@ type ItemManagerMock struct {
 			// Limit is the limit argument value.
 			Limit int
 		}
+		// GetUnembeddedItems holds details about calls to the GetUnembeddedItems method.
+		GetUnembeddedItems []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// ItemExists holds details about calls to the ItemExists method.
 		ItemExists []struct {
 			// Ctx is the ctx argument value.
@@ -175,6 +188,7 @@ type ItemManagerMock struct {
 	lockGetItemWithExtractedContent sync.RWMutex
 	lockGetItemsNeedingExtraction   sync.RWMutex
 	lockGetUnclassifiedItems        sync.RWMutex
+	lockGetUnembeddedItems          sync.RWMutex
 	lockItemExists                  sync.RWMutex
 	lockItemExistsByTitleOrURL      sync.RWMutex
 	lockUpdateItemExtraction        sync.RWMutex
@@ -398,6 +412,42 @@ func (mock *ItemManagerMock) GetUnclassifiedItemsCalls() []struct {
 	mock.lockGetUnclassifiedItems.RLock()
 	calls = mock.calls.GetUnclassifiedItems
 	mock.lockGetUnclassifiedItems.RUnlock()
+	return calls
+}
+
+// GetUnembeddedItems calls GetUnembeddedItemsFunc.
+func (mock *ItemManagerMock) GetUnembeddedItems(ctx context.Context, limit int) ([]domain.Item, error) {
+	if mock.GetUnembeddedItemsFunc == nil {
+		panic("ItemManagerMock.GetUnembeddedItemsFunc: method is nil but ItemManager.GetUnembeddedItems was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Limit int
+	}{
+		Ctx:   ctx,
+		Limit: limit,
+	}
+	mock.lockGetUnembeddedItems.Lock()
+	mock.calls.GetUnembeddedItems = append(mock.calls.GetUnembeddedItems, callInfo)
+	mock.lockGetUnembeddedItems.Unlock()
+	return mock.GetUnembeddedItemsFunc(ctx, limit)
+}
+
+// GetUnembeddedItemsCalls gets all the calls that were made to GetUnembeddedItems.
+// Check the length with:
+//
+//	len(mockedItemManager.GetUnembeddedItemsCalls())
+func (mock *ItemManagerMock) GetUnembeddedItemsCalls() []struct {
+	Ctx   context.Context
+	Limit int
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Limit int
+	}
+	mock.lockGetUnembeddedItems.RLock()
+	calls = mock.calls.GetUnembeddedItems
+	mock.lockGetUnembeddedItems.RUnlock()
 	return calls
 }
 
