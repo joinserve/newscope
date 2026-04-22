@@ -49,7 +49,7 @@ func TestBeatRepository_AttachOrSeed_EmptyCreatesSeed(t *testing.T) {
 	id := mkItem(pub, "a", []float32{1, 0, 0})
 
 	vec := []float32{1, 0, 0}
-	beatID, err := repos.Beat.AttachOrSeed(ctx,
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id, Vector: vec, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 	require.NotZero(t, beatID)
@@ -70,11 +70,11 @@ func TestBeatRepository_AttachOrSeed_MatchAboveThresholdAttaches(t *testing.T) {
 	id1 := mkItem(pub, "a", []float32{1, 0, 0})
 	id2 := mkItem(pub.Add(time.Hour), "b", []float32{0.99, 0.1, 0}) // cosine ~0.995
 
-	beat1, err := repos.Beat.AttachOrSeed(ctx,
+	beat1, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
-	beat2, err := repos.Beat.AttachOrSeed(ctx,
+	beat2, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id2, Vector: []float32{0.99, 0.1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
@@ -90,11 +90,11 @@ func TestBeatRepository_AttachOrSeed_BelowThresholdCreatesNew(t *testing.T) {
 	id1 := mkItem(pub, "a", []float32{1, 0, 0})
 	id2 := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0}) // orthogonal — cosine 0
 
-	beat1, err := repos.Beat.AttachOrSeed(ctx,
+	beat1, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
-	beat2, err := repos.Beat.AttachOrSeed(ctx,
+	beat2, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id2, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
@@ -111,11 +111,11 @@ func TestBeatRepository_AttachOrSeed_OutOfWindowCreatesNew(t *testing.T) {
 	// identical vector but published 72h later — outside 48h window
 	id2 := mkItem(pub.Add(72*time.Hour), "b", []float32{1, 0, 0})
 
-	beat1, err := repos.Beat.AttachOrSeed(ctx,
+	beat1, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
-	beat2, err := repos.Beat.AttachOrSeed(ctx,
+	beat2, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(72 * time.Hour)}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
@@ -133,18 +133,87 @@ func TestBeatRepository_AttachOrSeed_RespectsMaxMembers(t *testing.T) {
 	b := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
 	c := mkItem(pub.Add(2*time.Hour), "c", []float32{1, 0, 0})
 
-	beatA, err := repos.Beat.AttachOrSeed(ctx,
+	beatA, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: a, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 2)
 	require.NoError(t, err)
-	beatB, err := repos.Beat.AttachOrSeed(ctx,
+	beatB, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: b, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 2)
 	require.NoError(t, err)
-	beatC, err := repos.Beat.AttachOrSeed(ctx,
+	beatC, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: c, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 2)
 	require.NoError(t, err)
 
 	assert.Equal(t, beatA, beatB, "first two share the beat")
 	assert.NotEqual(t, beatA, beatC, "third spills to a new beat once cap is hit")
+}
+
+// When the nearest qualifying beat is at capacity, AttachOrSeed should spill
+// to the next best beat that still meets the threshold and has room, rather
+// than seeding a fresh beat (which would split the story).
+func TestBeatRepository_AttachOrSeed_SpillsToSecondBestWhenNearestFull(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	// 2D vectors at known angles from the x-axis so both beats sit above
+	// threshold for B while A is clearly the nearest.
+	vecA := []float32{1, 0, 0}                 // 0° — seeds beat A
+	vecC := []float32{0.819, 0.574, 0}         // 35° — cos(A,C)=0.819 < 0.85, separate beat
+	vecB := []float32{0.966, 0.259, 0}         // 15° — cos(A,B)=0.966, cos(C,B)=cos(20°)=0.940
+
+	a1 := mkItem(pub, "a1", vecA)
+	a2 := mkItem(pub.Add(time.Hour), "a2", vecA)
+	c1 := mkItem(pub.Add(2*time.Hour), "c1", vecC)
+	b1 := mkItem(pub.Add(3*time.Hour), "b1", vecB)
+
+	beatA, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: a1, Vector: vecA, PublishedAt: pub}, 0.85, 48*time.Hour, 2)
+	require.NoError(t, err)
+	// fill beat A to cap
+	beatA2, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: a2, Vector: vecA, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 2)
+	require.NoError(t, err)
+	require.Equal(t, beatA, beatA2)
+	// C is below threshold to A — seeds beat C
+	beatC, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: c1, Vector: vecC, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 2)
+	require.NoError(t, err)
+	require.NotEqual(t, beatA, beatC)
+
+	// B's nearest is beat A (full) — must spill to beat C, not seed a third
+	beatB, seededB, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: b1, Vector: vecB, PublishedAt: pub.Add(3 * time.Hour)}, 0.85, 48*time.Hour, 2)
+	require.NoError(t, err)
+	assert.False(t, seededB, "spill should attach, not seed")
+	assert.Equal(t, beatC, beatB, "B should land in the second-best qualifying beat")
+}
+
+func TestBeatRepository_AttachOrSeed_SeededFlag(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+
+	_, seeded1, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	assert.True(t, seeded1, "first item in an empty store seeds a beat")
+
+	_, seeded2, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	assert.False(t, seeded2, "matching item attaches to existing beat")
+
+	// idempotent re-call on an already-assigned item: seeded=false
+	_, seededRe, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	assert.False(t, seededRe, "re-processing an existing member does not seed")
 }
 
 func TestBeatRepository_AttachOrSeed_Idempotent(t *testing.T) {
@@ -156,9 +225,9 @@ func TestBeatRepository_AttachOrSeed_Idempotent(t *testing.T) {
 	id := mkItem(pub, "a", []float32{1, 0, 0})
 	cand := domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}
 
-	b1, err := repos.Beat.AttachOrSeed(ctx, cand, 0.85, 48*time.Hour, 20)
+	b1, _, err := repos.Beat.AttachOrSeed(ctx, cand, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
-	b2, err := repos.Beat.AttachOrSeed(ctx, cand, 0.85, 48*time.Hour, 20)
+	b2, _, err := repos.Beat.AttachOrSeed(ctx, cand, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
 	assert.Equal(t, b1, b2, "re-processing an already-assigned item returns the same beat")
@@ -175,7 +244,7 @@ func TestBeatRepository_NearestIn(t *testing.T) {
 	ctx := context.Background()
 	pub := time.Now()
 	id := mkItem(pub, "a", []float32{1, 0, 0})
-	beatID, err := repos.Beat.AttachOrSeed(ctx,
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
@@ -199,7 +268,7 @@ func TestBeatRepository_MarkViewedAndUnreadCount(t *testing.T) {
 	ctx := context.Background()
 	pub := time.Now()
 	id1 := mkItem(pub, "a", []float32{1, 0, 0})
-	beatID, err := repos.Beat.AttachOrSeed(ctx,
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
@@ -212,7 +281,7 @@ func TestBeatRepository_MarkViewedAndUnreadCount(t *testing.T) {
 	// add a new member after viewing
 	time.Sleep(10 * time.Millisecond) // ensure added_at > last_viewed_at
 	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
-	_, err = repos.Beat.AttachOrSeed(ctx,
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
@@ -234,7 +303,7 @@ func TestBeatRepository_GetUnbeatItems(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, items, 2, "both items start unassigned")
 
-	_, err = repos.Beat.AttachOrSeed(ctx,
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
 		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
@@ -266,7 +335,7 @@ func TestBeatRepository_PropertyEveryItemInExactlyOneBeat(t *testing.T) {
 	items, err := repos.Beat.GetUnbeatItems(ctx, 100)
 	require.NoError(t, err)
 	for _, it := range items {
-		_, err := repos.Beat.AttachOrSeed(ctx, it, 0.85, 48*time.Hour, 20)
+		_, _, err := repos.Beat.AttachOrSeed(ctx, it, 0.85, 48*time.Hour, 20)
 		require.NoError(t, err)
 	}
 

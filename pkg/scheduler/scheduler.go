@@ -90,7 +90,10 @@ type EmbedStore interface {
 // BeatStore groups classified items into beats via cosine similarity.
 type BeatStore interface {
 	GetUnbeatItems(ctx context.Context, limit int) ([]domain.BeatCandidate, error)
-	AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, error)
+	// AttachOrSeed returns the assigned beat ID and seeded=true when a new
+	// beat was created for this item; seeded=false when the item was attached
+	// to an existing beat.
+	AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (beatID int64, seeded bool, err error)
 }
 
 // ClassificationManager handles classification operations for scheduler

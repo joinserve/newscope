@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -112,14 +113,15 @@ func (r *BeatRepository) nearestIn(ctx context.Context, q sqlx.QueryerContext, v
 	return bestBeat, bestSim, nil
 }
 
-// AttachOrSeed attaches the item to the nearest beat within window whose best
-// cosine similarity meets the threshold, respecting maxMembers. If no beat
-// qualifies, a new beat is seeded with this item. Idempotent: if the item is
-// already a member of some beat, that beat's ID is returned unchanged.
-func (r *BeatRepository) AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, error) {
+// AttachOrSeed attaches the item to a beat within window whose best member-
+// cosine similarity meets the threshold AND still has room under maxMembers,
+// preferring higher similarity; falls back to seeding a new beat only when no
+// qualifying beat has capacity. Idempotent: if the item is already a member
+// of some beat, that beat's ID is returned with seeded=false.
+func (r *BeatRepository) AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (beatID int64, seeded bool, err error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("begin tx: %w", err)
+		return 0, false, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -127,45 +129,36 @@ func (r *BeatRepository) AttachOrSeed(ctx context.Context, item domain.BeatCandi
 	var existing int64
 	err = tx.GetContext(ctx, &existing, `SELECT beat_id FROM beat_members WHERE item_id = ?`, item.ItemID)
 	if err == nil {
-		return existing, tx.Commit()
+		return existing, false, tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("check existing membership: %w", err)
+		return 0, false, fmt.Errorf("check existing membership: %w", err)
 	}
 
-	// look for a beat that qualifies within window
+	// rank candidate beats within the window by max member-cosine, descending;
+	// walk the list and attach to the first one under maxMembers.
 	windowStart := item.PublishedAt.Add(-window)
-	beatID, sim, err := r.nearestIn(ctx, tx, item.Vector, windowStart)
+	target, err := r.pickAttachableBeat(ctx, tx, item.Vector, windowStart, threshold, maxMembers)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
-	attach := beatID != 0 && sim >= threshold
-	if attach && maxMembers > 0 {
-		var count int
-		if err := tx.GetContext(ctx, &count, `SELECT COUNT(*) FROM beat_members WHERE beat_id = ?`, beatID); err != nil {
-			return 0, fmt.Errorf("member count: %w", err)
-		}
-		if count >= maxMembers {
-			attach = false
-		}
-	}
-
-	if !attach {
+	if target == 0 {
 		// seed a new beat; canonical fields stay NULL (pr 4 populates them)
 		res, err := tx.ExecContext(ctx,
 			`INSERT INTO beats (first_seen_at) VALUES (?)`, item.PublishedAt)
 		if err != nil {
-			return 0, fmt.Errorf("insert beat: %w", err)
+			return 0, false, fmt.Errorf("insert beat: %w", err)
 		}
-		beatID, err = res.LastInsertId()
+		target, err = res.LastInsertId()
 		if err != nil {
-			return 0, fmt.Errorf("new beat id: %w", err)
+			return 0, false, fmt.Errorf("new beat id: %w", err)
 		}
+		seeded = true
 	} else {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE beats SET updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`, beatID); err != nil {
-			return 0, fmt.Errorf("bump beat updated_at: %w", err)
+			`UPDATE beats SET updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`, target); err != nil {
+			return 0, false, fmt.Errorf("bump beat updated_at: %w", err)
 		}
 	}
 
@@ -173,10 +166,69 @@ func (r *BeatRepository) AttachOrSeed(ctx context.Context, item domain.BeatCandi
 	// last_viewed_at are correct within the same second.
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO beat_members (beat_id, item_id, added_at) VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
-		beatID, item.ItemID); err != nil {
-		return 0, fmt.Errorf("insert beat member: %w", err)
+		target, item.ItemID); err != nil {
+		return 0, false, fmt.Errorf("insert beat member: %w", err)
 	}
-	return beatID, tx.Commit()
+	return target, seeded, tx.Commit()
+}
+
+// pickAttachableBeat ranks beats within window by max member-cosine, descending,
+// and returns the first one under maxMembers whose best-sim meets threshold.
+// Returns 0 when no candidate qualifies.
+func (r *BeatRepository) pickAttachableBeat(ctx context.Context, tx *sqlx.Tx, vec []float32, windowStart time.Time, threshold float64, maxMembers int) (int64, error) {
+	rows, err := tx.QueryxContext(ctx, `
+		SELECT bm.beat_id, ie.vector
+		FROM beat_members bm
+		JOIN items i ON i.id = bm.item_id
+		JOIN item_embeddings ie ON ie.item_id = i.id
+		WHERE i.published >= ?`, windowStart)
+	if err != nil {
+		return 0, fmt.Errorf("candidate beats query: %w", err)
+	}
+	defer rows.Close()
+
+	bestSim := map[int64]float64{}
+	for rows.Next() {
+		var bID int64
+		var blob []byte
+		if err := rows.Scan(&bID, &blob); err != nil {
+			return 0, fmt.Errorf("scan candidate row: %w", err)
+		}
+		sim := cosine(vec, blobToFloat32s(blob))
+		if prev, ok := bestSim[bID]; !ok || sim > prev {
+			bestSim[bID] = sim
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("candidate rows: %w", err)
+	}
+
+	type ranked struct {
+		id  int64
+		sim float64
+	}
+	candidates := make([]ranked, 0, len(bestSim))
+	for id, sim := range bestSim {
+		if sim >= threshold {
+			candidates = append(candidates, ranked{id, sim})
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].sim > candidates[j].sim })
+
+	for _, c := range candidates {
+		if maxMembers > 0 {
+			var count int
+			if err := tx.GetContext(ctx, &count,
+				`SELECT COUNT(*) FROM beat_members WHERE beat_id = ?`, c.id); err != nil {
+				return 0, fmt.Errorf("member count for beat %d: %w", c.id, err)
+			}
+			if count >= maxMembers {
+				continue
+			}
+		}
+		return c.id, nil
+	}
+	return 0, nil
 }
 
 // MarkViewed records that the user has viewed this beat at the current time;

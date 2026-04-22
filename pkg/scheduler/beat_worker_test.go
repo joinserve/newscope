@@ -21,9 +21,9 @@ func TestBeatWorker_ProcessBatch(t *testing.T) {
 	attachCalls := 0
 	store := &mocks.BeatStoreMock{
 		GetUnbeatItemsFunc: func(ctx context.Context, limit int) ([]domain.BeatCandidate, error) { return items, nil },
-		AttachOrSeedFunc: func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, error) {
+		AttachOrSeedFunc: func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, bool, error) {
 			attachCalls++
-			return int64(attachCalls), nil
+			return int64(attachCalls), attachCalls == 1, nil // first call seeds, rest attach
 		},
 	}
 
@@ -58,11 +58,11 @@ func TestBeatWorker_ContinuesOnAttachError(t *testing.T) {
 	}
 	store := &mocks.BeatStoreMock{
 		GetUnbeatItemsFunc: func(ctx context.Context, limit int) ([]domain.BeatCandidate, error) { return items, nil },
-		AttachOrSeedFunc: func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, error) {
+		AttachOrSeedFunc: func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, bool, error) {
 			if item.ItemID == 1 {
-				return 0, errors.New("simulated failure")
+				return 0, false, errors.New("simulated failure")
 			}
-			return 10, nil
+			return 10, false, nil
 		},
 	}
 	w := NewBeatWorker(BeatWorkerConfig{Store: store, Interval: time.Minute, BatchSize: 10})

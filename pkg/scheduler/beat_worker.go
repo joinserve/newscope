@@ -75,22 +75,20 @@ func (w *BeatWorker) processBatch(ctx context.Context) {
 
 	lgr.Printf("[DEBUG] beat_worker: assigning %d items", len(items))
 	attached, seeded, failed := 0, 0, 0
-	seen := map[int64]bool{}
 	for _, item := range items {
 		if ctx.Err() != nil {
 			return
 		}
-		beatID, err := w.store.AttachOrSeed(ctx, item, w.threshold, w.window, w.maxMembers)
+		_, isSeeded, err := w.store.AttachOrSeed(ctx, item, w.threshold, w.window, w.maxMembers)
 		if err != nil {
 			lgr.Printf("[WARN] beat_worker: attach item %d: %v", item.ItemID, err)
 			failed++
 			continue
 		}
-		if seen[beatID] {
-			attached++
-		} else {
+		if isSeeded {
 			seeded++
-			seen[beatID] = true
+		} else {
+			attached++
 		}
 	}
 	lgr.Printf("[INFO] beat_worker: processed %d items (%d new beats, %d attached, %d failed)",

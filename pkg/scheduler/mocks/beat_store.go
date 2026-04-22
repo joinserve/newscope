@@ -17,7 +17,7 @@ import (
 //
 //		// make and configure a mocked scheduler.BeatStore
 //		mockedBeatStore := &BeatStoreMock{
-//			AttachOrSeedFunc: func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, error) {
+//			AttachOrSeedFunc: func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, bool, error) {
 //				panic("mock out the AttachOrSeed method")
 //			},
 //			GetUnbeatItemsFunc: func(ctx context.Context, limit int) ([]domain.BeatCandidate, error) {
@@ -31,7 +31,7 @@ import (
 //	}
 type BeatStoreMock struct {
 	// AttachOrSeedFunc mocks the AttachOrSeed method.
-	AttachOrSeedFunc func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, error)
+	AttachOrSeedFunc func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, bool, error)
 
 	// GetUnbeatItemsFunc mocks the GetUnbeatItems method.
 	GetUnbeatItemsFunc func(ctx context.Context, limit int) ([]domain.BeatCandidate, error)
@@ -64,7 +64,7 @@ type BeatStoreMock struct {
 }
 
 // AttachOrSeed calls AttachOrSeedFunc.
-func (mock *BeatStoreMock) AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, error) {
+func (mock *BeatStoreMock) AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, bool, error) {
 	if mock.AttachOrSeedFunc == nil {
 		panic("BeatStoreMock.AttachOrSeedFunc: method is nil but BeatStore.AttachOrSeed was just called")
 	}
