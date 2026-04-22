@@ -32,6 +32,7 @@
         {{end}}
     </div>
     {{else}}
+    {{if gt $membersCount 0}}
     <div class="card-avatar">
         {{$member := index .Members 0}}
         {{$iconSrc := ""}}
@@ -54,6 +55,7 @@
         <div class="avatar-img avatar-fallback">{{with $member.FeedName}}{{slice . 0 1}}{{end}}</div>
         {{end}}
     </div>
+    {{end}}
     {{end}}
 
     <div class="card-main">
