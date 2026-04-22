@@ -22,12 +22,61 @@ switch throughout.
   carries a single `last_viewed_at` column; multi-user is out of scope
   for this ADR.
 
-## Open question remaining
+## Prerequisite work before PR 3
 
-- **Golden test set.** Pull a week of items from the running local DB and
-  hand-label 20 "should merge" / 20 "shouldn't merge" pairs. This is the
-  regression bar for PR 3's threshold tuning. I can't build this — you
-  produce it, I consume it. Block PR 3 on it landing.
+PR 3 is blocked on a golden test set of labelled item pairs. To avoid the
+friction of hand-querying the DB, we build a small CLI tool that surfaces
+candidate pairs and writes labels to a fixture file.
+
+### Session 1.5 — labeling tool (independent session)
+
+**What to build:** `cmd/beats-label/` — a standalone CLI that reads
+candidate item pairs, displays them side-by-side in the terminal, and
+writes y/n/skip decisions to `docs/fixtures/beats-golden.json`.
+
+**Candidate generation (the key to this being fast):** random pairs would
+waste the user's time on obvious negatives. Two sources, merged:
+
+1. **High-similarity pairs from existing embeddings.** Once PR 2 has run
+   for a few days, `item_embeddings` contains enough data to compute top-K
+   cosine-similar pairs within a 48h window. Cluster by 0.1-wide similarity
+   buckets (0.5–0.6, 0.6–0.7, 0.7–0.8, 0.8–0.9, 0.9–1.0) and sample ~10
+   pairs from each bucket. This gives the threshold-boundary cases — the
+   ones that matter most for tuning.
+2. **Random within-window pairs as negatives.** Sample ~20 random pairs in
+   a 48h window to anchor the "obviously shouldn't merge" region of the set.
+
+No embeddings yet? Fall back to title-trigram Jaccard for bucketing; it's
+coarser but enough to avoid pure-random waste.
+
+**Session goal output:** ~60 candidate pairs total → user labels in ~10
+minutes → ≥40 decisions (20 merge + 20 no-merge; skips are fine).
+
+**Behaviour:**
+- Reads `config.yml` just enough to locate the database DSN.
+- Pairs rendered in terminal with item IDs, feed name, published time, full
+  title, first 200 chars of summary, and the computed similarity.
+- Keys: `y` merge, `n` not merge, `s` skip, `q` quit. `q` is non-destructive
+  — progress so far is already saved.
+- Fixture format: JSON array of `{a_id, b_id, should_merge, similarity,
+  labelled_at}` records. Idempotent append: re-running with the same
+  candidate does not duplicate.
+- **No LLM calls anywhere.** The tool is for generating ground truth; it
+  must not use model output as input.
+
+**Scope discipline:**
+- Single file `cmd/beats-label/main.go` — ~150 lines, no new packages.
+- Zero new runtime dependencies beyond stdlib + what newscope already uses
+  (`sqlx`, the project's config loader).
+- Unit tests only for the fixture-file writer (append-without-duplication)
+  and the candidate-bucketing logic. The UI loop does not need tests.
+- This tool is ops glue, not a product feature. It ships merged to `master`
+  so contributors can reuse it, but no UI, no server routes, no feature
+  flag.
+
+**Session goal:** user runs `go run ./cmd/beats-label`, labels ~60 pairs,
+commits `docs/fixtures/beats-golden.json`. PR 3 session reads that fixture
+as its regression bar.
 
 ## PR sequence
 
@@ -77,7 +126,8 @@ switch throughout.
 - canonical fields left NULL (phase 1b)
 - 48h window, cosine threshold 0.85 as starting point
 
-**Blocked by:** golden test set above.
+**Blocked by:** `docs/fixtures/beats-golden.json` produced by the labeling
+tool above.
 
 **Validates:**
 - Threshold precision on the golden set (target precision > 0.9; recall
@@ -86,7 +136,8 @@ switch throughout.
 
 **Tests:**
 - Unit: `BeatStore` against in-memory SQLite
-- Golden-set regression
+- Golden-set regression loads `docs/fixtures/beats-golden.json` and asserts
+  the clustering decision matches the label for each pair
 - Property test: every classified item ends up in exactly one beat
 
 **Highest-risk PR.** If precision is poor, iterate on threshold, input
