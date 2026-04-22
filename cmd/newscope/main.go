@@ -160,6 +160,10 @@ func run(ctx context.Context, opts Opts) error {
 		params.Embedder = embedder
 		params.EmbedStore = repos.Embedding
 		params.EmbedModel = cfg.Embedding.Model
+		params.BeatStore = repos.Beat
+		params.BeatThreshold = cfg.Beats.SimThreshold
+		params.BeatWindow = cfg.Beats.Window
+		params.BeatMaxMembers = cfg.Beats.MaxMembers
 	}
 	sched := scheduler.NewScheduler(params)
 	sched.Start(ctx)
