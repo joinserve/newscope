@@ -443,8 +443,12 @@ func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
 
 	// beat 1: max score 5.0
 	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id1b := mkItem(pub, "a2", []float32{1, 0, 0})
 	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1b, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 	repos.Item.UpdateItemClassification(ctx, id1, &domain.Classification{Score: 5.0})
+	repos.Item.UpdateItemClassification(ctx, id1b, &domain.Classification{Score: 5.0})
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b1, domain.BeatCanonical{Title: "T1"}))
 
 	// beat 2: max score 8.0
 	id2 := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0})
@@ -453,11 +457,16 @@ func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
 	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 	repos.Item.UpdateItemClassification(ctx, id2, &domain.Classification{Score: 6.0})
 	repos.Item.UpdateItemClassification(ctx, id3, &domain.Classification{Score: 8.0})
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b2, domain.BeatCanonical{Title: "T2"}))
 
 	// beat 3: max score 7.0
 	id4 := mkItem(pub.Add(2*time.Hour), "d", []float32{0, 0, 1})
+	id4b := mkItem(pub.Add(2*time.Hour), "d2", []float32{0, 0, 1})
 	b3, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id4, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id4b, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
 	repos.Item.UpdateItemClassification(ctx, id4, &domain.Classification{Score: 7.0})
+	repos.Item.UpdateItemClassification(ctx, id4b, &domain.Classification{Score: 7.0})
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b3, domain.BeatCanonical{Title: "T3"}))
 
 	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
 	require.NoError(t, err)
@@ -479,6 +488,8 @@ func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
 
 	id1 := mkItem(pub, "a", []float32{1, 0, 0})
 	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b1, domain.BeatCanonical{Title: "T1"}))
 
 	// last viewed is set
 	require.NoError(t, repos.Beat.MarkViewed(ctx, b1))

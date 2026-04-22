@@ -30,6 +30,7 @@
                 {{end}}
             {{end}}
         {{end}}
+        <div class="thread-line"></div>
     </div>
     {{else}}
     {{if gt $membersCount 0}}
@@ -54,6 +55,7 @@
         {{else}}
         <div class="avatar-img avatar-fallback">{{with $member.FeedName}}{{slice . 0 1}}{{end}}</div>
         {{end}}
+        <div class="thread-line"></div>
     </div>
     {{end}}
     {{end}}
@@ -100,7 +102,14 @@
         {{if .Topics}}
         <div class="topics">
             {{range .Topics}}
-            <span class="topic-tag">{{.}}</span>
+            <a href="#" class="topic-tag clickable-topic"
+               data-topic="{{.}}"
+               hx-get="/beats"
+               hx-vals='{"topic":"{{.}}"}'
+               hx-trigger="click"
+               hx-target="#articles-with-pagination"
+               hx-swap="innerHTML show:body:top"
+               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{.}}</a>
             {{end}}
         </div>
         {{end}}

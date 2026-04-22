@@ -380,7 +380,9 @@ func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]do
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
+		WHERE b.canonical_title IS NOT NULL
 		GROUP BY b.id
+		HAVING COUNT(bm.item_id) > 1
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
 		LIMIT ? OFFSET ?
 	`
