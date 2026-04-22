@@ -14,6 +14,19 @@ server:
 rsshub:
   host: ""
 
+# Beat aggregation (ADR 0010): collapse near-duplicate items into one card.
+# Leave embedding.provider empty to disable the entire feature — no workers
+# start, no routes mount, and the inbox renders unchanged.
+embedding:
+  provider: ""                       # e.g. "openai" to enable
+  endpoint: ""                       # leave empty for the provider default
+  model: "text-embedding-3-small"
+  api_key: ""
+beats:
+  sim_threshold: 0.85
+  window: "48h"
+  max_members: 20
+
 database:
   dsn: "./var/newscope.db"
   max_open_conns: 10

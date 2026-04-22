@@ -3,6 +3,31 @@
   "$id": "https://github.com/umputun/newscope/pkg/config/config",
   "$ref": "#/$defs/Config",
   "$defs": {
+    "BeatsConfig": {
+      "properties": {
+        "sim_threshold": {
+          "type": "number",
+          "description": "Cosine similarity threshold for grouping items into a beat",
+          "default": 0.85
+        },
+        "window": {
+          "type": "integer",
+          "description": "Time window within which items can be grouped into a beat"
+        },
+        "max_members": {
+          "type": "integer",
+          "description": "Maximum number of items per beat",
+          "default": 20
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "sim_threshold",
+        "window",
+        "max_members"
+      ]
+    },
     "ClassificationConfig": {
       "properties": {
         "feedback_examples": {
@@ -221,6 +246,14 @@
         "rsshub": {
           "$ref": "#/$defs/RSSHubConfig",
           "description": "RSSHub integration for rsshub:// URL scheme"
+        },
+        "embedding": {
+          "$ref": "#/$defs/EmbeddingConfig",
+          "description": "Embedding configuration for beat aggregation"
+        },
+        "beats": {
+          "$ref": "#/$defs/BeatsConfig",
+          "description": "Beat aggregation configuration"
         }
       },
       "additionalProperties": false,
@@ -231,7 +264,37 @@
         "schedule",
         "llm",
         "extraction",
-        "rsshub"
+        "rsshub",
+        "embedding",
+        "beats"
+      ]
+    },
+    "EmbeddingConfig": {
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Embedding provider (empty disables beats; e.g. 'openai')"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "OpenAI-compatible embedding API endpoint (leave empty for the provider default)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Embedding model name (e.g. text-embedding-3-small)"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for the embedding provider"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "provider",
+        "endpoint",
+        "model",
+        "api_key"
       ]
     },
     "ExtractionConfig": {
