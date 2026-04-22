@@ -45,6 +45,18 @@ type Config struct {
 	RSSHub    RSSHubConfig    `yaml:"rsshub" json:"rsshub" jsonschema:"description=RSSHub integration for rsshub:// URL scheme"`
 	Embedding EmbeddingConfig `yaml:"embedding" json:"embedding" jsonschema:"description=Embedding configuration for beat aggregation"`
 	Beats     BeatsConfig     `yaml:"beats" json:"beats" jsonschema:"description=Beat aggregation configuration"`
+	Log       LogConfig       `yaml:"log" json:"log" jsonschema:"description=Logging output configuration"`
+}
+
+// LogConfig holds logging output settings.
+type LogConfig struct {
+	File LogFileConfig `yaml:"file" json:"file" jsonschema:"description=Log-to-file settings"`
+}
+
+// LogFileConfig controls writing logs to a file in addition to stdout.
+type LogFileConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled" jsonschema:"default=false,description=When true, logs are also written to Path; previous file is rotated on startup"`
+	Path    string `yaml:"path" json:"path" jsonschema:"default=var/newscope.log,description=Log file path (only used when Enabled=true)"`
 }
 
 // EmbeddingConfig holds embedding provider settings for beat aggregation.
@@ -219,6 +231,11 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Extraction.MinTextLength == 0 {
 		cfg.Extraction.MinTextLength = 100
+	}
+
+	// set defaults for log
+	if cfg.Log.File.Enabled && cfg.Log.File.Path == "" {
+		cfg.Log.File.Path = "var/newscope.log"
 	}
 
 	// set defaults for beats

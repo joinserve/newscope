@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -75,7 +77,15 @@ func run(ctx context.Context, opts Opts) error {
 	}
 
 	// setup logging with secrets for redaction
-	setupLog(opts.Debug, opts.NoColor, cfg.LLM.APIKey)
+	logFile := ""
+	if cfg.Log.File.Enabled {
+		logFile = cfg.Log.File.Path
+	}
+	logCloser, err := setupLog(opts.Debug, opts.NoColor, logFile, cfg.LLM.APIKey)
+	if err != nil {
+		return fmt.Errorf("setup log: %w", err)
+	}
+	defer logCloser()
 
 	log.Printf("[INFO] starting newscope version %s", revision)
 
@@ -165,8 +175,10 @@ func run(ctx context.Context, opts Opts) error {
 	return nil
 }
 
-// setupLog configures the logger
-func setupLog(dbg, noColor bool, secs ...string) {
+// setupLog configures the logger. When logFile is non-empty, logs are written
+// to both stdout and that file; any existing file is rotated to
+// <path>.<timestamp> before opening. Returns a closer for the file handle.
+func setupLog(dbg, noColor bool, logFile string, secs ...string) (func(), error) {
 	logOpts := []lgr.Option{lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
 	if dbg {
 		logOpts = []lgr.Option{lgr.Debug, lgr.CallerFile, lgr.CallerFunc, lgr.Msec, lgr.LevelBraces, lgr.StackTraceOnError}
@@ -187,6 +199,67 @@ func setupLog(dbg, noColor bool, secs ...string) {
 	if len(secs) > 0 {
 		logOpts = append(logOpts, lgr.Secret(secs...))
 	}
+
+	closer := func() {}
+	if logFile != "" {
+		f, err := openLogFileWithRotation(logFile)
+		if err != nil {
+			return nil, err
+		}
+		closer = func() { _ = f.Close() }
+		// tee stdout and the rotated file; strip ANSI colors from the file copy
+		fileNoColor := &ansiStripWriter{w: f}
+		logOpts = append(logOpts,
+			lgr.Out(io.MultiWriter(os.Stdout, fileNoColor)),
+			lgr.Err(io.MultiWriter(os.Stderr, fileNoColor)),
+		)
+	}
+
 	lgr.SetupStdLogger(logOpts...)
 	lgr.Setup(logOpts...)
+	return closer, nil
+}
+
+// openLogFileWithRotation moves any existing file at path to path.<timestamp>
+// and opens a fresh file at path for append-writing.
+func openLogFileWithRotation(path string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return nil, fmt.Errorf("create log dir: %w", err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		rotated := fmt.Sprintf("%s.%s", path, time.Now().Format("2006-01-02T15-04-05"))
+		if err := os.Rename(path, rotated); err != nil {
+			return nil, fmt.Errorf("rotate log: %w", err)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // log file owner-only
+	if err != nil {
+		return nil, fmt.Errorf("open log file: %w", err)
+	}
+	return f, nil
+}
+
+// ansiStripWriter wraps an io.Writer to strip ANSI color escape sequences,
+// keeping the on-disk log readable without a terminal.
+type ansiStripWriter struct{ w io.Writer }
+
+func (a *ansiStripWriter) Write(p []byte) (int, error) {
+	out := make([]byte, 0, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == 0x1b && i+1 < len(p) && p[i+1] == '[' {
+			j := i + 2
+			for j < len(p) && (p[j] < 0x40 || p[j] > 0x7e) {
+				j++
+			}
+			if j < len(p) {
+				i = j
+				continue
+			}
+		}
+		out = append(out, p[i])
+	}
+	if _, err := a.w.Write(out); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }

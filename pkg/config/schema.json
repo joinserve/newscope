@@ -254,6 +254,10 @@
         "beats": {
           "$ref": "#/$defs/BeatsConfig",
           "description": "Beat aggregation configuration"
+        },
+        "log": {
+          "$ref": "#/$defs/LogConfig",
+          "description": "Logging output configuration"
         }
       },
       "additionalProperties": false,
@@ -266,7 +270,8 @@
         "extraction",
         "rsshub",
         "embedding",
-        "beats"
+        "beats",
+        "log"
       ]
     },
     "EmbeddingConfig": {
@@ -410,6 +415,39 @@
         "system_prompt",
         "use_streaming",
         "classification"
+      ]
+    },
+    "LogConfig": {
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/LogFileConfig",
+          "description": "Log-to-file settings"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "file"
+      ]
+    },
+    "LogFileConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "When true",
+          "default": false
+        },
+        "path": {
+          "type": "string",
+          "description": "Log file path (only used when Enabled=true)",
+          "default": "var/newscope.log"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "enabled",
+        "path"
       ]
     },
     "RSSHubConfig": {
