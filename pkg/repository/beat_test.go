@@ -435,6 +435,102 @@ func TestBeatRepository_ListPendingMerge_RespectsLimit(t *testing.T) {
 	assert.Len(t, beats, 2, "limit should be respected")
 }
 
+func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	// beat 1: max score 5.0
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	repos.Item.UpdateItemClassification(ctx, id1, &domain.Classification{Score: 5.0})
+
+	// beat 2: max score 8.0
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0})
+	id3 := mkItem(pub.Add(time.Hour), "c", []float32{0, 1, 0})
+	b2, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Item.UpdateItemClassification(ctx, id2, &domain.Classification{Score: 6.0})
+	repos.Item.UpdateItemClassification(ctx, id3, &domain.Classification{Score: 8.0})
+
+	// beat 3: max score 7.0
+	id4 := mkItem(pub.Add(2*time.Hour), "d", []float32{0, 0, 1})
+	b3, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id4, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Item.UpdateItemClassification(ctx, id4, &domain.Classification{Score: 7.0})
+
+	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, beats, 3)
+
+	assert.Equal(t, b2, beats[0].ID, "highest max score should be first")
+	assert.Equal(t, 8.0, beats[0].AggregateScore)
+	assert.Equal(t, b3, beats[1].ID)
+	assert.Equal(t, 7.0, beats[1].AggregateScore)
+	assert.Equal(t, b1, beats[2].ID)
+	assert.Equal(t, 5.0, beats[2].AggregateScore)
+}
+
+func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+
+	// last viewed is set
+	require.NoError(t, repos.Beat.MarkViewed(ctx, b1))
+
+	// add 2 new members
+	time.Sleep(10 * time.Millisecond) // ensure added_at > last_viewed_at
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	id3 := mkItem(pub.Add(time.Hour), "c", []float32{1, 0, 0})
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+
+	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, beats, 1)
+	assert.Equal(t, 2, beats[0].UnreadCount)
+}
+
+func TestBeatRepository_GetBeat_EagerLoadsMembers(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	id3 := mkItem(pub.Add(time.Hour), "c", []float32{1, 0, 0})
+
+	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+
+	repos.Item.UpdateItemClassification(ctx, id1, &domain.Classification{Score: 5.0})
+	repos.Item.UpdateItemClassification(ctx, id2, &domain.Classification{Score: 9.0})
+	repos.Item.UpdateItemClassification(ctx, id3, &domain.Classification{Score: 7.0})
+
+	beat, err := repos.Beat.GetBeat(ctx, b1)
+	require.NoError(t, err)
+
+	assert.Equal(t, 9.0, beat.AggregateScore)
+	require.Len(t, beat.Members, 3)
+
+	// Should be score-desc order
+	assert.Equal(t, "b", beat.Members[0].Title)
+	assert.Equal(t, 9.0, beat.Members[0].GetRelevanceScore())
+
+	assert.Equal(t, "c", beat.Members[1].Title)
+	assert.Equal(t, 7.0, beat.Members[1].GetRelevanceScore())
+
+	assert.Equal(t, "a", beat.Members[2].Title)
+	assert.Equal(t, 5.0, beat.Members[2].GetRelevanceScore())
+}
+
 func TestBeatRepository_SaveCanonical(t *testing.T) {
 	repos, cleanup, mkItem := beatTestSetup(t)
 	defer cleanup()

@@ -29,6 +29,7 @@ func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler S
 
 func TestServer_New(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -55,6 +56,7 @@ func TestServer_Run(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return fmt.Sprintf("127.0.0.1:%d", port), 30 * time.Second
 		},
@@ -242,6 +244,7 @@ func TestServer_SafeHTML(t *testing.T) {
 	}
 
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},

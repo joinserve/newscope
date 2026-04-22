@@ -1,7 +1,7 @@
 {{define "pagination"}}
 <div class="pagination" id="pagination"
      {{if .HasNext}}
-     hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}?page={{add .CurrentPage 1}}{{if .IsSearch}}&q={{.SearchQuery}}{{end}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}{{if .ShowLikedOnly}}&liked=on{{end}}{{if .ShowProcessed}}&show_processed=on{{end}}{{if .DateRange}}&date_range={{.DateRange}}{{end}}"
+     hx-get="{{if eq .ActivePage "beats"}}/beats{{else if .IsSearch}}/search{{else}}/articles{{end}}?page={{add .CurrentPage 1}}{{if not (eq .ActivePage "beats")}}{{if .IsSearch}}&q={{.SearchQuery}}{{end}}&score={{.MinScore}}&topic={{.SelectedTopic}}&feed={{.SelectedFeed}}&sort={{.SelectedSort}}{{if .ShowLikedOnly}}&liked=on{{end}}{{if .ShowProcessed}}&show_processed=on{{end}}{{if .DateRange}}&date_range={{.DateRange}}{{end}}{{end}}"
      hx-trigger="revealed"
      hx-swap="outerHTML"
      hx-select=".article-card, #pagination"

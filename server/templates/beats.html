@@ -1,0 +1,24 @@
+{{template "base.html" .}}
+
+{{define "title"}}Beats - Newscope{{end}}
+
+{{define "content"}}
+<div class="articles-header">
+    <h2>Beats Inbox</h2>
+</div>
+
+<div id="articles-with-pagination">
+    <div id="articles-container" class="view-threads">
+        <div id="articles-list">
+            {{range .Beats}}
+            {{template "beat-card.html" .}}
+            {{else}}
+            <p class="no-articles">Nothing here yet.</p>
+            {{end}}
+
+            <!-- Pagination Controls -->
+            {{template "pagination" .}}
+        </div>
+    </div>
+</div>
+{{end}}

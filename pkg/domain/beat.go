@@ -24,3 +24,16 @@ type BeatCanonical struct {
 	Title   string
 	Summary string
 }
+
+// BeatWithMembers represents a beat with all its member items eager-loaded.
+type BeatWithMembers struct {
+	ID               int64
+	CanonicalTitle   *string
+	CanonicalSummary *string
+	FirstSeenAt      time.Time
+	LastViewedAt     *time.Time
+	UnreadCount      int
+	AggregateScore   float64
+	Topics           []string // union of member topics
+	Members          []ClassifiedItem
+}

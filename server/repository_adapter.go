@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 //go:generate moq -out mocks/item_repo.go -pkg mocks -skip-ensure -fmt goimports . ItemRepo
 //go:generate moq -out mocks/classification_repo.go -pkg mocks -skip-ensure -fmt goimports . ClassificationRepo
 //go:generate moq -out mocks/setting_repo.go -pkg mocks -skip-ensure -fmt goimports . SettingRepo
+//go:generate moq -out mocks/beat_repo.go -pkg mocks -skip-ensure -fmt goimports . BeatRepo
 
 // RepositoryAdapter adapts repositories to server.Database interface
 type RepositoryAdapter struct {
@@ -21,6 +23,7 @@ type RepositoryAdapter struct {
 	itemRepo           ItemRepo
 	classificationRepo ClassificationRepo
 	settingRepo        SettingRepo
+	beatRepo           BeatRepo
 }
 
 // FeedRepo defines the feed repository interface used by the adapter
@@ -58,6 +61,13 @@ type SettingRepo interface {
 	SetSetting(ctx context.Context, key, value string) error
 }
 
+// BeatRepo defines the beat repository interface used by the adapter
+type BeatRepo interface {
+	ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error)
+	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
+	MarkViewed(ctx context.Context, beatID int64) error
+}
+
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
 func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 	return &RepositoryAdapter{
@@ -65,16 +75,18 @@ func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 		itemRepo:           repos.Item,
 		classificationRepo: repos.Classification,
 		settingRepo:        repos.Setting,
+		beatRepo:           repos.Beat,
 	}
 }
 
 // NewRepositoryAdapterWithInterfaces creates a new repository adapter with interface dependencies for testing
-func NewRepositoryAdapterWithInterfaces(feedRepo FeedRepo, itemRepo ItemRepo, classificationRepo ClassificationRepo, settingRepo SettingRepo) *RepositoryAdapter {
+func NewRepositoryAdapterWithInterfaces(feedRepo FeedRepo, itemRepo ItemRepo, classificationRepo ClassificationRepo, settingRepo SettingRepo, beatRepo BeatRepo) *RepositoryAdapter {
 	return &RepositoryAdapter{
 		feedRepo:           feedRepo,
 		itemRepo:           itemRepo,
 		classificationRepo: classificationRepo,
 		settingRepo:        settingRepo,
+		beatRepo:           beatRepo,
 	}
 }
 
@@ -334,4 +346,28 @@ func getFeedDisplayName(title, feedURL string) string {
 
 	// fallback to the full URL
 	return feedURL
+}
+
+// ListBeats lists beat aggregation summaries
+func (r *RepositoryAdapter) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
+	if r.beatRepo == nil {
+		return nil, nil // graceful degradation
+	}
+	return r.beatRepo.ListBeats(ctx, limit, offset)
+}
+
+// GetBeat retrieves a single beat with its members
+func (r *RepositoryAdapter) GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
+	if r.beatRepo == nil {
+		return domain.BeatWithMembers{}, fmt.Errorf("beats disabled")
+	}
+	return r.beatRepo.GetBeat(ctx, beatID)
+}
+
+// MarkViewed marks a beat as viewed
+func (r *RepositoryAdapter) MarkViewed(ctx context.Context, beatID int64) error {
+	if r.beatRepo == nil {
+		return nil
+	}
+	return r.beatRepo.MarkViewed(ctx, beatID)
 }

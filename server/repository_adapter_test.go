@@ -20,7 +20,7 @@ func TestNewRepositoryAdapterWithInterfaces(t *testing.T) {
 	classificationRepo := &mocks.ClassificationRepoMock{}
 	settingRepo := &mocks.SettingRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, settingRepo)
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, settingRepo, nil)
 
 	assert.NotNil(t, adapter)
 	assert.Equal(t, feedRepo, adapter.feedRepo)
@@ -34,7 +34,7 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_Pagination(t *testing.T
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{})
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{}, nil)
 
 	now := time.Now()
 	classifiedAt := now.Add(-1 * time.Hour)
@@ -144,7 +144,7 @@ func TestRepositoryAdapter_GetClassifiedItemsWithFilters_PassThrough(t *testing.
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{})
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{}, nil)
 
 	now := time.Now()
 	classifiedAt := now.Add(-1 * time.Hour)
@@ -302,7 +302,7 @@ func TestRepositoryAdapter_GetClassifiedItemsCount(t *testing.T) {
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{})
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{}, nil)
 
 	t.Run("successful count", func(t *testing.T) {
 		classificationRepo.GetClassifiedItemsCountFunc = func(ctx context.Context, filter *domain.ItemFilter) (int, error) {
@@ -342,7 +342,7 @@ func TestRepositoryAdapter_UpdateItemFeedback(t *testing.T) {
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{})
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{}, nil)
 
 	t.Run("successful feedback update", func(t *testing.T) {
 		classificationRepo.UpdateItemFeedbackFunc = func(ctx context.Context, itemID int64, feedback *domain.Feedback) error {
@@ -386,7 +386,7 @@ func TestRepositoryAdapter_GetClassifiedItem(t *testing.T) {
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{})
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{}, nil)
 
 	now := time.Now()
 	classifiedAt := now.Add(-2 * time.Hour)
@@ -443,7 +443,7 @@ func TestRepositoryAdapter_ErrorPropagation(t *testing.T) {
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{})
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{}, nil)
 
 	testError := errors.New("repository error")
 
@@ -504,7 +504,7 @@ func TestRepositoryAdapter_FeedOperations(t *testing.T) {
 	itemRepo := &mocks.ItemRepoMock{}
 	classificationRepo := &mocks.ClassificationRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{})
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, &mocks.SettingRepoMock{}, nil)
 
 	t.Run("GetAllFeeds", func(t *testing.T) {
 		expectedFeeds := []domain.Feed{
@@ -587,7 +587,7 @@ func TestRepositoryAdapter_Settings(t *testing.T) {
 	classificationRepo := &mocks.ClassificationRepoMock{}
 	settingRepo := &mocks.SettingRepoMock{}
 
-	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, settingRepo)
+	adapter := NewRepositoryAdapterWithInterfaces(feedRepo, itemRepo, classificationRepo, settingRepo, nil)
 
 	t.Run("GetSetting", func(t *testing.T) {
 		settingRepo.GetSettingFunc = func(ctx context.Context, key string) (string, error) {
@@ -660,7 +660,7 @@ func TestRepositoryAdapter_GetClassifiedItems(t *testing.T) {
 		},
 	}
 
-	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil)
+	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil, nil)
 
 	items, err := adapter.GetClassifiedItems(context.Background(), 7.5, "technology", 50)
 	require.NoError(t, err)
@@ -670,7 +670,7 @@ func TestRepositoryAdapter_GetClassifiedItems(t *testing.T) {
 
 func TestRepositoryAdapter_GetTopTopicsByScore(t *testing.T) {
 	classificationRepo := &mocks.ClassificationRepoMock{}
-	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil)
+	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil, nil)
 
 	t.Run("successful get top topics", func(t *testing.T) {
 		repoTopics := []repository.TopicWithScore{
@@ -730,7 +730,7 @@ func TestRepositoryAdapter_GetTopTopicsByScore(t *testing.T) {
 
 func TestRepositoryAdapter_GetFeedbackCount(t *testing.T) {
 	classificationRepo := &mocks.ClassificationRepoMock{}
-	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil)
+	adapter := NewRepositoryAdapterWithInterfaces(nil, nil, classificationRepo, nil, nil)
 
 	t.Run("successful get feedback count", func(t *testing.T) {
 		classificationRepo.GetFeedbackCountFunc = func(ctx context.Context) (int64, error) {
