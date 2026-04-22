@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 	"unicode"
@@ -41,6 +42,17 @@ type mergeResponse struct {
 	Summary string `json:"canonical_summary"`
 }
 
+// defaultMergerForbiddenPrefixes mirrors the classifier defaults.
+var defaultMergerForbiddenPrefixes = []string{
+	"The articles discuss", "The articles cover", "The articles report",
+	"The articles describe", "The articles examine", "The articles explore",
+	"This story covers", "This story discusses", "This story reports",
+	"The group of articles", "These articles", "This collection",
+	"The article discusses", "The article covers", "The article reports",
+	"This article", "This post", "The post", "The piece",
+	"Discusses", "Covers", "Reports", "Describes", "Examines", "Explores",
+}
+
 // Merger produces a canonical title and summary for a beat from its member items.
 // It reuses the same LLM endpoint and credentials as the article classifier.
 type Merger struct {
@@ -58,50 +70,78 @@ func NewMerger(cfg config.LLMConfig) *Merger {
 }
 
 // Merge generates a canonical title and summary from the beat's member items.
+// It retries when the LLM produces a summary starting with a forbidden prefix,
+// and cleans the summary on the final attempt as a fallback.
 func (m *Merger) Merge(ctx context.Context, members []domain.ClassifiedItem) (domain.BeatCanonical, error) {
 	if len(members) == 0 {
 		return domain.BeatCanonical{}, fmt.Errorf("no members to merge")
 	}
 
-	prompt := m.buildPrompt(members)
-
-	var result domain.BeatCanonical
-	err := repeater.NewBackoff(5, time.Second,
-		repeater.WithMaxDelay(30*time.Second),
-		repeater.WithJitter(0.1),
-	).Do(ctx, func() error {
-		req := openai.ChatCompletionRequest{
-			Model: m.config.Model,
-			Messages: []openai.ChatCompletionMessage{
-				{Role: openai.ChatMessageRoleSystem, Content: mergerSystemPrompt},
-				{Role: openai.ChatMessageRoleUser, Content: prompt},
-			},
-		}
-		if isReasoningModel(m.config.Model) {
-			req.MaxCompletionTokens = m.config.MaxTokens
-		} else {
-			req.MaxTokens = m.config.MaxTokens
-			req.Temperature = float32(m.config.Temperature)
-		}
-
-		resp, err := m.client.CreateChatCompletion(ctx, req)
-		if err != nil {
-			return fmt.Errorf("llm request failed: %w", err)
-		}
-		if len(resp.Choices) == 0 {
-			return fmt.Errorf("no response from llm")
-		}
-
-		parsed, parseErr := m.parseResponse(resp.Choices[0].Message.Content)
-		if parseErr != nil {
-			return fmt.Errorf("parse response: %w", parseErr)
-		}
-		result = parsed
-		return nil
-	})
-	if err != nil {
-		return domain.BeatCanonical{}, err
+	retryAttempts := m.config.Classification.SummaryRetryAttempts
+	if retryAttempts == 0 {
+		retryAttempts = 3
 	}
+
+	prompt := m.buildPrompt(members)
+	var result domain.BeatCanonical
+
+	for attempt := 0; attempt <= retryAttempts; attempt++ {
+		err := repeater.NewBackoff(5, time.Second,
+			repeater.WithMaxDelay(30*time.Second),
+			repeater.WithJitter(0.1),
+		).Do(ctx, func() error {
+			req := openai.ChatCompletionRequest{
+				Model: m.config.Model,
+				Messages: []openai.ChatCompletionMessage{
+					{Role: openai.ChatMessageRoleSystem, Content: mergerSystemPrompt},
+					{Role: openai.ChatMessageRoleUser, Content: prompt},
+				},
+			}
+			if isReasoningModel(m.config.Model) {
+				req.MaxCompletionTokens = m.config.MaxTokens
+			} else {
+				req.MaxTokens = m.config.MaxTokens
+				req.Temperature = float32(m.config.Temperature)
+			}
+
+			resp, err := m.client.CreateChatCompletion(ctx, req)
+			if err != nil {
+				return fmt.Errorf("llm request failed: %w", err)
+			}
+			if len(resp.Choices) == 0 {
+				return fmt.Errorf("no response from llm")
+			}
+
+			parsed, parseErr := m.parseResponse(resp.Choices[0].Message.Content)
+			if parseErr != nil {
+				return fmt.Errorf("parse response: %w", parseErr)
+			}
+			result = parsed
+			return nil
+		})
+		if err != nil {
+			return domain.BeatCanonical{}, err
+		}
+
+		if !m.hasForbiddenPrefix(result.Summary) {
+			if attempt > 0 {
+				log.Printf("[INFO] merge_worker: summary ok after %d retries", attempt)
+			}
+			return result, nil
+		}
+
+		if attempt == retryAttempts {
+			log.Printf("[WARN] merge_worker: exhausted %d retries, cleaning forbidden prefix", retryAttempts)
+			result.Summary = m.cleanSummary(result.Summary)
+			return result, nil
+		}
+
+		log.Printf("[INFO] merge_worker: retrying merge (attempt %d/%d): summary has forbidden prefix", attempt+1, retryAttempts)
+		if attempt == 0 {
+			prompt += "\n\nIMPORTANT: Write the canonical_summary DIRECTLY without meta-language. Do NOT start with 'The articles discuss' or similar phrases."
+		}
+	}
+
 	return result, nil
 }
 
@@ -125,7 +165,6 @@ func (m *Merger) buildPrompt(members []domain.ClassifiedItem) string {
 
 // parseResponse extracts and validates the canonical title and summary from the LLM JSON output.
 func (m *Merger) parseResponse(content string) (domain.BeatCanonical, error) {
-	// find JSON object boundaries
 	start := strings.Index(content, "{")
 	end := strings.LastIndex(content, "}")
 	if start == -1 || end == -1 || start >= end {
@@ -143,16 +182,33 @@ func (m *Merger) parseResponse(content string) (domain.BeatCanonical, error) {
 		return domain.BeatCanonical{}, fmt.Errorf("empty canonical_summary in response")
 	}
 
-	return domain.BeatCanonical{
-		Title:   mr.Title,
-		Summary: m.cleanSummary(mr.Summary),
-	}, nil
+	return domain.BeatCanonical{Title: mr.Title, Summary: mr.Summary}, nil
 }
 
-// cleanSummary strips forbidden meta-language prefixes from the canonical summary.
+// getForbiddenPrefixes returns config-defined prefixes when set, otherwise the defaults.
+// Mirrors Classifier.getForbiddenPrefixes (classifier.go).
+func (m *Merger) getForbiddenPrefixes() []string {
+	if len(m.config.Classification.ForbiddenSummaryPrefixes) > 0 {
+		return m.config.Classification.ForbiddenSummaryPrefixes
+	}
+	return defaultMergerForbiddenPrefixes
+}
+
+// hasForbiddenPrefix reports whether summary starts with a forbidden phrase.
+func (m *Merger) hasForbiddenPrefix(summary string) bool {
+	lower := strings.ToLower(strings.TrimSpace(summary))
+	for _, prefix := range m.getForbiddenPrefixes() {
+		if strings.HasPrefix(lower, strings.ToLower(prefix)) {
+			return true
+		}
+	}
+	return false
+}
+
+// cleanSummary strips a forbidden meta-language prefix from the canonical summary.
 func (m *Merger) cleanSummary(summary string) string {
 	lower := strings.ToLower(strings.TrimSpace(summary))
-	for _, prefix := range mergerForbiddenPrefixes {
+	for _, prefix := range m.getForbiddenPrefixes() {
 		if strings.HasPrefix(lower, strings.ToLower(prefix)) {
 			remaining := strings.TrimSpace(summary[len(prefix):])
 			if remaining != "" {
@@ -163,25 +219,4 @@ func (m *Merger) cleanSummary(summary string) string {
 		}
 	}
 	return summary
-}
-
-// hasForbiddenPrefix reports whether summary starts with a forbidden phrase.
-func (m *Merger) hasForbiddenPrefix(summary string) bool {
-	lower := strings.ToLower(strings.TrimSpace(summary))
-	for _, prefix := range mergerForbiddenPrefixes {
-		if strings.HasPrefix(lower, strings.ToLower(prefix)) {
-			return true
-		}
-	}
-	return false
-}
-
-var mergerForbiddenPrefixes = []string{
-	"The articles discuss", "The articles cover", "The articles report",
-	"The articles describe", "The articles examine", "The articles explore",
-	"This story covers", "This story discusses", "This story reports",
-	"The group of articles", "These articles", "This collection",
-	"The article discusses", "The article covers", "The article reports",
-	"This article", "This post", "The post", "The piece",
-	"Discusses", "Covers", "Reports", "Describes", "Examines", "Explores",
 }

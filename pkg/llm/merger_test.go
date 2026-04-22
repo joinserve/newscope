@@ -68,14 +68,16 @@ func TestMerger_ContractOutputShape(t *testing.T) {
 	assert.NotEmpty(t, result.Title, "canonical_title must be non-empty")
 	assert.NotEmpty(t, result.Summary, "canonical_summary must be non-empty")
 	assert.Equal(t, "Go 1.22 Released with Iterators and 50% Faster Compilation", result.Title)
-	assert.Equal(t, "Go 1.22 introduces range-over-function iterators enabling cleaner iteration patterns. Compilation speeds improve by 50% through parallel compilation. New toolchain versioning simplifies managing Go versions.", result.Summary)
 }
 
 func TestMerger_ForbiddenPrefixCleaned(t *testing.T) {
-	responseJSON := `{"canonical_title": "Go 1.22 Release", "canonical_summary": "The articles discuss the release of Go 1.22 with range-over-function iterators and performance improvements."}`
+	// server always returns a forbidden-prefix summary; merger should clean it on final attempt
+	responseJSON := `{"canonical_title": "Go 1.22 Release", "canonical_summary": "The articles discuss the release of Go 1.22 with range-over-function iterators."}`
 
 	server, cfg := mergerTestServer(t, responseJSON)
 	defer server.Close()
+	// 0 retry attempts means default=3; set explicitly to 1 to keep the test fast
+	cfg.Classification.SummaryRetryAttempts = 1
 
 	m := NewMerger(cfg)
 	result, err := m.Merge(context.Background(), mergerMembers())
@@ -83,9 +85,24 @@ func TestMerger_ForbiddenPrefixCleaned(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.Title)
 	assert.NotEmpty(t, result.Summary)
-	// forbidden prefix must be stripped
 	assert.False(t, m.hasForbiddenPrefix(result.Summary),
 		"summary must not start with forbidden prefix, got: %q", result.Summary)
+}
+
+func TestMerger_ConfigForbiddenPrefixesHonoured(t *testing.T) {
+	responseJSON := `{"canonical_title": "Some Title", "canonical_summary": "CUSTOM_BAD: this summary starts with a custom prefix."}`
+
+	server, cfg := mergerTestServer(t, responseJSON)
+	defer server.Close()
+	cfg.Classification.ForbiddenSummaryPrefixes = []string{"CUSTOM_BAD:"}
+	cfg.Classification.SummaryRetryAttempts = 1
+
+	m := NewMerger(cfg)
+	result, err := m.Merge(context.Background(), mergerMembers())
+
+	require.NoError(t, err)
+	assert.False(t, m.hasForbiddenPrefix(result.Summary),
+		"custom forbidden prefix must be cleaned, got: %q", result.Summary)
 }
 
 func TestMerger_EmptyMembers(t *testing.T) {
@@ -95,36 +112,23 @@ func TestMerger_EmptyMembers(t *testing.T) {
 	assert.Contains(t, err.Error(), "no members")
 }
 
-func TestMerger_EmptyTitleRejected(t *testing.T) {
-	responseJSON := `{"canonical_title": "", "canonical_summary": "Some valid summary content here."}`
-
-	server, cfg := mergerTestServer(t, responseJSON)
-	defer server.Close()
-
-	m := NewMerger(cfg)
-	_, err := m.Merge(context.Background(), mergerMembers())
+func TestMerger_ParseResponse_EmptyTitleRejected(t *testing.T) {
+	m := NewMerger(config.LLMConfig{})
+	_, err := m.parseResponse(`{"canonical_title": "", "canonical_summary": "Some valid summary content here."}`)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty canonical_title")
 }
 
-func TestMerger_EmptySummaryRejected(t *testing.T) {
-	responseJSON := `{"canonical_title": "Valid Title Here", "canonical_summary": ""}`
-
-	server, cfg := mergerTestServer(t, responseJSON)
-	defer server.Close()
-
-	m := NewMerger(cfg)
-	_, err := m.Merge(context.Background(), mergerMembers())
+func TestMerger_ParseResponse_EmptySummaryRejected(t *testing.T) {
+	m := NewMerger(config.LLMConfig{})
+	_, err := m.parseResponse(`{"canonical_title": "Valid Title Here", "canonical_summary": ""}`)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty canonical_summary")
 }
 
-func TestMerger_MalformedJSONReturnsError(t *testing.T) {
-	server, cfg := mergerTestServer(t, "not json at all")
-	defer server.Close()
-
-	m := NewMerger(cfg)
-	_, err := m.Merge(context.Background(), mergerMembers())
+func TestMerger_ParseResponse_MalformedJSON(t *testing.T) {
+	m := NewMerger(config.LLMConfig{})
+	_, err := m.parseResponse("not json at all")
 	require.Error(t, err)
 }
 

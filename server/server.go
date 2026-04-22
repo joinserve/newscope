@@ -394,7 +394,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
 		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
 
-		// rSSHub integration
+		// RSSHub integration
 		r.HandleFunc("GET /rsshub/radar/", s.radarProxyHandler)
 		r.HandleFunc("GET /rsshub/categories", s.rsshubCategoriesHandler)
 		r.HandleFunc("GET /rsshub/namespaces", s.rsshubNamespacesHandler)

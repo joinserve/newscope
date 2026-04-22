@@ -17,7 +17,7 @@ import (
 
 const (
 	// rsshubRadarPrefix is the public path prefix for the radar reverse proxy.
-	// requests are mapped from <rsshubRadarPrefix>/<rest> to <rsshub.host>/api/radar/<rest>.
+	// Requests are mapped from <rsshubRadarPrefix>/<rest> to <rsshub.host>/api/radar/<rest>.
 	rsshubRadarPrefix = "/api/v1/rsshub/radar"
 
 	// rsshubFetchTimeout is the maximum time spent fetching data from the upstream RSSHub.
