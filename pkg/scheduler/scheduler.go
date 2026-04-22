@@ -7,6 +7,7 @@
 //go:generate moq -out mocks/classifier.go -pkg mocks -skip-ensure -fmt goimports . Classifier
 //go:generate moq -out mocks/embedder.go -pkg mocks -skip-ensure -fmt goimports . Embedder
 //go:generate moq -out mocks/embed_store.go -pkg mocks -skip-ensure -fmt goimports . EmbedStore
+//go:generate moq -out mocks/beat_store.go -pkg mocks -skip-ensure -fmt goimports . BeatStore
 
 package scheduler
 
@@ -29,6 +30,7 @@ type Scheduler struct {
 	feedProcessor     *FeedProcessor
 	preferenceManager *PreferenceManager
 	embedWorker       *EmbedWorker
+	beatWorker        *BeatWorker
 	itemManager       ItemManager
 
 	updateInterval     time.Duration
@@ -85,6 +87,15 @@ type EmbedStore interface {
 	PutEmbedding(ctx context.Context, itemID int64, model string, v []float32) error
 }
 
+// BeatStore groups classified items into beats via cosine similarity.
+type BeatStore interface {
+	GetUnbeatItems(ctx context.Context, limit int) ([]domain.BeatCandidate, error)
+	// AttachOrSeed returns the assigned beat ID and seeded=true when a new
+	// beat was created for this item; seeded=false when the item was attached
+	// to an existing beat.
+	AttachOrSeed(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (beatID int64, seeded bool, err error)
+}
+
 // ClassificationManager handles classification operations for scheduler
 type ClassificationManager interface {
 	GetRecentFeedback(ctx context.Context, feedbackType string, limit int) ([]domain.FeedbackExample, error)
@@ -126,8 +137,9 @@ type Params struct {
 	Extractor             Extractor
 	Classifier            Classifier
 	// beats aggregation (nil = feature disabled)
-	Embedder  Embedder
+	Embedder   Embedder
 	EmbedStore EmbedStore
+	BeatStore  BeatStore
 
 	// configuration
 	UpdateInterval             time.Duration
@@ -137,9 +149,15 @@ type Params struct {
 	CleanupMinScore            float64
 	CleanupInterval            time.Duration
 	// embedding configuration
-	EmbedModel    string
-	EmbedInterval time.Duration
+	EmbedModel     string
+	EmbedInterval  time.Duration
 	EmbedBatchSize int
+	// beat aggregation configuration
+	BeatThreshold  float64
+	BeatWindow     time.Duration
+	BeatMaxMembers int
+	BeatInterval   time.Duration
+	BeatBatchSize  int
 	// retry configuration for database operations
 	RetryAttempts     int           // number of retry attempts (default: 5)
 	RetryInitialDelay time.Duration // initial retry delay (default: 100ms)
@@ -207,6 +225,22 @@ func NewScheduler(params Params) *Scheduler {
 		})
 	}
 
+	// initialize beat worker when beats feature is enabled
+	if params.BeatStore != nil {
+		interval := params.BeatInterval
+		if interval <= 0 {
+			interval = params.UpdateInterval
+		}
+		s.beatWorker = NewBeatWorker(BeatWorkerConfig{
+			Store:      params.BeatStore,
+			Threshold:  params.BeatThreshold,
+			Window:     params.BeatWindow,
+			MaxMembers: params.BeatMaxMembers,
+			Interval:   interval,
+			BatchSize:  params.BeatBatchSize,
+		})
+	}
+
 	return s
 }
 
@@ -245,6 +279,15 @@ func (s *Scheduler) Start(ctx context.Context) {
 		go func() {
 			defer s.wg.Done()
 			s.embedWorker.Run(ctx)
+		}()
+	}
+
+	// start beat worker if beats feature is enabled
+	if s.beatWorker != nil {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.beatWorker.Run(ctx)
 		}()
 	}
 
