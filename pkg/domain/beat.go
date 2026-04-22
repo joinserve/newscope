@@ -10,3 +10,17 @@ type BeatCandidate struct {
 	Vector      []float32
 	PublishedAt time.Time
 }
+
+// Beat holds the minimal data needed by merge_worker to produce canonical fields.
+// Members are loaded by ListPendingMerge and passed directly to the Merger.
+type Beat struct {
+	ID      int64
+	Members []ClassifiedItem
+}
+
+// BeatCanonical is the LLM-generated output that represents a beat as a whole.
+// merge_worker stores it via BeatStore.SaveCanonical.
+type BeatCanonical struct {
+	Title   string
+	Summary string
+}
