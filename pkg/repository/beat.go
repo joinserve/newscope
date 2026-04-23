@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -400,13 +401,17 @@ func (r *BeatRepository) UnreadMemberCount(ctx context.Context, beatID int64) (i
 }
 
 // Search returns beats whose canonical title or summary match query using FTS5,
-// ordered by relevance. Returns nil when query is empty.
+// ordered by relevance. Single-member beats with no canonical title fall through
+// to a secondary search against their member item title. Returns nil when query is empty.
 func (r *BeatRepository) Search(ctx context.Context, query string, limit int) ([]domain.BeatView, error) {
 	if query == "" {
 		return nil, nil
 	}
 
-	rows, err := r.db.QueryxContext(ctx, `
+	escaped := escapeFTS5Query(query)
+
+	// primary: beats indexed in beats_fts (have a canonical title / summary)
+	canonRows, err := r.db.QueryxContext(ctx, `
 		SELECT b.id, COALESCE(b.canonical_title, '') AS canonical_title,
 		       COALESCE(b.canonical_summary, '') AS canonical_summary,
 		       b.first_seen_at, b.last_viewed_at,
@@ -416,12 +421,63 @@ func (r *BeatRepository) Search(ctx context.Context, query string, limit int) ([
 		JOIN beats b ON b.id = beats_fts.rowid
 		WHERE beats_fts MATCH ?
 		ORDER BY beats_fts.rank
-		LIMIT ?`, query, limit)
+		LIMIT ?`, escaped, limit)
 	if err != nil {
 		return nil, fmt.Errorf("beat search: %w", err)
 	}
-	defer rows.Close()
+	defer canonRows.Close()
+	out, err := scanBeatViews(canonRows)
+	if err != nil {
+		return nil, err
+	}
 
+	// fallthrough: single-member beats with NULL canonical whose item title matches
+	seen := make(map[int64]bool, len(out))
+	for _, v := range out {
+		seen[v.ID] = true
+	}
+	fallRows, err := r.db.QueryxContext(ctx, `
+		SELECT b.id, '' AS canonical_title, '' AS canonical_summary,
+		       b.first_seen_at, b.last_viewed_at,
+		       COALESCE(b.feedback, '') AS feedback, b.feedback_at,
+		       1 AS member_count
+		FROM beats b
+		JOIN beat_members bm ON bm.beat_id = b.id
+		JOIN items_fts ON items_fts.rowid = bm.item_id
+		WHERE b.canonical_title IS NULL
+		  AND items_fts MATCH ?
+		  AND (SELECT COUNT(*) FROM beat_members WHERE beat_id = b.id) = 1
+		LIMIT ?`, escaped, limit)
+	if err != nil {
+		return nil, fmt.Errorf("beat member title search: %w", err)
+	}
+	defer fallRows.Close()
+	extra, err := scanBeatViews(fallRows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range extra {
+		if !seen[v.ID] && len(out) < limit {
+			out = append(out, v)
+			seen[v.ID] = true
+		}
+	}
+	return out, nil
+}
+
+// escapeFTS5Query wraps each whitespace-separated term in double quotes so that
+// user-supplied special characters (*, (, ), ") are treated as literals by SQLite FTS5.
+func escapeFTS5Query(q string) string {
+	terms := strings.Fields(q)
+	for i, t := range terms {
+		terms[i] = `"` + strings.ReplaceAll(t, `"`, ``) + `"`
+	}
+	return strings.Join(terms, " ")
+}
+
+// scanBeatViews drains rows into a BeatView slice.
+func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
 	var out []domain.BeatView
 	for rows.Next() {
 		var row struct {

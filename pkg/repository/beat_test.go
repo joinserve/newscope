@@ -713,6 +713,55 @@ func TestBeatRepository_Search_RespectsLimit(t *testing.T) {
 	assert.Len(t, results, 2)
 }
 
+func TestBeatRepository_Search_MemberTitleFallthrough(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// seed a single-member beat without calling SaveCanonical — canonical_title stays NULL
+	pub := time.Now()
+	id := mkItem(pub, "Quantum Computing Breakthrough", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// verify canonical is indeed NULL
+	var canonTitle *string
+	require.NoError(t, repos.DB.GetContext(ctx, &canonTitle,
+		`SELECT canonical_title FROM beats WHERE id = ?`, beatID))
+	assert.Nil(t, canonTitle, "canonical_title must be NULL for this test to be valid")
+
+	// searching for a word from the item title must return the beat via fallthrough
+	results, err := repos.Beat.Search(ctx, "Quantum", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1, "single-member NULL-canonical beat must be findable via member item title")
+	assert.Equal(t, beatID, results[0].ID)
+	assert.Equal(t, 1, results[0].MemberCount)
+}
+
+func TestBeatRepository_Search_SpecialCharsDoNotError(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "AI Model", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "AI Model Release",
+		Summary: "A new AI model was released.",
+	}))
+
+	// these queries contain FTS5 special characters that would error without escaping
+	for _, q := range []string{`"AI"`, `AI*`, `(AI OR model)`, `AI"model`} {
+		results, err := repos.Beat.Search(ctx, q, 10)
+		require.NoError(t, err, "query %q must not produce a DB error", q)
+		_ = results
+	}
+}
+
 func TestBeatRepository_MigrateBackfillBeatsFTS(t *testing.T) {
 	ctx := context.Background()
 
