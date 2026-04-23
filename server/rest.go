@@ -23,10 +23,9 @@ func (s *Server) statusHandler(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, r, http.StatusOK, status)
 }
 
-// feedbackHandler handles user feedback (like/dislike/done). Any action
-// marks the item processed so it leaves the main board. In the inbox view
-// the card is removed; in the processed / liked view it is re-rendered
-// so the user sees the updated feedback state.
+// feedbackHandler handles user feedback (like/dislike/done). "done" dismisses
+// the item from the inbox; "like" and "dislike" record the signal and re-render
+// the card in place so the user sees the updated state without losing the item.
 func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -39,27 +38,25 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// validate action
 	if action != "like" && action != "dislike" && action != "done" {
 		renderError(w, r, fmt.Errorf("invalid action"), http.StatusBadRequest)
 		return
 	}
 
-	// update feedback
 	if err := s.db.UpdateItemFeedback(ctx, id, action); err != nil {
 		log.Printf("[ERROR] failed to update feedback: %v", err)
 		renderError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 
-	// trigger preference summary update for scoring feedback only.
-	// done is neutral so it doesn't need to bump the summary work.
+	// like/dislike carry a preference signal; done is neutral
 	if action != "done" {
 		s.scheduler.TriggerPreferenceUpdate()
 	}
 
-	// in inbox view, any action dismisses the card from the list
-	if r.Header.Get("HX-Request") == "true" {
+	// in an HTMX inbox view, only "done" dismisses the card (empty 200 removes it via hx-swap);
+	// "like" and "dislike" fall through to re-render so the feedback state is visible
+	if r.Header.Get("HX-Request") == "true" && action == "done" {
 		showProcessed := r.FormValue("show_processed") == "true" || r.FormValue("show_processed") == "on"
 		showLikedOnly := r.FormValue("liked") == "true" || r.FormValue("liked") == "on"
 		if !showProcessed && !showLikedOnly {
@@ -68,7 +65,6 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// processed / liked view: re-render the card to reflect the new state
 	article, err := s.db.GetClassifiedItem(ctx, id)
 	if err != nil {
 		log.Printf("[ERROR] failed to get article after feedback: %v", err)

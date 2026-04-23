@@ -1305,3 +1305,93 @@ func TestServer_DeletePreferencesHandler(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "database error")
 	})
 }
+
+func TestServer_feedbackHandler_InboxBehavior(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) {
+			return ":8080", 30 * time.Second
+		},
+	}
+
+	article := &domain.ClassifiedItem{
+		Item: &domain.Item{
+			ID:        1,
+			Title:     "Test Article",
+			Link:      "https://example.com",
+			Published: time.Now(),
+		},
+		FeedName:       "Test Feed",
+		Classification: &domain.Classification{Score: 7.5},
+	}
+
+	newDatabase := func(action string) *mocks.DatabaseMock {
+		return &mocks.DatabaseMock{
+			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
+				return nil
+			},
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
+				return article, nil
+			},
+		}
+	}
+
+	newScheduler := func() *mocks.SchedulerMock {
+		return &mocks.SchedulerMock{TriggerPreferenceUpdateFunc: func() {}}
+	}
+
+	t.Run("done in HTMX inbox dismisses card", func(t *testing.T) {
+		srv := testServer(t, cfg, newDatabase("done"), newScheduler())
+		req := httptest.NewRequest("POST", "/api/v1/feedback/1/done", http.NoBody)
+		req.SetPathValue("id", "1")
+		req.SetPathValue("action", "done")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Empty(t, w.Body.String(), "done should produce empty body (card removed by HTMX)")
+	})
+
+	t.Run("like in HTMX inbox re-renders card", func(t *testing.T) {
+		srv := testServer(t, cfg, newDatabase("like"), newScheduler())
+		req := httptest.NewRequest("POST", "/api/v1/feedback/1/like", http.NoBody)
+		req.SetPathValue("id", "1")
+		req.SetPathValue("action", "like")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Test Article", "like should re-render the card in place")
+	})
+
+	t.Run("dislike in HTMX inbox re-renders card", func(t *testing.T) {
+		srv := testServer(t, cfg, newDatabase("dislike"), newScheduler())
+		req := httptest.NewRequest("POST", "/api/v1/feedback/1/dislike", http.NoBody)
+		req.SetPathValue("id", "1")
+		req.SetPathValue("action", "dislike")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Test Article", "dislike should re-render the card in place")
+	})
+
+	t.Run("done in HTMX processed view re-renders card", func(t *testing.T) {
+		srv := testServer(t, cfg, newDatabase("done"), newScheduler())
+		req := httptest.NewRequest("POST", "/api/v1/feedback/1/done?show_processed=true", http.NoBody)
+		req.SetPathValue("id", "1")
+		req.SetPathValue("action", "done")
+		req.Header.Set("HX-Request", "true")
+		w := httptest.NewRecorder()
+
+		srv.feedbackHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Test Article", "done in processed view should re-render")
+	})
+}
