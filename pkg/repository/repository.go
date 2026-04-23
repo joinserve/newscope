@@ -130,6 +130,31 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 		return fmt.Errorf("execute schema: %w", err)
 	}
 
+	// post-schema migrations: run after the schema is loaded so the target tables exist
+	if err := migrateBackfillBeatsFTS(ctx, db); err != nil {
+		return fmt.Errorf("migrate beats_fts backfill: %w", err)
+	}
+
+	return nil
+}
+
+// migrateBackfillBeatsFTS rebuilds the beats_fts index from the beats content table
+// so that beats created before this PR are searchable. The FTS5 'rebuild' command
+// is idempotent: running it again produces a consistent index without duplicates.
+// Skipped when no canonical beats exist. Runs after schema.sql so beats_fts exists.
+func migrateBackfillBeatsFTS(ctx context.Context, db *sqlx.DB) error {
+	var canonicalCount int
+	if err := db.GetContext(ctx, &canonicalCount,
+		`SELECT COUNT(*) FROM beats WHERE canonical_title IS NOT NULL`); err != nil {
+		return fmt.Errorf("count canonical beats: %w", err)
+	}
+	if canonicalCount == 0 {
+		return nil
+	}
+
+	if _, err := db.ExecContext(ctx, `INSERT INTO beats_fts(beats_fts) VALUES('rebuild')`); err != nil {
+		return fmt.Errorf("rebuild beats_fts: %w", err)
+	}
 	return nil
 }
 
