@@ -4,7 +4,7 @@
          hx-get="/beats/{{.ID}}"
          hx-target="main.container"
          hx-push-url="true"
-         hx-swap="innerHTML"
+         hx-swap="innerHTML transition:true"
          hx-trigger="click[!event.target.closest('.card-actions') && !event.target.closest('.clickable-topic')]"
          {{if gt (len .Members) 0}}
          data-share-url="{{(index .Members 0).Link}}"
@@ -139,7 +139,7 @@
                     hx-get="/beats/{{.ID}}"
                     hx-target="main.container"
                     hx-push-url="true"
-                    hx-swap="innerHTML"
+                    hx-swap="innerHTML transition:true"
                     hx-trigger="click"
                     onclick="event.stopPropagation();">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
