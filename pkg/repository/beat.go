@@ -345,6 +345,35 @@ func (r *BeatRepository) SaveCanonical(ctx context.Context, beatID int64, c doma
 	return nil
 }
 
+// SetFeedback records the user's per-beat signal. feedback must be "like",
+// "dislike", or "" (empty clears the signal and nulls feedback_at).
+// This signal is independent from per-item feedback and is never propagated
+// to items.user_feedback or the classifier's preference manager.
+func (r *BeatRepository) SetFeedback(ctx context.Context, beatID int64, feedback string) error {
+	switch feedback {
+	case "like", "dislike", "":
+	default:
+		return fmt.Errorf("invalid beat feedback value %q: must be like, dislike, or empty", feedback)
+	}
+
+	var err error
+	if feedback == "" {
+		_, err = r.db.ExecContext(ctx,
+			`UPDATE beats SET feedback = '', feedback_at = NULL,
+			  updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+			 WHERE id = ?`, beatID)
+	} else {
+		_, err = r.db.ExecContext(ctx,
+			`UPDATE beats SET feedback = ?, feedback_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+			  updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+			 WHERE id = ?`, feedback, beatID)
+	}
+	if err != nil {
+		return fmt.Errorf("set beat feedback: %w", err)
+	}
+	return nil
+}
+
 // MarkViewed records that the user has viewed this beat at the current time;
 // PR 5's UI uses this to compute the "N new since last visit" badge.
 func (r *BeatRepository) MarkViewed(ctx context.Context, beatID int64) error {

@@ -145,6 +145,8 @@ CREATE TABLE IF NOT EXISTS beats (
     canonical_summary TEXT,
     first_seen_at     DATETIME NOT NULL,
     last_viewed_at    DATETIME,
+    feedback          TEXT     DEFAULT '',
+    feedback_at       DATETIME,
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
 );

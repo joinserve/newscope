@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -463,4 +464,153 @@ func TestBeatRepository_SaveCanonical(t *testing.T) {
 		`SELECT canonical_summary FROM beats WHERE id = ?`, beatID))
 	assert.Equal(t, "Canonical Title", title)
 	assert.Equal(t, "Canonical summary of the beat.", summary)
+}
+
+func TestBeatRepository_SetFeedback(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id := mkItem(pub, "a", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	t.Run("set like", func(t *testing.T) {
+		require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+
+		var fb string
+		var fbAt *time.Time
+		require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+		require.NoError(t, repos.DB.GetContext(ctx, &fbAt, `SELECT feedback_at FROM beats WHERE id = ?`, beatID))
+		assert.Equal(t, "like", fb)
+		assert.NotNil(t, fbAt, "feedback_at must be set when feedback is non-empty")
+	})
+
+	t.Run("overwrite to dislike", func(t *testing.T) {
+		require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "dislike"))
+
+		var fb string
+		require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+		assert.Equal(t, "dislike", fb)
+	})
+
+	t.Run("clear feedback", func(t *testing.T) {
+		require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, ""))
+
+		var fb string
+		var fbAt *time.Time
+		require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+		require.NoError(t, repos.DB.GetContext(ctx, &fbAt, `SELECT feedback_at FROM beats WHERE id = ?`, beatID))
+		assert.Empty(t, fb)
+		assert.Nil(t, fbAt, "feedback_at must be NULL when feedback is cleared")
+	})
+}
+
+func TestBeatRepository_SetFeedback_InvalidValue(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id := mkItem(pub, "a", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	err = repos.Beat.SetFeedback(ctx, beatID, "done")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid beat feedback value")
+
+	err = repos.Beat.SetFeedback(ctx, beatID, "spam")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid beat feedback value")
+}
+
+func TestBeatRepository_SetFeedback_DoesNotPropagateToItems(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id := mkItem(pub, "a", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+
+	var itemFeedback string
+	require.NoError(t, repos.DB.GetContext(ctx, &itemFeedback,
+		`SELECT COALESCE(user_feedback, '') FROM items WHERE id = ?`, id))
+	assert.Empty(t, itemFeedback, "beat feedback must not propagate to items.user_feedback")
+}
+
+func TestBeatRepository_SetFeedback_SurvivesSaveCanonical(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title: "Re-summarized Title", Summary: "Re-summarized summary.",
+	}))
+
+	var fb string
+	require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+	assert.Equal(t, "like", fb, "feedback must survive a SaveCanonical re-summary")
+}
+
+func TestBeatRepository_MigrateAddBeatFeedback(t *testing.T) {
+	ctx := context.Background()
+
+	// open a raw in-memory DB and apply the old schema (beats without feedback columns)
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	db.SetMaxOpenConns(1)
+
+	_, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+
+	// create the minimal beats table as it existed before PR 6
+	_, err = db.ExecContext(ctx, `CREATE TABLE beats (
+		id                INTEGER PRIMARY KEY AUTOINCREMENT,
+		canonical_title   TEXT,
+		canonical_summary TEXT,
+		first_seen_at     DATETIME NOT NULL,
+		last_viewed_at    DATETIME,
+		created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	// confirm the columns are absent before migration
+	var cols []string
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.NotContains(t, cols, "feedback")
+	assert.NotContains(t, cols, "feedback_at")
+
+	// run the migration
+	require.NoError(t, migrateAddBeatFeedback(ctx, db))
+
+	// confirm both columns now exist
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.Contains(t, cols, "feedback")
+	assert.Contains(t, cols, "feedback_at")
+
+	// idempotent: running again must not error
+	require.NoError(t, migrateAddBeatFeedback(ctx, db))
 }
