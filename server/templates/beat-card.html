@@ -4,7 +4,7 @@
          hx-get="/beats/{{.ID}}"
          hx-target="main.container"
          hx-push-url="true"
-         hx-swap="innerHTML transition:true"
+         hx-swap="innerHTML"
          hx-trigger="click[!event.target.closest('.card-actions') && !event.target.closest('.clickable-topic')]"
          {{if gt (len .Members) 0}}
          data-share-url="{{(index .Members 0).Link}}"
@@ -13,7 +13,8 @@
 
     {{$membersCount := len .Members}}
     {{if gt $membersCount 1}}
-    <div class="card-avatar avatar-stack">
+    <div class="card-avatar">
+        <div class="avatar-stack">
         {{range $index, $member := .Members}}
             {{if lt $index 3}}
                 {{$iconSrc := ""}}
@@ -40,6 +41,7 @@
         {{if gt $membersCount 3}}
         <div class="avatar-overflow">+{{sub $membersCount 3}}</div>
         {{end}}
+        </div>
         <div class="thread-line"></div>
     </div>
     {{else}}
@@ -137,7 +139,7 @@
                     hx-get="/beats/{{.ID}}"
                     hx-target="main.container"
                     hx-push-url="true"
-                    hx-swap="innerHTML transition:true"
+                    hx-swap="innerHTML"
                     hx-trigger="click"
                     onclick="event.stopPropagation();">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -2051,9 +2051,9 @@ html.dark-theme .moon-icon { opacity: 1; }
 }
 
 .avatar-stack {
-    flex-direction: row;   /* override the column direction from .card-avatar */
-    position: relative;
-    width: fit-content;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
 }
 
 .avatar-stack .avatar-img:nth-child(1) { width: 32px; height: 32px; position: relative; z-index: 3; }
