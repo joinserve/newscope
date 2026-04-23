@@ -25,6 +25,9 @@ import (
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
 //				panic("mock out the MarkViewed method")
 //			},
+//			SearchWithMembersFunc: func(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
+//				panic("mock out the SearchWithMembers method")
+//			},
 //			SetFeedbackFunc: func(ctx context.Context, beatID int64, feedback string) error {
 //				panic("mock out the SetFeedback method")
 //			},
@@ -43,6 +46,9 @@ type BeatRepoMock struct {
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
+
+	// SearchWithMembersFunc mocks the SearchWithMembers method.
+	SearchWithMembersFunc func(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
 
 	// SetFeedbackFunc mocks the SetFeedback method.
 	SetFeedbackFunc func(ctx context.Context, beatID int64, feedback string) error
@@ -72,6 +78,15 @@ type BeatRepoMock struct {
 			// BeatID is the beatID argument value.
 			BeatID int64
 		}
+		// SearchWithMembers holds details about calls to the SearchWithMembers method.
+		SearchWithMembers []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Query is the query argument value.
+			Query string
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// SetFeedback holds details about calls to the SetFeedback method.
 		SetFeedback []struct {
 			// Ctx is the ctx argument value.
@@ -82,10 +97,11 @@ type BeatRepoMock struct {
 			Feedback string
 		}
 	}
-	lockGetBeat     sync.RWMutex
-	lockListBeats   sync.RWMutex
-	lockMarkViewed  sync.RWMutex
-	lockSetFeedback sync.RWMutex
+	lockGetBeat           sync.RWMutex
+	lockListBeats         sync.RWMutex
+	lockMarkViewed        sync.RWMutex
+	lockSearchWithMembers sync.RWMutex
+	lockSetFeedback       sync.RWMutex
 }
 
 // GetBeat calls GetBeatFunc.
@@ -197,6 +213,46 @@ func (mock *BeatRepoMock) MarkViewedCalls() []struct {
 	mock.lockMarkViewed.RLock()
 	calls = mock.calls.MarkViewed
 	mock.lockMarkViewed.RUnlock()
+	return calls
+}
+
+// SearchWithMembers calls SearchWithMembersFunc.
+func (mock *BeatRepoMock) SearchWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
+	if mock.SearchWithMembersFunc == nil {
+		panic("BeatRepoMock.SearchWithMembersFunc: method is nil but BeatRepo.SearchWithMembers was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Query string
+		Limit int
+	}{
+		Ctx:   ctx,
+		Query: query,
+		Limit: limit,
+	}
+	mock.lockSearchWithMembers.Lock()
+	mock.calls.SearchWithMembers = append(mock.calls.SearchWithMembers, callInfo)
+	mock.lockSearchWithMembers.Unlock()
+	return mock.SearchWithMembersFunc(ctx, query, limit)
+}
+
+// SearchWithMembersCalls gets all the calls that were made to SearchWithMembers.
+// Check the length with:
+//
+//	len(mockedBeatRepo.SearchWithMembersCalls())
+func (mock *BeatRepoMock) SearchWithMembersCalls() []struct {
+	Ctx   context.Context
+	Query string
+	Limit int
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Query string
+		Limit int
+	}
+	mock.lockSearchWithMembers.RLock()
+	calls = mock.calls.SearchWithMembers
+	mock.lockSearchWithMembers.RUnlock()
 	return calls
 }
 

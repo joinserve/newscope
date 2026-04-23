@@ -480,6 +480,80 @@ func (r *BeatRepository) Search(ctx context.Context, query string, limit int) ([
 	return out, nil
 }
 
+// SearchWithMembers returns beats matching the query with all members eager-loaded.
+func (r *BeatRepository) SearchWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
+	views, err := r.Search(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(views) == 0 {
+		return nil, nil
+	}
+
+	beatIDs := make([]int64, len(views))
+	for i, v := range views {
+		beatIDs[i] = v.ID
+	}
+
+	membersMap, err := r.loadMembersForBeatsUI(ctx, beatIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.BeatWithMembers, 0, len(views))
+	for _, v := range views {
+		members := membersMap[v.ID]
+		topicsMap := make(map[string]bool)
+		var topics []string
+		var aggregateScore float64
+		for _, m := range members {
+			aggregateScore += m.GetRelevanceScore()
+			for _, t := range m.GetTopics() {
+				if !topicsMap[t] {
+					topicsMap[t] = true
+					topics = append(topics, t)
+				}
+			}
+		}
+		if len(members) > 0 {
+			aggregateScore /= float64(len(members))
+		}
+
+		var ct, cs *string
+		if v.CanonicalTitle != "" {
+			title := v.CanonicalTitle
+			ct = &title
+		}
+		if v.CanonicalSummary != "" {
+			summary := v.CanonicalSummary
+			cs = &summary
+		}
+
+		// calculate unread count based on members and LastViewedAt
+		var unreadCount int
+		for _, m := range members {
+			if v.LastViewedAt == nil || m.Published.After(*v.LastViewedAt) {
+				unreadCount++
+			}
+		}
+
+		out = append(out, domain.BeatWithMembers{
+			ID:               v.ID,
+			CanonicalTitle:   ct,
+			CanonicalSummary: cs,
+			FirstSeenAt:      v.FirstSeenAt,
+			LastViewedAt:     v.LastViewedAt,
+			UnreadCount:      unreadCount,
+			AggregateScore:   aggregateScore,
+			UserFeedback:     v.Feedback,
+			FeedbackAt:       v.FeedbackAt,
+			Topics:           topics,
+			Members:          members,
+		})
+	}
+	return out, nil
+}
+
 // escapeFTS5Query wraps each whitespace-separated term in double quotes so that
 // user-supplied special characters (*, (, ), ") are treated as literals by SQLite FTS5.
 func escapeFTS5Query(q string) string {
@@ -523,24 +597,18 @@ func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
 
 // ListBeats returns beats with members, sorted by aggregate score DESC then first_seen_at DESC.
 // Reads per-beat feedback from beats.feedback (column added in PR 6); no KV/settings indirection.
-//
-// Known gaps vs. brief — to be fixed by the UI implementer:
-//   - aggregate score is MAX here; brief specifies MEAN (AVG).
-//   - HAVING > 1 excludes single-member beats; brief says they should render inline.
 func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
 	query := `
 		SELECT
 			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
-			MAX(i.relevance_score) AS aggregate_score,
+			AVG(i.relevance_score) AS aggregate_score,
 			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) AS unread_count,
 			COALESCE(b.feedback, '') AS feedback,
 			b.feedback_at
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
-		WHERE b.canonical_title IS NOT NULL
 		GROUP BY b.id
-		HAVING COUNT(bm.item_id) > 1
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
 		LIMIT ? OFFSET ?`
 
@@ -560,7 +628,7 @@ func (r *BeatRepository) GetBeat(ctx context.Context, beatID int64) (domain.Beat
 	query := `
 		SELECT
 			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
-			MAX(i.relevance_score) AS aggregate_score,
+			AVG(i.relevance_score) AS aggregate_score,
 			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) AS unread_count,
 			COALESCE(b.feedback, '') AS feedback,
 			b.feedback_at

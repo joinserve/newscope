@@ -71,6 +71,9 @@ import (
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
 //				panic("mock out the MarkViewed method")
 //			},
+//			SearchBeatsWithMembersFunc: func(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
+//				panic("mock out the SearchBeatsWithMembers method")
+//			},
 //			SearchItemsFunc: func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 //				panic("mock out the SearchItems method")
 //			},
@@ -149,6 +152,9 @@ type DatabaseMock struct {
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
+
+	// SearchBeatsWithMembersFunc mocks the SearchBeatsWithMembers method.
+	SearchBeatsWithMembersFunc func(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
 
 	// SearchItemsFunc mocks the SearchItems method.
 	SearchItemsFunc func(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
@@ -302,6 +308,15 @@ type DatabaseMock struct {
 			// BeatID is the beatID argument value.
 			BeatID int64
 		}
+		// SearchBeatsWithMembers holds details about calls to the SearchBeatsWithMembers method.
+		SearchBeatsWithMembers []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Query is the query argument value.
+			Query string
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// SearchItems holds details about calls to the SearchItems method.
 		SearchItems []struct {
 			// Ctx is the ctx argument value.
@@ -381,6 +396,7 @@ type DatabaseMock struct {
 	lockGetTopicsFiltered             sync.RWMutex
 	lockListBeats                     sync.RWMutex
 	lockMarkViewed                    sync.RWMutex
+	lockSearchBeatsWithMembers        sync.RWMutex
 	lockSearchItems                   sync.RWMutex
 	lockSetFeedback                   sync.RWMutex
 	lockSetSetting                    sync.RWMutex
@@ -1046,6 +1062,46 @@ func (mock *DatabaseMock) MarkViewedCalls() []struct {
 	mock.lockMarkViewed.RLock()
 	calls = mock.calls.MarkViewed
 	mock.lockMarkViewed.RUnlock()
+	return calls
+}
+
+// SearchBeatsWithMembers calls SearchBeatsWithMembersFunc.
+func (mock *DatabaseMock) SearchBeatsWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
+	if mock.SearchBeatsWithMembersFunc == nil {
+		panic("DatabaseMock.SearchBeatsWithMembersFunc: method is nil but Database.SearchBeatsWithMembers was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Query string
+		Limit int
+	}{
+		Ctx:   ctx,
+		Query: query,
+		Limit: limit,
+	}
+	mock.lockSearchBeatsWithMembers.Lock()
+	mock.calls.SearchBeatsWithMembers = append(mock.calls.SearchBeatsWithMembers, callInfo)
+	mock.lockSearchBeatsWithMembers.Unlock()
+	return mock.SearchBeatsWithMembersFunc(ctx, query, limit)
+}
+
+// SearchBeatsWithMembersCalls gets all the calls that were made to SearchBeatsWithMembers.
+// Check the length with:
+//
+//	len(mockedDatabase.SearchBeatsWithMembersCalls())
+func (mock *DatabaseMock) SearchBeatsWithMembersCalls() []struct {
+	Ctx   context.Context
+	Query string
+	Limit int
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Query string
+		Limit int
+	}
+	mock.lockSearchBeatsWithMembers.RLock()
+	calls = mock.calls.SearchBeatsWithMembers
+	mock.lockSearchBeatsWithMembers.RUnlock()
 	return calls
 }
 

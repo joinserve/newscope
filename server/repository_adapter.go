@@ -71,6 +71,7 @@ type BeatRepo interface {
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
+	SearchWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
 }
 
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
@@ -383,4 +384,12 @@ func (r *RepositoryAdapter) MarkViewed(ctx context.Context, beatID int64) error 
 		return nil
 	}
 	return r.beatRepo.MarkViewed(ctx, beatID)
+}
+
+// SearchBeatsWithMembers searches for beats matching the query and loads their members
+func (r *RepositoryAdapter) SearchBeatsWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
+	if r.beatRepo == nil {
+		return nil, nil
+	}
+	return r.beatRepo.SearchWithMembers(ctx, query, limit)
 }

@@ -1442,37 +1442,43 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 		IsHTMX:      r.Header.Get("HX-Request") == "true",
 	}
 
-	if data.IsHTMX {
-		if _, err := fmt.Fprint(w, `<div id="articles-container" class="view-threads"><div id="articles-list">`); err != nil {
-			log.Printf("[WARN] failed to write container start: %v", err)
-		}
-
-		if len(beats) == 0 {
-			if _, err := w.Write([]byte(`<p class="no-articles">Nothing here yet.</p>`)); err != nil {
-				log.Printf("[WARN] failed to write empty message: %v", err)
-			}
-		} else {
-			for i := range beats {
-				if err := s.templates.ExecuteTemplate(w, "beat-card.html", &beats[i]); err != nil {
-					s.respondWithError(w, http.StatusInternalServerError, "Failed to render beat card", err)
-					return
-				}
-			}
-		}
-
-		if err := s.templates.ExecuteTemplate(w, "pagination", data); err != nil {
-			log.Printf("[WARN] failed to render pagination: %v", err)
-		}
-
-		if _, err := w.Write([]byte(`</div></div>`)); err != nil {
-			log.Printf("[WARN] failed to write container end: %v", err)
+	if !data.IsHTMX {
+		if err := s.renderPage(w, "beats.html", data); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
 		}
 		return
 	}
 
-	if err := s.renderPage(w, "beats.html", data); err != nil {
-		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
-		return
+	s.renderBeatsListHTMX(w, beats, "Nothing here yet.", data)
+}
+
+// renderBeatsListHTMX renders a list of beats as an HTMX fragment
+func (s *Server) renderBeatsListHTMX(w http.ResponseWriter, beats []domain.BeatWithMembers, emptyMsg string, paginationData interface{}) {
+	if _, err := fmt.Fprint(w, `<div id="articles-container" class="view-threads"><div id="articles-list">`); err != nil {
+		log.Printf("[WARN] failed to write container start: %v", err)
+	}
+
+	if len(beats) == 0 && emptyMsg != "" {
+		if _, err := fmt.Fprintf(w, `<p class="no-articles">%s</p>`, emptyMsg); err != nil {
+			log.Printf("[WARN] failed to write empty message: %v", err)
+		}
+	}
+
+	for i := range beats {
+		if err := s.templates.ExecuteTemplate(w, "beat-card.html", &beats[i]); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render beat card", err)
+			return
+		}
+	}
+
+	if paginationData != nil {
+		if err := s.templates.ExecuteTemplate(w, "pagination", paginationData); err != nil {
+			log.Printf("[WARN] failed to render pagination: %v", err)
+		}
+	}
+
+	if _, err := w.Write([]byte(`</div></div>`)); err != nil {
+		log.Printf("[WARN] failed to write container end: %v", err)
 	}
 }
 
@@ -1513,7 +1519,66 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// beatFeedbackHandler handles feedback (like) for a beat.
+// beatSearchHandler handles search requests for beats
+func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	pageSize := s.GetPageSize()
+
+	var beats []domain.BeatWithMembers
+	var err error
+	if searchQuery == "" {
+		beats = []domain.BeatWithMembers{}
+	} else {
+		beats, err = s.db.SearchBeatsWithMembers(ctx, searchQuery, pageSize)
+		if err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to search beats", err)
+			return
+		}
+	}
+
+	// for simplicity, search doesn't support pagination yet, just limits to one page
+	hasNext := false
+	hasPrev := false
+
+	data := struct {
+		ActivePage  string
+		IsSearch    bool
+		SearchQuery string
+		Beats       []domain.BeatWithMembers
+		CurrentPage int
+		TotalCount  int
+		HasNext     bool
+		HasPrev     bool
+		IsHTMX      bool
+	}{
+		ActivePage:  "beats",
+		IsSearch:    true,
+		SearchQuery: searchQuery,
+		Beats:       beats,
+		CurrentPage: 1,
+		TotalCount:  len(beats),
+		HasNext:     hasNext,
+		HasPrev:     hasPrev,
+		IsHTMX:      r.Header.Get("HX-Request") == "true",
+	}
+
+	if !data.IsHTMX {
+		if err := s.renderPage(w, "beats.html", data); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		}
+		return
+	}
+
+	emptyMsg := ""
+	if searchQuery != "" {
+		emptyMsg = "No beats found."
+	}
+	s.renderBeatsListHTMX(w, beats, emptyMsg, nil)
+}
+
+// beatFeedbackHandler handles feedback (like/dislike/clear) for a beat.
 func (s *Server) beatFeedbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := r.PathValue("id")
@@ -1523,18 +1588,24 @@ func (s *Server) beatFeedbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// we only support "like" toggle currently.
-	// if the request was to toggle it on:
-	// wait, we need to know the current feedback. We can fetch it.
-	beat, err := s.db.GetBeat(ctx, id)
-	if err != nil {
-		s.respondWithError(w, http.StatusNotFound, "Beat not found", err)
-		return
+	action := r.URL.Query().Get("action")
+	if action == "" {
+		if err := r.ParseForm(); err == nil {
+			action = r.FormValue("action")
+		}
 	}
 
-	newFeedback := "like"
-	if beat.GetUserFeedback() == "like" {
+	var newFeedback string
+	switch action {
+	case "like":
+		newFeedback = "like"
+	case "dislike":
+		newFeedback = "dislike"
+	case "clear", "":
 		newFeedback = ""
+	default:
+		s.respondWithError(w, http.StatusBadRequest, "Invalid feedback action", nil)
+		return
 	}
 
 	if err := s.db.SetFeedback(ctx, id, newFeedback); err != nil {
@@ -1542,34 +1613,16 @@ func (s *Server) beatFeedbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// update the beat in memory for the template
-	beat.UserFeedback = newFeedback
+	// just need minimal data for the feedback template to render
+	beat := domain.BeatWithMembers{
+		ID:           id,
+		UserFeedback: newFeedback,
+	}
 
-	// return just the heart button if HTMX requested
-	// but `beat-card.html` renders the whole card.
-	// in PR 5 scope: "HTMX swaps heart in place"
-	// actually we should just render the button directly.
 	if r.Header.Get("HX-Request") == "true" {
-		html := fmt.Sprintf(`
-		<button class="action action-like %s"
-				type="button"
-				data-action="like"
-				hx-post="/api/v1/beats/%d/feedback"
-				hx-swap="outerHTML"
-				hx-target="closest .action-like"
-				hx-trigger="click">
-			<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path>
-			</svg>
-		</button>`, func() string {
-			if newFeedback == "like" {
-				return "active"
-			}
-			return ""
-		}(), id)
-		w.Header().Set("Content-Type", "text/html")
-		if _, err := w.Write([]byte(html)); err != nil {
-			log.Printf("[WARN] failed to write feedback response: %v", err)
+		if err := s.templates.ExecuteTemplate(w, "beat-feedback", &beat); err != nil {
+			log.Printf("[WARN] failed to render feedback template: %v", err)
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render feedback", err)
 		}
 		return
 	}

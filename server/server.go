@@ -85,6 +85,7 @@ type Database interface {
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
+	SearchBeatsWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
 }
 
 // Scheduler interface for on-demand operations
@@ -247,6 +248,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 	// parse component templates that can be reused
 	templates, err := templates.ParseFS(templateFS,
 		"templates/article-card.html",
+		"templates/beat-card.html",
+		"templates/beat-feedback.html",
 		"templates/feed-card.html",
 		"templates/article-content.html",
 		"templates/pagination.html",
@@ -270,6 +273,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			"templates/"+pageName,
 			"templates/article-card.html",
 			"templates/beat-card.html",
+			"templates/beat-feedback.html",
 			"templates/feed-card.html",
 			"templates/pagination.html")
 		if err != nil {
@@ -386,8 +390,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /articles/{id}/hide", s.hideContentHandler)
 
 		// beats
-		// TODO: /beats/search route intentionally unwired pending repository shape decision.
-		// See feat/beats-ui handoff notes and pkg/repository/beat.go Search (BeatView, no members).
+		r.HandleFunc("GET /beats/search", s.beatSearchHandler)
 		r.HandleFunc("POST /beats/{id}/feedback", s.beatFeedbackHandler)
 
 		// feed management
