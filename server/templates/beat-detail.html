@@ -3,6 +3,10 @@
 {{define "title"}}Beat Detail - Newscope{{end}}
 
 {{define "content"}}
+{{template "beat-detail-content" .}}
+{{end}}
+
+{{define "beat-detail-content"}}
 <div class="beat-detail">
     <div class="beat-header" style="margin-bottom: 2rem;">
         <a href="/beats" class="back-link" style="display:inline-block; margin-bottom: 1rem; text-decoration:none;">← Back to Inbox</a>

@@ -1,6 +1,10 @@
 <article class="article-card beat-card"
          data-beat-id="{{.ID}}"
          data-user-feedback="{{.GetUserFeedback}}"
+         hx-get="/beats/{{.ID}}"
+         hx-target="main.container"
+         hx-push-url="true"
+         hx-swap="innerHTML transition:true"
          {{if gt (len .Members) 0}}
          data-share-url="{{(index .Members 0).Link}}"
          data-share-title="{{if .CanonicalTitle}}{{unescapeHTML (index .CanonicalTitle)}}{{else}}{{unescapeHTML (index .Members 0).Title}}{{end}}"
@@ -127,7 +131,7 @@
                     type="button"
                     data-action="comment"
                     hx-get="/beats/{{.ID}}"
-                    hx-target="body"
+                    hx-target="main.container"
                     hx-push-url="true"
                     hx-swap="innerHTML transition:true"
                     hx-trigger="click">

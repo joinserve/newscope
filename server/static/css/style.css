@@ -2092,11 +2092,16 @@ html.dark-theme .moon-icon { opacity: 1; }
     gap: 12px;
 }
 
-@view-transition { navigation: auto; }
-::view-transition-old(root) { animation: slide-out-left 0.25s ease-out; }
-::view-transition-new(root) { animation: slide-in-right 0.25s ease-out; }
+/* @view-transition { navigation: auto; } */
+
+main.container {
+  view-transition-name: main-content;
+}
+
+::view-transition-old(main-content) { animation: slide-out-left 0.25s ease-out; }
+::view-transition-new(main-content) { animation: slide-in-right 0.25s ease-out; }
 @keyframes slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes slide-out-left { from { transform: translateX(0); } to { transform: translateX(-30%); opacity: 0.3; } }
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+  ::view-transition-old(main-content), ::view-transition-new(main-content) { animation: none; }
 }

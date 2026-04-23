@@ -1513,6 +1513,14 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 		Beat: beat,
 	}
 
+	if r.Header.Get("HX-Request") == "true" {
+		// render only the content block, no base layout
+		if err := s.templates.ExecuteTemplate(w, "beat-detail-content", data); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		}
+		return
+	}
+
 	if err := s.renderPage(w, "beat-detail.html", data); err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
 		return
