@@ -614,3 +614,157 @@ func TestBeatRepository_MigrateAddBeatFeedback(t *testing.T) {
 	// idempotent: running again must not error
 	require.NoError(t, migrateAddBeatFeedback(ctx, db))
 }
+
+func TestBeatRepository_Search_ByTitle(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "ukraine-war", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "Ukraine War Update",
+		Summary: "Fighting continues in the eastern regions.",
+	}))
+
+	results, err := repos.Beat.Search(ctx, "Ukraine", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, beatID, results[0].ID)
+	assert.Equal(t, "Ukraine War Update", results[0].CanonicalTitle)
+	assert.Equal(t, 1, results[0].MemberCount)
+}
+
+func TestBeatRepository_Search_BySummary(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "climate", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "Climate Summit",
+		Summary: "World leaders agree on carbon reduction targets.",
+	}))
+
+	results, err := repos.Beat.Search(ctx, "carbon", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, beatID, results[0].ID)
+}
+
+func TestBeatRepository_Search_EmptyQueryReturnsNil(t *testing.T) {
+	repos, cleanup, _ := beatTestSetup(t)
+	defer cleanup()
+
+	results, err := repos.Beat.Search(context.Background(), "", 10)
+	require.NoError(t, err)
+	assert.Nil(t, results)
+}
+
+func TestBeatRepository_Search_NoMatch(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "tech-news", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "Apple Releases New iPhone",
+		Summary: "The latest iPhone features improved cameras.",
+	}))
+
+	results, err := repos.Beat.Search(ctx, "soccer", 10)
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
+func TestBeatRepository_Search_RespectsLimit(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// use orthogonal vectors so each item seeds its own beat (cosine=0 < threshold 0.5)
+	vecs := [][]float32{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
+	for i := 0; i < 3; i++ {
+		pub := time.Now().Add(time.Duration(i) * time.Hour)
+		id := mkItem(pub, fmt.Sprintf("item-%d", i), vecs[i])
+		beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+			domain.BeatCandidate{ItemID: id, Vector: vecs[i], PublishedAt: pub},
+			0.5, 48*time.Hour, 20)
+		require.NoError(t, err)
+		require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+			Title:   fmt.Sprintf("Summit %d", i),
+			Summary: "Leaders gather at annual summit.",
+		}))
+	}
+
+	results, err := repos.Beat.Search(ctx, "summit", 2)
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+}
+
+func TestBeatRepository_MigrateBackfillBeatsFTS(t *testing.T) {
+	ctx := context.Background()
+
+	// open a raw in-memory DB with beats and beats_fts tables but no insert triggers,
+	// simulating an existing deployment before this migration ran.
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	_, err = db.ExecContext(ctx, `CREATE TABLE beats (
+		id                INTEGER PRIMARY KEY AUTOINCREMENT,
+		canonical_title   TEXT,
+		canonical_summary TEXT,
+		first_seen_at     DATETIME NOT NULL,
+		created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `CREATE VIRTUAL TABLE beats_fts USING fts5(
+		canonical_title,
+		canonical_summary,
+		content=beats,
+		content_rowid=id,
+		tokenize='porter unicode61'
+	)`)
+	require.NoError(t, err)
+
+	// insert a beat directly — no trigger exists, so beats_fts shadow tables stay empty
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO beats (first_seen_at, canonical_title, canonical_summary) VALUES (?, ?, ?)`,
+		time.Now(), "Uniqueword Beat Title", "Uniqueword beat summary.")
+	require.NoError(t, err)
+
+	// verify the beat is NOT yet findable via FTS (shadow tables empty, no trigger)
+	var matchCount int
+	require.NoError(t, db.GetContext(ctx, &matchCount,
+		`SELECT COUNT(*) FROM beats_fts WHERE beats_fts MATCH 'Uniqueword'`))
+	assert.Equal(t, 0, matchCount, "FTS index should be empty before migration")
+
+	// run backfill migration
+	require.NoError(t, migrateBackfillBeatsFTS(ctx, db))
+
+	// beat should now be findable via FTS
+	require.NoError(t, db.GetContext(ctx, &matchCount,
+		`SELECT COUNT(*) FROM beats_fts WHERE beats_fts MATCH 'Uniqueword'`))
+	assert.Equal(t, 1, matchCount, "beat should be indexed after migration")
+
+	// idempotent: second run must not error or produce duplicates
+	require.NoError(t, migrateBackfillBeatsFTS(ctx, db))
+	require.NoError(t, db.GetContext(ctx, &matchCount,
+		`SELECT COUNT(*) FROM beats_fts WHERE beats_fts MATCH 'Uniqueword'`))
+	assert.Equal(t, 1, matchCount, "migration must be idempotent")
+}

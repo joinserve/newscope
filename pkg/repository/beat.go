@@ -399,6 +399,58 @@ func (r *BeatRepository) UnreadMemberCount(ctx context.Context, beatID int64) (i
 	return n, nil
 }
 
+// Search returns beats whose canonical title or summary match query using FTS5,
+// ordered by relevance. Returns nil when query is empty.
+func (r *BeatRepository) Search(ctx context.Context, query string, limit int) ([]domain.BeatView, error) {
+	if query == "" {
+		return nil, nil
+	}
+
+	rows, err := r.db.QueryxContext(ctx, `
+		SELECT b.id, COALESCE(b.canonical_title, '') AS canonical_title,
+		       COALESCE(b.canonical_summary, '') AS canonical_summary,
+		       b.first_seen_at, b.last_viewed_at,
+		       COALESCE(b.feedback, '') AS feedback, b.feedback_at,
+		       (SELECT COUNT(*) FROM beat_members WHERE beat_id = b.id) AS member_count
+		FROM beats_fts
+		JOIN beats b ON b.id = beats_fts.rowid
+		WHERE beats_fts MATCH ?
+		ORDER BY beats_fts.rank
+		LIMIT ?`, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("beat search: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.BeatView
+	for rows.Next() {
+		var row struct {
+			ID               int64      `db:"id"`
+			CanonicalTitle   string     `db:"canonical_title"`
+			CanonicalSummary string     `db:"canonical_summary"`
+			FirstSeenAt      time.Time  `db:"first_seen_at"`
+			LastViewedAt     *time.Time `db:"last_viewed_at"`
+			Feedback         string     `db:"feedback"`
+			FeedbackAt       *time.Time `db:"feedback_at"`
+			MemberCount      int        `db:"member_count"`
+		}
+		if err := rows.StructScan(&row); err != nil {
+			return nil, fmt.Errorf("scan beat search row: %w", err)
+		}
+		out = append(out, domain.BeatView{
+			ID:               row.ID,
+			CanonicalTitle:   row.CanonicalTitle,
+			CanonicalSummary: row.CanonicalSummary,
+			FirstSeenAt:      row.FirstSeenAt,
+			LastViewedAt:     row.LastViewedAt,
+			Feedback:         row.Feedback,
+			FeedbackAt:       row.FeedbackAt,
+			MemberCount:      row.MemberCount,
+		})
+	}
+	return out, rows.Err()
+}
+
 // cosine returns the cosine similarity of two vectors; zero when either has
 // zero norm or when lengths disagree.
 func cosine(a, b []float32) float64 {
