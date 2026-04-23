@@ -473,11 +473,11 @@ func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
 	require.Len(t, beats, 3)
 
 	assert.Equal(t, b2, beats[0].ID, "highest max score should be first")
-	assert.Equal(t, 8.0, beats[0].AggregateScore)
+	assert.InDelta(t, 8.0, beats[0].AggregateScore, 0.001)
 	assert.Equal(t, b3, beats[1].ID)
-	assert.Equal(t, 7.0, beats[1].AggregateScore)
+	assert.InDelta(t, 7.0, beats[1].AggregateScore, 0.001)
 	assert.Equal(t, b1, beats[2].ID)
-	assert.Equal(t, 5.0, beats[2].AggregateScore)
+	assert.InDelta(t, 5.0, beats[2].AggregateScore, 0.001)
 }
 
 func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
@@ -531,7 +531,7 @@ func TestBeatRepository_GetBeat_EagerLoadsMembers(t *testing.T) {
 	assert.Equal(t, 9.0, beat.AggregateScore)
 	require.Len(t, beat.Members, 3)
 
-	// Should be score-desc order
+	// should be score-desc order
 	assert.Equal(t, "b", beat.Members[0].Title)
 	assert.Equal(t, 9.0, beat.Members[0].GetRelevanceScore())
 

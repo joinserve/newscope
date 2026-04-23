@@ -376,10 +376,12 @@ func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]do
 		SELECT 
 			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
 			MAX(i.relevance_score) as aggregate_score,
-			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count
+			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count,
+			COALESCE(s.value, '') as user_feedback
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
+		LEFT JOIN settings s ON s.key = 'beat_feedback_' || b.id
 		WHERE b.canonical_title IS NOT NULL
 		GROUP BY b.id
 		HAVING COUNT(bm.item_id) > 1
@@ -426,11 +428,93 @@ func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]do
 			LastViewedAt:     row.LastViewedAt,
 			UnreadCount:      row.UnreadCount,
 			AggregateScore:   row.AggregateScore,
+			UserFeedback:     row.UserFeedback,
 			Topics:           topics,
 			Members:          members,
 		})
 	}
 	return beats, nil
+}
+
+// Search wraps the beat search functionality.
+func (r *BeatRepository) Search(ctx context.Context, query string, limit, offset int) ([]domain.BeatWithMembers, error) {
+	// brute-force LIKE search on canonical fields and member titles
+	sqlQuery := `
+		SELECT 
+			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
+			MAX(i.relevance_score) as aggregate_score,
+			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count,
+			COALESCE(s.value, '') as user_feedback
+		FROM beats b
+		JOIN beat_members bm ON bm.beat_id = b.id
+		JOIN items i ON i.id = bm.item_id
+		LEFT JOIN settings s ON s.key = 'beat_feedback_' || b.id
+		WHERE b.canonical_title IS NOT NULL
+		  AND (b.canonical_title LIKE '%' || ? || '%'
+		       OR b.canonical_summary LIKE '%' || ? || '%'
+		       OR i.title LIKE '%' || ? || '%')
+		GROUP BY b.id
+		HAVING COUNT(bm.item_id) > 1
+		ORDER BY aggregate_score DESC, b.first_seen_at DESC
+		LIMIT ? OFFSET ?
+	`
+	var rows []beatRow
+	if err := r.db.SelectContext(ctx, &rows, sqlQuery, query, query, query, limit, offset); err != nil {
+		return nil, fmt.Errorf("search beats: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	beatIDs := make([]int64, len(rows))
+	for i, row := range rows {
+		beatIDs[i] = row.ID
+	}
+
+	membersMap, err := r.loadMembersForBeatsUI(ctx, beatIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	var beats []domain.BeatWithMembers
+	for _, row := range rows {
+		members := membersMap[row.ID]
+		topicsMap := make(map[string]bool)
+		var topics []string
+		for _, m := range members {
+			for _, t := range m.GetTopics() {
+				if !topicsMap[t] {
+					topicsMap[t] = true
+					topics = append(topics, t)
+				}
+			}
+		}
+
+		beats = append(beats, domain.BeatWithMembers{
+			ID:               row.ID,
+			CanonicalTitle:   row.CanonicalTitle,
+			CanonicalSummary: row.CanonicalSummary,
+			FirstSeenAt:      row.FirstSeenAt,
+			LastViewedAt:     row.LastViewedAt,
+			UnreadCount:      row.UnreadCount,
+			AggregateScore:   row.AggregateScore,
+			UserFeedback:     row.UserFeedback,
+			Topics:           topics,
+			Members:          members,
+		})
+	}
+	return beats, nil
+}
+
+// SetFeedback records a preference signal for a beat without persisting to items.
+func (r *BeatRepository) SetFeedback(ctx context.Context, beatID int64, feedback string) error {
+	key := fmt.Sprintf("beat_feedback_%d", beatID)
+	if feedback == "" {
+		_, err := r.db.ExecContext(ctx, "DELETE FROM settings WHERE key = ?", key)
+		return err
+	}
+	_, err := r.db.ExecContext(ctx, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, feedback)
+	return err
 }
 
 // GetBeat returns a single beat with its members.
@@ -439,10 +523,12 @@ func (r *BeatRepository) GetBeat(ctx context.Context, beatID int64) (domain.Beat
 		SELECT 
 			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
 			MAX(i.relevance_score) as aggregate_score,
-			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count
+			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count,
+			COALESCE(s.value, '') as user_feedback
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
+		LEFT JOIN settings s ON s.key = 'beat_feedback_' || b.id
 		WHERE b.id = ?
 		GROUP BY b.id
 	`
@@ -492,6 +578,7 @@ type beatRow struct {
 	LastViewedAt     *time.Time `db:"last_viewed_at"`
 	UnreadCount      int        `db:"unread_count"`
 	AggregateScore   float64    `db:"aggregate_score"`
+	UserFeedback     string     `db:"user_feedback"`
 }
 
 func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []int64) (map[int64][]domain.ClassifiedItem, error) {
@@ -522,7 +609,7 @@ func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []in
 		return nil, fmt.Errorf("load beat members for UI: %w", err)
 	}
 
-	// We can reuse ClassificationRepository's unexported method via creating a temporary instance,
+	// we can reuse ClassificationRepository's unexported method via creating a temporary instance,
 	// since they are in the same package and share the db connection.
 	cr := NewClassificationRepository(r.db)
 

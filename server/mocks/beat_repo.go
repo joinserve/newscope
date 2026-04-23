@@ -25,6 +25,12 @@ import (
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
 //				panic("mock out the MarkViewed method")
 //			},
+//			SearchFunc: func(ctx context.Context, query string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+//				panic("mock out the Search method")
+//			},
+//			SetFeedbackFunc: func(ctx context.Context, beatID int64, feedback string) error {
+//				panic("mock out the SetFeedback method")
+//			},
 //		}
 //
 //		// use mockedBeatRepo in code that requires server.BeatRepo
@@ -40,6 +46,12 @@ type BeatRepoMock struct {
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
+
+	// SearchFunc mocks the Search method.
+	SearchFunc func(ctx context.Context, query string, limit int, offset int) ([]domain.BeatWithMembers, error)
+
+	// SetFeedbackFunc mocks the SetFeedback method.
+	SetFeedbackFunc func(ctx context.Context, beatID int64, feedback string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -66,10 +78,32 @@ type BeatRepoMock struct {
 			// BeatID is the beatID argument value.
 			BeatID int64
 		}
+		// Search holds details about calls to the Search method.
+		Search []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Query is the query argument value.
+			Query string
+			// Limit is the limit argument value.
+			Limit int
+			// Offset is the offset argument value.
+			Offset int
+		}
+		// SetFeedback holds details about calls to the SetFeedback method.
+		SetFeedback []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// BeatID is the beatID argument value.
+			BeatID int64
+			// Feedback is the feedback argument value.
+			Feedback string
+		}
 	}
-	lockGetBeat    sync.RWMutex
-	lockListBeats  sync.RWMutex
-	lockMarkViewed sync.RWMutex
+	lockGetBeat     sync.RWMutex
+	lockListBeats   sync.RWMutex
+	lockMarkViewed  sync.RWMutex
+	lockSearch      sync.RWMutex
+	lockSetFeedback sync.RWMutex
 }
 
 // GetBeat calls GetBeatFunc.
@@ -181,5 +215,89 @@ func (mock *BeatRepoMock) MarkViewedCalls() []struct {
 	mock.lockMarkViewed.RLock()
 	calls = mock.calls.MarkViewed
 	mock.lockMarkViewed.RUnlock()
+	return calls
+}
+
+// Search calls SearchFunc.
+func (mock *BeatRepoMock) Search(ctx context.Context, query string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+	if mock.SearchFunc == nil {
+		panic("BeatRepoMock.SearchFunc: method is nil but BeatRepo.Search was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Query  string
+		Limit  int
+		Offset int
+	}{
+		Ctx:    ctx,
+		Query:  query,
+		Limit:  limit,
+		Offset: offset,
+	}
+	mock.lockSearch.Lock()
+	mock.calls.Search = append(mock.calls.Search, callInfo)
+	mock.lockSearch.Unlock()
+	return mock.SearchFunc(ctx, query, limit, offset)
+}
+
+// SearchCalls gets all the calls that were made to Search.
+// Check the length with:
+//
+//	len(mockedBeatRepo.SearchCalls())
+func (mock *BeatRepoMock) SearchCalls() []struct {
+	Ctx    context.Context
+	Query  string
+	Limit  int
+	Offset int
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Query  string
+		Limit  int
+		Offset int
+	}
+	mock.lockSearch.RLock()
+	calls = mock.calls.Search
+	mock.lockSearch.RUnlock()
+	return calls
+}
+
+// SetFeedback calls SetFeedbackFunc.
+func (mock *BeatRepoMock) SetFeedback(ctx context.Context, beatID int64, feedback string) error {
+	if mock.SetFeedbackFunc == nil {
+		panic("BeatRepoMock.SetFeedbackFunc: method is nil but BeatRepo.SetFeedback was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		BeatID   int64
+		Feedback string
+	}{
+		Ctx:      ctx,
+		BeatID:   beatID,
+		Feedback: feedback,
+	}
+	mock.lockSetFeedback.Lock()
+	mock.calls.SetFeedback = append(mock.calls.SetFeedback, callInfo)
+	mock.lockSetFeedback.Unlock()
+	return mock.SetFeedbackFunc(ctx, beatID, feedback)
+}
+
+// SetFeedbackCalls gets all the calls that were made to SetFeedback.
+// Check the length with:
+//
+//	len(mockedBeatRepo.SetFeedbackCalls())
+func (mock *BeatRepoMock) SetFeedbackCalls() []struct {
+	Ctx      context.Context
+	BeatID   int64
+	Feedback string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		BeatID   int64
+		Feedback string
+	}
+	mock.lockSetFeedback.RLock()
+	calls = mock.calls.SetFeedback
+	mock.lockSetFeedback.RUnlock()
 	return calls
 }

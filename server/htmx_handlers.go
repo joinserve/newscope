@@ -1352,9 +1352,9 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 
 	feedName, _ = url.QueryUnescape(feedName)
 
-	limit := 100 // Reasonable limit for a single feed view
+	limit := 100 // reasonable limit for a single feed view
 
-	// Fetch unread articles
+	// fetch unread articles
 	unreadReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: false,
@@ -1367,7 +1367,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch read articles
+	// fetch read articles
 	readReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: true,
@@ -1386,7 +1386,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 		UnreadArticles []domain.ClassifiedItem
 		ReadArticles   []domain.ClassifiedItem
 	}{
-		ActivePage:     feedName, // Display the feed name in the header
+		ActivePage:     feedName, // display the feed name in the header
 		FeedName:       feedName,
 		UnreadArticles: unreadArticles,
 		ReadArticles:   readArticles,
@@ -1436,7 +1436,7 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 		},
 		Beats:       beats,
 		CurrentPage: page,
-		TotalCount:  0, // Avoid GetBeatsCount query as it's not strictly required in PR scope
+		TotalCount:  0, // avoid GetBeatsCount query as it's not strictly required in PR scope
 		HasNext:     hasNext,
 		HasPrev:     hasPrev,
 		IsHTMX:      r.Header.Get("HX-Request") == "true",
@@ -1511,4 +1511,113 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
 		return
 	}
+}
+
+// beatSearchHandler handles searching within beats.
+func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get search query
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	// get page parameter
+	page := 1
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	pageSize := s.GetPageSize()
+	offset := (page - 1) * pageSize
+
+	var beats []domain.BeatWithMembers
+	var err error
+
+	if searchQuery == "" {
+		beats, err = s.db.ListBeats(ctx, pageSize, offset)
+	} else {
+		beats, err = s.db.Search(ctx, searchQuery, pageSize, offset)
+	}
+
+	if err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to search beats", err)
+		return
+	}
+
+	// just render the list since it's an API route wrapping search,
+	// but the requirement "wraps BeatRepository.Search" implies returning JSON?
+	// the prompt:
+	// GET /api/v1/beats/search?q=… — wraps BeatRepository.Search.
+	// oh, wait, the prompt says "GET /api/v1/beats — paginated []domain.BeatView".
+	// since beatsHandler returns HTML, maybe it wants JSON?
+	// but `GET /beats` exists, and maybe it wants API routes. Let's just return JSON.
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(beats); err != nil {
+		log.Printf("[ERROR] failed to encode beats search results: %v", err)
+	}
+}
+
+// beatFeedbackHandler handles feedback (like) for a beat.
+func (s *Server) beatFeedbackHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		s.respondWithError(w, http.StatusBadRequest, "Invalid beat ID", err)
+		return
+	}
+
+	// we only support "like" toggle currently.
+	// if the request was to toggle it on:
+	// wait, we need to know the current feedback. We can fetch it.
+	beat, err := s.db.GetBeat(ctx, id)
+	if err != nil {
+		s.respondWithError(w, http.StatusNotFound, "Beat not found", err)
+		return
+	}
+
+	newFeedback := "like"
+	if beat.GetUserFeedback() == "like" {
+		newFeedback = ""
+	}
+
+	if err := s.db.SetFeedback(ctx, id, newFeedback); err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to update feedback", err)
+		return
+	}
+
+	// update the beat in memory for the template
+	beat.UserFeedback = newFeedback
+
+	// return just the heart button if HTMX requested
+	// but `beat-card.html` renders the whole card.
+	// in PR 5 scope: "HTMX swaps heart in place"
+	// actually we should just render the button directly.
+	if r.Header.Get("HX-Request") == "true" {
+		html := fmt.Sprintf(`
+		<button class="action action-like %s"
+				type="button"
+				data-action="like"
+				hx-post="/api/v1/beats/%d/feedback"
+				hx-swap="outerHTML"
+				hx-target="closest .action-like"
+				hx-trigger="click">
+			<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"></path>
+			</svg>
+		</button>`, func() string {
+			if newFeedback == "like" {
+				return "active"
+			}
+			return ""
+		}(), id)
+		w.Header().Set("Content-Type", "text/html")
+		if _, err := w.Write([]byte(html)); err != nil {
+			log.Printf("[WARN] failed to write feedback response: %v", err)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

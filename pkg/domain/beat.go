@@ -34,6 +34,12 @@ type BeatWithMembers struct {
 	LastViewedAt     *time.Time
 	UnreadCount      int
 	AggregateScore   float64
+	UserFeedback     string   // from settings table
 	Topics           []string // union of member topics
 	Members          []ClassifiedItem
+}
+
+// GetUserFeedback returns user feedback as string or empty string
+func (b *BeatWithMembers) GetUserFeedback() string {
+	return b.UserFeedback
 }
