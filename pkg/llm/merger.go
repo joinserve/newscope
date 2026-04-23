@@ -104,7 +104,7 @@ func (m *Merger) Merge(ctx context.Context, members []domain.ClassifiedItem) (do
 				req.Temperature = float32(m.config.Temperature)
 			}
 
-			resp, err := m.client.CreateChatCompletion(ctx, req)
+			resp, err := chatCompletion(ctx, m.client, req, m.config.UseStreaming)
 			if err != nil {
 				return fmt.Errorf("llm request failed: %w", err)
 			}
