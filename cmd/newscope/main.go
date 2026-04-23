@@ -164,6 +164,7 @@ func run(ctx context.Context, opts Opts) error {
 		params.BeatThreshold = cfg.Beats.SimThreshold
 		params.BeatWindow = cfg.Beats.Window
 		params.BeatMaxMembers = cfg.Beats.MaxMembers
+		params.Merger = llm.NewMerger(cfg.LLM)
 	}
 	sched := scheduler.NewScheduler(params)
 	sched.Start(ctx)
