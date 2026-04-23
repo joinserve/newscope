@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS beats (
     last_viewed_at    DATETIME,
     feedback          TEXT     DEFAULT '',
     feedback_at       DATETIME,
+    canonical_merged_at DATETIME,
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
 );

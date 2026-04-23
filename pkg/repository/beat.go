@@ -247,14 +247,25 @@ func (r *BeatRepository) ListPendingMerge(ctx context.Context, limit int) ([]dom
 	return r.loadBeatMembers(ctx, beatIDs)
 }
 
-// pendingMergeIDs returns IDs of beats with canonical_summary IS NULL and >1 member.
+// pendingMergeIDs returns IDs of beats that need a (re-)merge:
+//   - first-time: canonical_summary IS NULL and >1 member
+//   - re-merge: already merged, but a new member arrived since the last merge,
+//     canonical_merged_at is older than 24h, and the beat is still within its 48h window
 func (r *BeatRepository) pendingMergeIDs(ctx context.Context, limit int) ([]int64, error) {
 	rows, err := r.db.QueryxContext(ctx, `
-		SELECT b.id
-		FROM beats b
+		SELECT b.id FROM beats b
 		WHERE b.canonical_summary IS NULL
 		  AND (SELECT COUNT(*) FROM beat_members WHERE beat_id = b.id) > 1
-		ORDER BY b.id
+
+		UNION
+
+		SELECT b.id FROM beats b
+		WHERE b.canonical_summary IS NOT NULL
+		  AND b.canonical_merged_at < datetime('now', '-24 hours')
+		  AND b.first_seen_at      >= datetime('now', '-48 hours')
+		  AND (SELECT MAX(added_at) FROM beat_members WHERE beat_id = b.id) > b.canonical_merged_at
+
+		ORDER BY 1
 		LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list pending merge ids: %w", err)
@@ -332,11 +343,14 @@ func (r *BeatRepository) loadBeatMembers(ctx context.Context, beatIDs []int64) (
 	return beats, nil
 }
 
-// SaveCanonical stores the LLM-generated canonical title and summary for a beat.
+// SaveCanonical stores the LLM-generated canonical title and summary for a beat
+// and records the merge timestamp. feedback, feedback_at, and last_viewed_at
+// are deliberately excluded so they survive re-summary.
 func (r *BeatRepository) SaveCanonical(ctx context.Context, beatID int64, c domain.BeatCanonical) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE beats SET canonical_title = ?, canonical_summary = ?,
-		  updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+		  canonical_merged_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+		  updated_at           = strftime('%Y-%m-%d %H:%M:%f', 'now')
 		 WHERE id = ?`,
 		c.Title, c.Summary, beatID)
 	if err != nil {

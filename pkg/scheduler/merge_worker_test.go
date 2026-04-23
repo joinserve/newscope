@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/scheduler/mocks"
@@ -148,6 +149,40 @@ func TestMergeWorker_RunTickCancels(t *testing.T) {
 		t.Fatal("MergeWorker.Run did not exit after context cancel")
 	}
 	assert.GreaterOrEqual(t, len(store.ListPendingMergeCalls()), 1)
+}
+
+func TestMergeWorker_ProcessesRemerge(t *testing.T) {
+	// a re-merge beat already has canonical fields set; worker must treat it identically
+	beat := domain.Beat{
+		ID: 42,
+		Members: []domain.ClassifiedItem{
+			{Item: &domain.Item{Title: "Old A"}},
+			{Item: &domain.Item{Title: "Old B"}},
+			{Item: &domain.Item{Title: "New C"}}, // new member that triggered re-merge
+		},
+	}
+	store := &mocks.BeatStoreMock{
+		ListPendingMergeFunc: func(ctx context.Context, limit int) ([]domain.Beat, error) {
+			return []domain.Beat{beat}, nil
+		},
+		SaveCanonicalFunc: func(ctx context.Context, beatID int64, c domain.BeatCanonical) error {
+			return nil
+		},
+	}
+	merger := &mocks.MergerMock{
+		MergeFunc: func(ctx context.Context, members []domain.ClassifiedItem) (domain.BeatCanonical, error) {
+			return domain.BeatCanonical{Title: "Updated Title", Summary: "Updated summary."}, nil
+		},
+	}
+
+	w := NewMergeWorker(MergeWorkerConfig{Store: store, Merger: merger, Interval: time.Minute, BatchSize: 10})
+	w.processBatch(context.Background())
+
+	require.Len(t, merger.MergeCalls(), 1)
+	assert.Len(t, merger.MergeCalls()[0].Members, 3, "all three members passed to Merger")
+	require.Len(t, store.SaveCanonicalCalls(), 1)
+	assert.Equal(t, int64(42), store.SaveCanonicalCalls()[0].BeatID)
+	assert.Equal(t, "Updated Title", store.SaveCanonicalCalls()[0].C.Title)
 }
 
 func TestMergeWorker_DefaultBatchSize(t *testing.T) {
