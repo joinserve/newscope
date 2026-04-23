@@ -6,7 +6,7 @@
 <div class="beat-detail">
     <div class="beat-header" style="margin-bottom: 2rem;">
         <a href="/beats" class="back-link" style="display:inline-block; margin-bottom: 1rem; text-decoration:none;">← Back to Inbox</a>
-        <h1 class="beat-title">{{if .Beat.CanonicalTitle}}{{unescapeHTML (index .Beat.CanonicalTitle)}}{{else}}Processing...{{end}}</h1>
+        <h1 class="beat-title">{{if .Beat.CanonicalTitle}}{{unescapeHTML (index .Beat.CanonicalTitle)}}{{else}}{{unescapeHTML (index .Beat.Members 0).Title}}{{end}}</h1>
 
         <div class="beat-meta" style="margin-bottom: 1rem;">
             <span class="feed-name">{{len .Beat.Members}} sources</span>

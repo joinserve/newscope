@@ -1629,38 +1629,3 @@ func (s *Server) beatFeedbackHandler(w http.ResponseWriter, r *http.Request) {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render beat card", err)
 	}
 }
-
-// beatMembersHandler returns a beat's member articles as an HTMX fragment and
-// side-effects MarkViewed so subsequent additions show up as unread.
-func (s *Server) beatMembersHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		s.respondWithError(w, http.StatusBadRequest, "Invalid beat ID", err)
-		return
-	}
-
-	beat, err := s.db.GetBeat(ctx, id)
-	if err != nil {
-		s.respondWithError(w, http.StatusInternalServerError, "Failed to load beat", err)
-		return
-	}
-
-	if err := s.db.MarkViewed(ctx, id); err != nil {
-		log.Printf("[WARN] failed to mark beat %d viewed: %v", id, err)
-	}
-
-	if _, err := fmt.Fprint(w, `<div class="beat-members-list">`); err != nil {
-		log.Printf("[WARN] failed to write members container start: %v", err)
-		return
-	}
-	for i := range beat.Members {
-		if err := s.templates.ExecuteTemplate(w, "article-card.html", &beat.Members[i]); err != nil {
-			log.Printf("[WARN] failed to render member article-card: %v", err)
-		}
-	}
-	if _, err := w.Write([]byte(`</div>`)); err != nil {
-		log.Printf("[WARN] failed to write members container end: %v", err)
-	}
-}
