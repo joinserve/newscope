@@ -105,6 +105,16 @@
             </p>
         </div>
 
+        {{if gt $membersCount 0}}
+        {{$firstMember := index .Members 0}}
+        {{$imgURL := extractImage $firstMember.Content $firstMember.Description}}
+        {{if $imgURL}}
+        <div class="card-post-image">
+            <img src="{{$imgURL}}" alt="Post image" loading="lazy" onerror="this.parentElement.style.display='none';">
+        </div>
+        {{end}}
+        {{end}}
+
         {{if .Topics}}
         <div class="topics">
             {{range .Topics}}
