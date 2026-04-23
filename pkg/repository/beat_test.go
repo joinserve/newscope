@@ -466,6 +466,167 @@ func TestBeatRepository_SaveCanonical(t *testing.T) {
 	assert.Equal(t, "Canonical summary of the beat.", summary)
 }
 
+// beatWith2Members seeds a beat with 2 items and returns the beat ID.
+func beatWith2Members(t *testing.T, repos *Repositories, mkItem func(time.Time, string, []float32) int64, pub time.Time) int64 {
+	t.Helper()
+	ctx := context.Background()
+	id1 := mkItem(pub, "m1-"+t.Name(), []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Minute), "m2-"+t.Name(), []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Minute)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	return beatID
+}
+
+func TestBeatRepository_ListPendingMerge_RemergeNotReturnedWithin24h(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	// simulate a completed first-time merge (canonical_merged_at = now)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "T", Summary: "S"}))
+
+	// add a third member immediately after — added_at > canonical_merged_at but < 24h later
+	id3 := mkItem(pub.Add(time.Hour), "m3-remerge24h", []float32{1, 0, 0})
+	_, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	for _, b := range beats {
+		assert.NotEqual(t, beatID, b.ID, "beat merged <24h ago must not be returned for re-merge")
+	}
+}
+
+func TestBeatRepository_ListPendingMerge_RemergeReturnedAfter24h(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	// complete the first merge, then back-date canonical_merged_at to 25h ago
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "T", Summary: "S"}))
+	_, err := repos.DB.ExecContext(ctx,
+		`UPDATE beats SET canonical_merged_at = datetime('now', '-25 hours') WHERE id = ?`, beatID)
+	require.NoError(t, err)
+
+	// add a new member with added_at > canonical_merged_at
+	id3 := mkItem(pub.Add(2*time.Hour), "m3-remerge-after24h", []float32{1, 0, 0})
+	_, err = repos.DB.ExecContext(ctx,
+		`INSERT INTO beat_members (beat_id, item_id, added_at) VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
+		beatID, id3)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	ids := make([]int64, len(beats))
+	for i, b := range beats {
+		ids[i] = b.ID
+	}
+	assert.Contains(t, ids, beatID, "beat with new member after 24h must be returned for re-merge")
+}
+
+func TestBeatRepository_ListPendingMerge_RemergeNotReturnedPast48hWindow(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "T", Summary: "S"}))
+	// back-date both canonical_merged_at (>24h) and first_seen_at (>48h — frozen)
+	_, err := repos.DB.ExecContext(ctx, `
+		UPDATE beats SET
+		  canonical_merged_at = datetime('now', '-25 hours'),
+		  first_seen_at       = datetime('now', '-49 hours')
+		WHERE id = ?`, beatID)
+	require.NoError(t, err)
+
+	// add a new member
+	id3 := mkItem(pub.Add(2*time.Hour), "m3-past48h", []float32{1, 0, 0})
+	_, err = repos.DB.ExecContext(ctx,
+		`INSERT INTO beat_members (beat_id, item_id, added_at) VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
+		beatID, id3)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	for _, b := range beats {
+		assert.NotEqual(t, beatID, b.ID, "beat past 48h window must not be returned for re-merge")
+	}
+}
+
+func TestBeatRepository_SaveCanonical_PreservesViewedAndFeedback(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	require.NoError(t, repos.Beat.MarkViewed(ctx, beatID))
+	require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+
+	// re-summary (simulates PR 7 re-merge)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "New Title", Summary: "New summary."}))
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "Second Title", Summary: "Second summary."}))
+
+	var fb string
+	var lv *time.Time
+	require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+	require.NoError(t, repos.DB.GetContext(ctx, &lv, `SELECT last_viewed_at FROM beats WHERE id = ?`, beatID))
+	assert.Equal(t, "like", fb, "feedback must survive re-summary")
+	assert.NotNil(t, lv, "last_viewed_at must survive re-summary")
+}
+
+func TestBeatRepository_MigrateAddCanonicalMergedAt(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	_, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+
+	// old schema without canonical_merged_at
+	_, err = db.ExecContext(ctx, `CREATE TABLE beats (
+		id                INTEGER PRIMARY KEY AUTOINCREMENT,
+		canonical_title   TEXT,
+		canonical_summary TEXT,
+		first_seen_at     DATETIME NOT NULL,
+		last_viewed_at    DATETIME,
+		feedback          TEXT DEFAULT '',
+		feedback_at       DATETIME,
+		created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	var cols []string
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.NotContains(t, cols, "canonical_merged_at")
+
+	require.NoError(t, migrateAddCanonicalMergedAt(ctx, db))
+
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.Contains(t, cols, "canonical_merged_at")
+
+	// idempotent
+	require.NoError(t, migrateAddCanonicalMergedAt(ctx, db))
+}
+
 func TestBeatRepository_SetFeedback(t *testing.T) {
 	repos, cleanup, mkItem := beatTestSetup(t)
 	defer cleanup()

@@ -117,6 +117,9 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 	if err := migrateAddBeatFeedback(ctx, db); err != nil {
 		return fmt.Errorf("migrate beat feedback: %w", err)
 	}
+	if err := migrateAddCanonicalMergedAt(ctx, db); err != nil {
+		return fmt.Errorf("migrate canonical_merged_at: %w", err)
+	}
 
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
@@ -230,6 +233,36 @@ func migrateAddBeatFeedback(ctx context.Context, db *sqlx.DB) error {
 			`ALTER TABLE beats ADD COLUMN feedback_at DATETIME`); err != nil {
 			return fmt.Errorf("add feedback_at column: %w", err)
 		}
+	}
+	return nil
+}
+
+// migrateAddCanonicalMergedAt adds canonical_merged_at to beats if missing.
+// Safe to run on a fresh DB: beats table won't exist yet and the function is a no-op.
+func migrateAddCanonicalMergedAt(ctx context.Context, db *sqlx.DB) error {
+	var tableCount int
+	if err := db.GetContext(ctx, &tableCount,
+		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='beats'`); err != nil {
+		return fmt.Errorf("check beats table: %w", err)
+	}
+	if tableCount == 0 {
+		return nil
+	}
+
+	var columns []string
+	if err := db.SelectContext(ctx, &columns,
+		`SELECT name FROM pragma_table_info('beats')`); err != nil {
+		return fmt.Errorf("read beats columns: %w", err)
+	}
+	for _, c := range columns {
+		if c == "canonical_merged_at" {
+			return nil
+		}
+	}
+
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE beats ADD COLUMN canonical_merged_at DATETIME`); err != nil {
+		return fmt.Errorf("add canonical_merged_at column: %w", err)
 	}
 	return nil
 }
