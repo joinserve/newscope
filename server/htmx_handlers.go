@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"net/url"
@@ -121,6 +122,8 @@ type articlesPageRequest struct {
 // commonPageData contains fields common to all pages
 type commonPageData struct {
 	ActivePage    string
+	PageTitle     string
+	BackURL       string
 	IsSearch      bool
 	SearchQuery   string
 	SelectedSort  string
@@ -410,6 +413,8 @@ func (s *Server) rsshubExplorerHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		commonPageData: commonPageData{
 			ActivePage:   "feeds",
+			PageTitle:    "RSSHub Explorer",
+			BackURL:      "/feeds",
 			IsSearch:     false,
 			SearchQuery:  "",
 			SelectedSort: "",
@@ -729,6 +734,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		IsHTMX        bool
 		IsSearch      bool
 		SearchQuery   string
+		ActivePage    string
 	}{
 		Articles:      req.articles,
 		TotalCount:    req.totalCount,
@@ -747,6 +753,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		IsHTMX:        true,
 		IsSearch:      req.isSearch,
 		SearchQuery:   req.searchQuery,
+		ActivePage:    "articles",
 	}
 
 	// execute the pagination template
@@ -1393,5 +1400,267 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.pageTemplates["source.html"].Execute(w, data); err != nil {
 		log.Printf("[WARN] failed to render source page: %v", err)
+	}
+}
+
+// beatsHandler displays the beats inbox
+func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// get page parameter
+	page := 1
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	pageSize := s.GetPageSize()
+	offset := (page - 1) * pageSize
+
+	beats, err := s.db.ListBeats(ctx, pageSize, offset)
+	if err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to load beats", err)
+		return
+	}
+
+	hasNext := len(beats) == pageSize
+	hasPrev := page > 1
+
+	data := struct {
+		commonPageData
+		Beats       []domain.BeatWithMembers
+		CurrentPage int
+		TotalCount  int
+		HasNext     bool
+		HasPrev     bool
+		IsHTMX      bool
+	}{
+		commonPageData: commonPageData{
+			ActivePage: "beats",
+			BackURL:    "",
+			PageTitle:  "",
+		},
+		Beats:       beats,
+		CurrentPage: page,
+		TotalCount:  0, // avoid GetBeatsCount query as it's not strictly required in PR scope
+		HasNext:     hasNext,
+		HasPrev:     hasPrev,
+		IsHTMX:      r.Header.Get("HX-Request") == "true",
+	}
+
+	if !data.IsHTMX {
+		if err := s.renderPage(w, "beats.html", data); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		}
+		return
+	}
+
+	s.renderBeatsListHTMX(w, beats, "Nothing here yet.", data)
+	fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'>Beats</h2>")
+	fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'></div>")
+}
+
+// renderBeatsListHTMX renders a list of beats as an HTMX fragment
+func (s *Server) renderBeatsListHTMX(w http.ResponseWriter, beats []domain.BeatWithMembers, emptyMsg string, paginationData interface{}) {
+	if _, err := fmt.Fprint(w, `<div id="articles-container" class="view-threads"><div id="articles-list">`); err != nil {
+		log.Printf("[WARN] failed to write container start: %v", err)
+	}
+
+	if len(beats) == 0 && emptyMsg != "" {
+		if _, err := fmt.Fprintf(w, `<p class="no-articles">%s</p>`, emptyMsg); err != nil {
+			log.Printf("[WARN] failed to write empty message: %v", err)
+		}
+	}
+
+	for i := range beats {
+		if err := s.templates.ExecuteTemplate(w, "beat-card.html", &beats[i]); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render beat card", err)
+			return
+		}
+	}
+
+	if paginationData != nil {
+		if err := s.templates.ExecuteTemplate(w, "pagination", paginationData); err != nil {
+			log.Printf("[WARN] failed to render pagination: %v", err)
+		}
+	}
+
+	if _, err := w.Write([]byte(`</div></div>`)); err != nil {
+		log.Printf("[WARN] failed to write container end: %v", err)
+	}
+}
+
+// beatDetailHandler renders a single beat detail
+func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		s.respondWithError(w, http.StatusBadRequest, "Invalid beat ID", err)
+		return
+	}
+
+	// mark beat as viewed BEFORE rendering
+	if err := s.db.MarkViewed(ctx, id); err != nil {
+		log.Printf("[WARN] failed to mark beat %d as viewed: %v", id, err)
+	}
+
+	beat, err := s.db.GetBeat(ctx, id)
+	if err != nil {
+		s.respondWithError(w, http.StatusNotFound, "Beat not found", err)
+		return
+	}
+
+	pageTitle := ""
+	if beat.CanonicalTitle != nil {
+		pageTitle = *beat.CanonicalTitle
+	} else if len(beat.Members) > 0 {
+		pageTitle = beat.Members[0].Title
+	}
+
+	data := struct {
+		commonPageData
+		Beat domain.BeatWithMembers
+	}{
+		commonPageData: commonPageData{
+			ActivePage: "beats",
+			BackURL:    "/beats",
+			PageTitle:  pageTitle,
+		},
+		Beat: beat,
+	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		tmpl, ok := s.pageTemplates["beat-detail.html"]
+		if !ok {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", fmt.Errorf("beat-detail.html template not found"))
+			return
+		}
+		if err := tmpl.ExecuteTemplate(w, "beat-detail-content", data); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+			return
+		}
+
+		// OOB updates
+		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' hx-get='/beats' hx-target='main.container' hx-push-url='true' hx-swap='innerHTML' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+		return
+	}
+
+	if err := s.renderPage(w, "beat-detail.html", data); err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		return
+	}
+}
+
+// beatSearchHandler handles search requests for beats
+func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	pageSize := s.GetPageSize()
+
+	var beats []domain.BeatWithMembers
+	var err error
+	if searchQuery == "" {
+		beats = []domain.BeatWithMembers{}
+	} else {
+		beats, err = s.db.SearchBeatsWithMembers(ctx, searchQuery, pageSize)
+		if err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to search beats", err)
+			return
+		}
+	}
+
+	// for simplicity, search doesn't support pagination yet, just limits to one page
+	hasNext := false
+	hasPrev := false
+
+	data := struct {
+		ActivePage  string
+		IsSearch    bool
+		SearchQuery string
+		Beats       []domain.BeatWithMembers
+		CurrentPage int
+		TotalCount  int
+		HasNext     bool
+		HasPrev     bool
+		IsHTMX      bool
+	}{
+		ActivePage:  "beats",
+		IsSearch:    true,
+		SearchQuery: searchQuery,
+		Beats:       beats,
+		CurrentPage: 1,
+		TotalCount:  len(beats),
+		HasNext:     hasNext,
+		HasPrev:     hasPrev,
+		IsHTMX:      r.Header.Get("HX-Request") == "true",
+	}
+
+	if !data.IsHTMX {
+		if err := s.renderPage(w, "beats.html", data); err != nil {
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		}
+		return
+	}
+
+	emptyMsg := ""
+	if searchQuery != "" {
+		emptyMsg = "No beats found."
+	}
+	s.renderBeatsListHTMX(w, beats, emptyMsg, nil)
+}
+
+// beatFeedbackHandler handles feedback (like/dislike/clear) for a beat.
+func (s *Server) beatFeedbackHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		s.respondWithError(w, http.StatusBadRequest, "Invalid beat ID", err)
+		return
+	}
+
+	action := r.URL.Query().Get("action")
+	if action == "" {
+		if err := r.ParseForm(); err == nil {
+			action = r.FormValue("action")
+		}
+	}
+
+	var newFeedback string
+	switch action {
+	case "like":
+		newFeedback = "like"
+	case "dislike":
+		newFeedback = "dislike"
+	case "clear", "":
+		newFeedback = ""
+	default:
+		s.respondWithError(w, http.StatusBadRequest, "Invalid feedback action", nil)
+		return
+	}
+
+	if err := s.db.SetFeedback(ctx, id, newFeedback); err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to update feedback", err)
+		return
+	}
+
+	if r.Header.Get("HX-Request") != "true" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// re-render the whole beat-card so the toolbar (B1) swaps as a single unit.
+	beat, err := s.db.GetBeat(ctx, id)
+	if err != nil {
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to load beat after feedback", err)
+		return
+	}
+	if err := s.templates.ExecuteTemplate(w, "beat-card.html", &beat); err != nil {
+		log.Printf("[WARN] failed to render beat-card: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render beat card", err)
 	}
 }

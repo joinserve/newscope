@@ -313,6 +313,7 @@ func TestServer_SettingsHandler(t *testing.T) {
 
 func TestServer_articleContentHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -353,6 +354,7 @@ func TestServer_articleContentHandler(t *testing.T) {
 
 func TestServer_HideContentHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -382,6 +384,7 @@ func TestServer_HideContentHandler(t *testing.T) {
 
 func TestServer_HideContentHandler_InvalidID(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -479,6 +482,7 @@ func TestServer_ArticlesHandler_DatabaseError(t *testing.T) {
 
 func TestServer_FeedsHandler_DatabaseError(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -508,6 +512,7 @@ func TestServer_FeedsHandler_DatabaseError(t *testing.T) {
 
 func TestServer_ArticleContentHandler_Errors(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -560,6 +565,7 @@ func TestServer_ArticleContentHandler_Errors(t *testing.T) {
 
 func TestServer_RenderFeedCard_TemplateError(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -598,6 +604,7 @@ func TestServer_RenderFeedCard_TemplateError(t *testing.T) {
 
 func TestServer_RenderArticleCard_TemplateError(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -847,6 +854,7 @@ func TestServer_TemplateErrors(t *testing.T) {
 
 func TestServer_AddTopicHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -1362,6 +1370,7 @@ func TestServer_RssHelpHandler(t *testing.T) {
 
 func TestServer_DeleteTopicHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -1480,6 +1489,7 @@ func TestServer_DeleteTopicHandler(t *testing.T) {
 
 func TestServer_PreferenceHandlers(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -1956,7 +1966,140 @@ func newTestServer(t *testing.T) *Server {
 		"templates/article-card.html",
 		"templates/controls.html",
 		"templates/pagination.html",
+		"templates/beat-card.html",
 	)
 	require.NoError(t, err)
 	return &Server{templates: tmpl}
+}
+
+func TestBeatsHandler_RendersInbox(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		ListBeatsFunc: func(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error) {
+			title := "Merged Beat Title"
+			return []domain.BeatWithMembers{
+				{
+					ID:             1,
+					CanonicalTitle: &title,
+					AggregateScore: 9.0,
+					Members: []domain.ClassifiedItem{
+						{
+							Item:     &domain.Item{Title: "Some article 1", Link: "http://example.com/1"},
+							FeedName: "Some Feed",
+							FeedURL:  "http://example.com",
+						},
+						{
+							Item:     &domain.Item{Title: "Some article 2", Link: "http://example.com/2"},
+							FeedName: "Some Feed 2",
+							FeedURL:  "http://example.com/2",
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+	req := httptest.NewRequest("GET", "/beats", http.NoBody)
+	w := httptest.NewRecorder()
+
+	srv.beatsHandler(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Merged Beat Title")
+}
+
+func TestBeatsHandler_NotMountedWhenDisabled(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: ""}, // empty means disabled
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
+			return []domain.ClassifiedItem{}, nil
+		},
+		GetClassifiedItemsCountFunc: func(ctx context.Context, req domain.ArticlesRequest) (int, error) {
+			return 0, nil
+		},
+		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) { return nil, nil },
+		GetTopicsFilteredFunc:  func(ctx context.Context, minScore float64) ([]string, error) { return nil, nil },
+	}
+
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+	// /beats should return 404 since it's not mounted
+	req := httptest.NewRequest("GET", "/beats", http.NoBody)
+	w := httptest.NewRecorder()
+	srv.router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	// / should not redirect
+	reqRoot := httptest.NewRequest("GET", "/", http.NoBody)
+	wRoot := httptest.NewRecorder()
+	srv.router.ServeHTTP(wRoot, reqRoot)
+	assert.Equal(t, http.StatusOK, wRoot.Code)
+}
+
+func TestBeatDetailHandler_WritesLastViewed(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	markViewedCalled := false
+	database := &mocks.DatabaseMock{
+		GetBeatFunc: func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
+			title := "Detail Title"
+			return domain.BeatWithMembers{ID: beatID, CanonicalTitle: &title}, nil
+		},
+		MarkViewedFunc: func(ctx context.Context, beatID int64) error {
+			assert.Equal(t, int64(123), beatID)
+			markViewedCalled = true
+			return nil
+		},
+	}
+
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+	req := httptest.NewRequest("GET", "/beats/123", http.NoBody)
+	req.SetPathValue("id", "123")
+	w := httptest.NewRecorder()
+
+	srv.beatDetailHandler(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Detail Title")
+	assert.True(t, markViewedCalled, "MarkViewed should be called before rendering")
 }

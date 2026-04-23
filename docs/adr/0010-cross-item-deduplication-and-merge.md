@@ -1,8 +1,12 @@
 # ADR 0010: Beat-level aggregation
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-04-22
+- Implemented: PR 1–9 on `master`; PR 5 UI on `feat/beats-ui` (pending merge)
 - Deciders: caspar
+- Supersedes (partial): ADR 0011 supersedes this ADR's "Primary UX target"
+  section — the since-last-visit model was replaced by the SNS-thread
+  comment-expand UX before the UI shipped.
 
 ## Context
 
@@ -35,14 +39,23 @@ Beats collapse short-window duplicates. One item belongs to at most one beat
 (hard membership). Past the 48h window, a beat is considered closed by the
 worker logic — not by a stored flag, but by comparing `first_seen_at` to now.
 
-### Primary UX target: since-last-visit
+### Primary UX target: SNS-thread expansion
 
-The feature's user-visible win is "**this beat has 3 new updates since you
-last looked**". Newscope is single-tenant self-hosted (no auth, no user
-table), so view state lives as one column on `beats`:
-`last_viewed_at DATETIME`. When multi-user support arrives, this moves to a
-dedicated `user_beat_views` table — that is a future migration, not a
-present design constraint.
+**This section supersedes the original "since-last-visit" design — see ADR
+0011 for the current UI decisions.**
+
+The feature's user-visible win is "**this beat bundles N related reports
+into one card; expand to see them like replies on a thread**". The merged
+article count surfaces as a badge on the comment button; tapping it
+expands the member list in place (or, per ADR 0011 slide-right, navigates
+to a detail view). The earlier "N new since last visit" badge was removed
+before PR 5 shipped because the inbox-zero read-state was doing that job
+already; re-adding a second unread counter here duplicated it.
+
+`beats.last_viewed_at` stays on the schema — `beatDetailHandler` writes
+to it as a side effect of viewing, and future UI iterations can reuse the
+column. It is simply no longer the primary hook. When multi-user support
+arrives, this column moves to a dedicated `user_beat_views` table.
 
 ### Hard requirement: fully toggleable
 
@@ -236,14 +249,22 @@ beats:
 3. **Phase 1c — LLM canonical summaries.** Ship `merge_worker`. Compare
    output to the raw first-member values from phase 1b; only proceed if the
    gain is visible.
-4. **Phase 1d — UI.** Switch default inbox to beats; render "N new since
-   last visit" via `last_viewed_at`.
+4. **Phase 1d — UI.** Switch default inbox to beats; UI decisions (toolbar
+   alignment, comment-button badge, SNS-thread expand, slide-right detail)
+   recorded separately in ADR 0011.
+5. **Phase 1e — polish.** Backend follow-ups landed in Session 5 as PR 6
+   (`beats.feedback` column), PR 7 (re-summary on member attach,
+   `canonical_merged_at` debounce), PR 8 (FTS5 search), and PR 9 (decouple
+   item feedback from `processed_at` so liking no longer silently marks
+   read). PR 9 was added late after the beat-feedback work revealed that
+   per-item feedback and read-state were entangled.
 
 ## Consequences
 
 **Good:**
 - Inbox noise drops; ranking happens per story, not per source.
-- `last_viewed_at` unlocks since-last-visit cheaply.
+- `last_viewed_at` stays available for future UI iterations even though
+  the since-last-visit badge was retired before PR 5 shipped.
 - Embeddings are reusable (future: semantic search, related-items).
 - Fully gated by config — operators without an embedding provider run the
   same binary with zero surprise.

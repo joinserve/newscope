@@ -480,6 +480,80 @@ func (r *BeatRepository) Search(ctx context.Context, query string, limit int) ([
 	return out, nil
 }
 
+// SearchWithMembers returns beats matching the query with all members eager-loaded.
+func (r *BeatRepository) SearchWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
+	views, err := r.Search(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(views) == 0 {
+		return nil, nil
+	}
+
+	beatIDs := make([]int64, len(views))
+	for i, v := range views {
+		beatIDs[i] = v.ID
+	}
+
+	membersMap, err := r.loadMembersForBeatsUI(ctx, beatIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.BeatWithMembers, 0, len(views))
+	for _, v := range views {
+		members := membersMap[v.ID]
+		topicsMap := make(map[string]bool)
+		var topics []string
+		var aggregateScore float64
+		for _, m := range members {
+			aggregateScore += m.GetRelevanceScore()
+			for _, t := range m.GetTopics() {
+				if !topicsMap[t] {
+					topicsMap[t] = true
+					topics = append(topics, t)
+				}
+			}
+		}
+		if len(members) > 0 {
+			aggregateScore /= float64(len(members))
+		}
+
+		var ct, cs *string
+		if v.CanonicalTitle != "" {
+			title := v.CanonicalTitle
+			ct = &title
+		}
+		if v.CanonicalSummary != "" {
+			summary := v.CanonicalSummary
+			cs = &summary
+		}
+
+		// calculate unread count based on members and LastViewedAt
+		var unreadCount int
+		for _, m := range members {
+			if v.LastViewedAt == nil || m.Published.After(*v.LastViewedAt) {
+				unreadCount++
+			}
+		}
+
+		out = append(out, domain.BeatWithMembers{
+			ID:               v.ID,
+			CanonicalTitle:   ct,
+			CanonicalSummary: cs,
+			FirstSeenAt:      v.FirstSeenAt,
+			LastViewedAt:     v.LastViewedAt,
+			UnreadCount:      unreadCount,
+			AggregateScore:   aggregateScore,
+			UserFeedback:     v.Feedback,
+			FeedbackAt:       v.FeedbackAt,
+			Topics:           topics,
+			Members:          members,
+		})
+	}
+	return out, nil
+}
+
 // escapeFTS5Query wraps each whitespace-separated term in double quotes so that
 // user-supplied special characters (*, (, ), ") are treated as literals by SQLite FTS5.
 func escapeFTS5Query(q string) string {
@@ -519,6 +593,161 @@ func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
 		})
 	}
 	return out, rows.Err()
+}
+
+// ListBeats returns beats with members, sorted by aggregate score DESC then first_seen_at DESC.
+// Reads per-beat feedback from beats.feedback (column added in PR 6); no KV/settings indirection.
+// Filters out half-baked multi-member beats (canonical_title still NULL, i.e. merge_worker hasn't
+// run yet): only singleton beats and already-canonicalised multi-member beats make it into the list.
+func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
+	query := `
+		SELECT
+			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
+			AVG(i.relevance_score) AS aggregate_score,
+			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) AS unread_count,
+			COALESCE(b.feedback, '') AS feedback,
+			b.feedback_at
+		FROM beats b
+		JOIN beat_members bm ON bm.beat_id = b.id
+		JOIN items i ON i.id = bm.item_id
+		GROUP BY b.id
+		HAVING COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL
+		ORDER BY aggregate_score DESC, b.first_seen_at DESC
+		LIMIT ? OFFSET ?`
+
+	var rows []beatRow
+	if err := r.db.SelectContext(ctx, &rows, query, limit, offset); err != nil {
+		return nil, fmt.Errorf("list beats: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	return r.hydrateBeatRows(ctx, rows)
+}
+
+// GetBeat returns a single beat with its members. Reads feedback from beats.feedback.
+func (r *BeatRepository) GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
+	query := `
+		SELECT
+			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
+			AVG(i.relevance_score) AS aggregate_score,
+			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) AS unread_count,
+			COALESCE(b.feedback, '') AS feedback,
+			b.feedback_at
+		FROM beats b
+		JOIN beat_members bm ON bm.beat_id = b.id
+		JOIN items i ON i.id = bm.item_id
+		WHERE b.id = ?
+		GROUP BY b.id`
+
+	var row beatRow
+	if err := r.db.GetContext(ctx, &row, query, beatID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.BeatWithMembers{}, fmt.Errorf("beat not found")
+		}
+		return domain.BeatWithMembers{}, fmt.Errorf("get beat: %w", err)
+	}
+
+	hydrated, err := r.hydrateBeatRows(ctx, []beatRow{row})
+	if err != nil {
+		return domain.BeatWithMembers{}, err
+	}
+	if len(hydrated) == 0 {
+		return domain.BeatWithMembers{}, fmt.Errorf("beat not found")
+	}
+	return hydrated[0], nil
+}
+
+// hydrateBeatRows loads members and derives topics for each row, returning
+// BeatWithMembers values in the same order as the input.
+func (r *BeatRepository) hydrateBeatRows(ctx context.Context, rows []beatRow) ([]domain.BeatWithMembers, error) {
+	beatIDs := make([]int64, len(rows))
+	for i, row := range rows {
+		beatIDs[i] = row.ID
+	}
+	membersMap, err := r.loadMembersForBeatsUI(ctx, beatIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.BeatWithMembers, 0, len(rows))
+	for _, row := range rows {
+		members := membersMap[row.ID]
+		topicsMap := make(map[string]bool)
+		var topics []string
+		for _, m := range members {
+			for _, t := range m.GetTopics() {
+				if !topicsMap[t] {
+					topicsMap[t] = true
+					topics = append(topics, t)
+				}
+			}
+		}
+		out = append(out, domain.BeatWithMembers{
+			ID:               row.ID,
+			CanonicalTitle:   row.CanonicalTitle,
+			CanonicalSummary: row.CanonicalSummary,
+			FirstSeenAt:      row.FirstSeenAt,
+			LastViewedAt:     row.LastViewedAt,
+			UnreadCount:      row.UnreadCount,
+			AggregateScore:   row.AggregateScore,
+			UserFeedback:     row.Feedback,
+			FeedbackAt:       row.FeedbackAt,
+			Topics:           topics,
+			Members:          members,
+		})
+	}
+	return out, nil
+}
+
+type beatRow struct {
+	ID               int64      `db:"id"`
+	CanonicalTitle   *string    `db:"canonical_title"`
+	CanonicalSummary *string    `db:"canonical_summary"`
+	FirstSeenAt      time.Time  `db:"first_seen_at"`
+	LastViewedAt     *time.Time `db:"last_viewed_at"`
+	UnreadCount      int        `db:"unread_count"`
+	AggregateScore   float64    `db:"aggregate_score"`
+	Feedback         string     `db:"feedback"`
+	FeedbackAt       *time.Time `db:"feedback_at"`
+}
+
+func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []int64) (map[int64][]domain.ClassifiedItem, error) {
+	query, args, err := sqlx.In(`
+		SELECT
+			bm.beat_id AS bm_beat_id,
+			i.*,
+			f.title AS feed_title,
+			f.url AS feed_url,
+			f.icon_url AS feed_icon_url
+		FROM beat_members bm
+		JOIN items i ON i.id = bm.item_id
+		JOIN feeds f ON f.id = i.feed_id
+		WHERE bm.beat_id IN (?)
+		ORDER BY bm.beat_id, i.relevance_score DESC`, beatIDs)
+	if err != nil {
+		return nil, fmt.Errorf("build members query: %w", err)
+	}
+	query = r.db.Rebind(query)
+
+	type memberRow struct {
+		BeatID int64 `db:"bm_beat_id"`
+		itemWithFeedSQL
+	}
+	var rows []memberRow
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, fmt.Errorf("load beat members for UI: %w", err)
+	}
+
+	cr := NewClassificationRepository(r.db)
+
+	out := make(map[int64][]domain.ClassifiedItem)
+	for _, row := range rows {
+		ci := cr.toDomainClassifiedItem(&row.itemWithFeedSQL)
+		out[row.BeatID] = append(out[row.BeatID], *ci)
+	}
+	return out, nil
 }
 
 // cosine returns the cosine similarity of two vectors; zero when either has

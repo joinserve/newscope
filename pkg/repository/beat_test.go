@@ -436,6 +436,157 @@ func TestBeatRepository_ListPendingMerge_RespectsLimit(t *testing.T) {
 	assert.Len(t, beats, 2, "limit should be respected")
 }
 
+func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	// beat 1: max score 5.0
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id1b := mkItem(pub, "a2", []float32{1, 0, 0})
+	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1b, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	repos.Item.UpdateItemClassification(ctx, id1, &domain.Classification{Score: 5.0})
+	repos.Item.UpdateItemClassification(ctx, id1b, &domain.Classification{Score: 5.0})
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b1, domain.BeatCanonical{Title: "T1"}))
+
+	// beat 2: max score 8.0
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0})
+	id3 := mkItem(pub.Add(time.Hour), "c", []float32{0, 1, 0})
+	b2, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Item.UpdateItemClassification(ctx, id2, &domain.Classification{Score: 6.0})
+	repos.Item.UpdateItemClassification(ctx, id3, &domain.Classification{Score: 8.0})
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b2, domain.BeatCanonical{Title: "T2"}))
+
+	// beat 3: max score 7.0
+	id4 := mkItem(pub.Add(2*time.Hour), "d", []float32{0, 0, 1})
+	id4b := mkItem(pub.Add(2*time.Hour), "d2", []float32{0, 0, 1})
+	b3, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id4, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id4b, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Item.UpdateItemClassification(ctx, id4, &domain.Classification{Score: 7.0})
+	repos.Item.UpdateItemClassification(ctx, id4b, &domain.Classification{Score: 7.0})
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b3, domain.BeatCanonical{Title: "T3"}))
+
+	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, beats, 3)
+
+	assert.Equal(t, b3, beats[0].ID, "highest average score/newest should be first")
+	assert.InDelta(t, 7.0, beats[0].AggregateScore, 0.001)
+	assert.Equal(t, b2, beats[1].ID)
+	assert.InDelta(t, 7.0, beats[1].AggregateScore, 0.001)
+	assert.Equal(t, b1, beats[2].ID)
+	assert.InDelta(t, 5.0, beats[2].AggregateScore, 0.001)
+}
+
+// ListBeats must hide half-baked multi-member beats (canonical_title still NULL
+// because merge_worker hasn't populated them yet) while keeping singletons and
+// already-canonicalised multi-member beats.
+func TestBeatRepository_ListBeats_HidesUncanonicalisedMultiMember(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	// singleton beat — no canonical_title, but still shown
+	idSolo := mkItem(pub, "solo", []float32{1, 0, 0})
+	_, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idSolo, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// multi-member beat with canonical — shown
+	idA := mkItem(pub.Add(time.Hour), "a", []float32{0, 1, 0})
+	idB := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0})
+	bCanon, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, bCanon, domain.BeatCanonical{Title: "canon"}))
+
+	// multi-member beat without canonical — hidden
+	idC := mkItem(pub.Add(2*time.Hour), "c", []float32{0, 0, 1})
+	idD := mkItem(pub.Add(2*time.Hour), "d", []float32{0, 0, 1})
+	bHalf, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idC, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idD, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	require.NoError(t, err)
+
+	var ids []int64
+	for _, b := range beats {
+		ids = append(ids, b.ID)
+	}
+	assert.Contains(t, ids, bCanon, "canonicalised multi-member beat must appear")
+	assert.NotContains(t, ids, bHalf, "half-baked multi-member beat must be hidden")
+	// singleton should appear too — find it by exclusion
+	assert.Len(t, beats, 2, "expected solo + canonicalised, not the half-baked")
+}
+
+func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, b1, domain.BeatCanonical{Title: "T1"}))
+
+	// last viewed is set
+	require.NoError(t, repos.Beat.MarkViewed(ctx, b1))
+
+	// add 2 new members
+	time.Sleep(10 * time.Millisecond) // ensure added_at > last_viewed_at
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	id3 := mkItem(pub.Add(time.Hour), "c", []float32{1, 0, 0})
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+
+	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, beats, 1)
+	assert.Equal(t, 2, beats[0].UnreadCount)
+}
+
+func TestBeatRepository_GetBeat_EagerLoadsMembers(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	id3 := mkItem(pub.Add(time.Hour), "c", []float32{1, 0, 0})
+
+	b1, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+
+	repos.Item.UpdateItemClassification(ctx, id1, &domain.Classification{Score: 5.0})
+	repos.Item.UpdateItemClassification(ctx, id2, &domain.Classification{Score: 9.0})
+	repos.Item.UpdateItemClassification(ctx, id3, &domain.Classification{Score: 7.0})
+
+	beat, err := repos.Beat.GetBeat(ctx, b1)
+	require.NoError(t, err)
+
+	assert.InDelta(t, 7.0, beat.AggregateScore, 0.001)
+	require.Len(t, beat.Members, 3)
+
+	// should be score-desc order
+	assert.Equal(t, "b", beat.Members[0].Title)
+	assert.InDelta(t, 9.0, beat.Members[0].GetRelevanceScore(), 0.001)
+
+	assert.Equal(t, "c", beat.Members[1].Title)
+	assert.InDelta(t, 7.0, beat.Members[1].GetRelevanceScore(), 0.001)
+
+	assert.Equal(t, "a", beat.Members[2].Title)
+	assert.InDelta(t, 5.0, beat.Members[2].GetRelevanceScore(), 0.001)
+}
+
 func TestBeatRepository_SaveCanonical(t *testing.T) {
 	repos, cleanup, mkItem := beatTestSetup(t)
 	defer cleanup()

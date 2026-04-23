@@ -164,13 +164,16 @@ proceed to PR 4 until this passes.
 ### PR 5 — UI
 
 **Scope:**
-- `/api/v1/beats` returns beats with members (mounted only when feature on)
-- HTMX template for beats inbox
-- "N new since last visit" badge via `last_viewed_at`
-- Writes `last_viewed_at` on beat detail view
+- `/beats`, `/beats/{id}` handlers + member-expand / feedback / search routes
+  under `/api/v1/beats/...` (mounted only when feature on)
+- HTMX templates for beats inbox and beat detail
+
+**UI shape — see ADR 0011.** Final design diverges from this blueprint's
+original "since-last-visit" framing; the landed design uses an
+article-card-mirroring toolbar with an SNS-thread-style member expand.
 
 **Validates:**
-- Since-last-visit is the win the ADR promises (qualitative, on self)
+- Beats inbox is usable on self without falling back to the items inbox
 
 **Tests:**
 - Handler unit tests
@@ -182,11 +185,17 @@ Three independently-shippable backend PRs. **Build order: PR 6 → 7 → 8, then
 PR 5.** PR 5's templates depend on the fields and routes added here:
 
 - PR 6 adds `beats.feedback` (the ❤ button needs somewhere to write).
-- PR 7 adds the re-summary mechanic (PR 5's "N new since last visit" badge
-  is more useful when canonical text actually refreshes).
+- PR 7 adds the re-summary mechanic so canonical text refreshes as new
+  members attach.
 - PR 8 adds the search route (PR 5 wires the search box).
 
 UI work stays out of this session; PR 5 picks up all four pieces at once.
+
+**PR 9 — late-addition cleanup (landed alongside PR 5):** decouple item
+feedback from `processed_at` so liking a member article no longer bumps it
+to the top of the items inbox. Surfaced while testing the beats UI; tracked
+here rather than in a separate session because the fix is small and tied to
+the same UX round.
 
 ### PR 6 — beat-level feedback
 
@@ -223,8 +232,8 @@ window add to the beat but don't update the user-facing canonical text.
 - Only beats still inside the 48h attach window are eligible — once the
   window has closed, the canonical is frozen.
 - `feedback` and `last_viewed_at` MUST be preserved across re-summary.
-  `unread_count` semantics (PR 5) decide whether new members reset the badge
-  or just increment it.
+  (Unread-badge semantics are moot — ADR 0011 dropped the badge in favour
+  of the comment-button member count.)
 
 **Tests:**
 - New member within 24h cap → no immediate re-merge.

@@ -15,12 +15,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/server/mocks"
 )
 
 func TestServer_statusHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -57,6 +59,7 @@ func TestServer_statusHandler(t *testing.T) {
 
 func TestServer_feedbackHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -115,6 +118,7 @@ func TestServer_feedbackHandler(t *testing.T) {
 
 func TestServer_extractHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -163,6 +167,7 @@ func TestServer_extractHandler(t *testing.T) {
 
 func TestServer_createFeedHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -222,6 +227,7 @@ func TestServer_createFeedHandler(t *testing.T) {
 
 func TestServer_updateFeedHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -269,6 +275,7 @@ func TestServer_updateFeedHandler(t *testing.T) {
 
 func TestServer_updateFeedStatus(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -318,6 +325,7 @@ func TestServer_updateFeedStatus(t *testing.T) {
 
 func TestServer_DisableFeedHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -357,6 +365,7 @@ func TestServer_DisableFeedHandler(t *testing.T) {
 
 func TestServer_FetchFeedHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -404,6 +413,7 @@ func TestServer_FetchFeedHandler(t *testing.T) {
 
 func TestServer_deleteFeedHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -494,6 +504,7 @@ func TestRenderError(t *testing.T) {
 
 func TestServer_FeedbackHandler_DatabaseErrors(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -587,6 +598,7 @@ func TestServer_FeedbackHandler_DatabaseErrors(t *testing.T) {
 
 func TestServer_ExtractHandler_Errors(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -652,6 +664,7 @@ func TestServer_ExtractHandler_Errors(t *testing.T) {
 
 func TestServer_CreateFeedHandler_DatabaseError(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -679,6 +692,7 @@ func TestServer_CreateFeedHandler_DatabaseError(t *testing.T) {
 
 func TestServer_CreateFeedHandler_InvalidForm(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -719,6 +733,7 @@ func TestServer_CreateFeedHandler_InvalidForm(t *testing.T) {
 
 func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -789,6 +804,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 
 func TestServer_UpdateFeedStatus_Errors(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -865,6 +881,7 @@ func TestServer_UpdateFeedStatus_Errors(t *testing.T) {
 
 func TestServer_FetchFeedHandler_Errors(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -909,6 +926,7 @@ func TestServer_FetchFeedHandler_Errors(t *testing.T) {
 
 func TestServer_DeleteFeedHandler_Error(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -935,6 +953,7 @@ func TestServer_DeleteFeedHandler_Error(t *testing.T) {
 
 func TestServer_GetPreferencesHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -1059,6 +1078,7 @@ func TestServer_GetPreferencesHandler(t *testing.T) {
 
 func TestServer_UpdatePreferencesHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -1229,6 +1249,7 @@ func TestServer_UpdatePreferencesHandler(t *testing.T) {
 
 func TestServer_DeletePreferencesHandler(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},
@@ -1308,6 +1329,7 @@ func TestServer_DeletePreferencesHandler(t *testing.T) {
 
 func TestServer_feedbackHandler_InboxBehavior(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
+		GetFullConfigFunc: func() *config.Config { return &config.Config{} },
 		GetServerConfigFunc: func() (string, time.Duration) {
 			return ":8080", 30 * time.Second
 		},

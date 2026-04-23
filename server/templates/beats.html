@@ -1,0 +1,38 @@
+{{template "base.html" .}}
+
+{{define "title"}}Beats - Newscope{{end}}
+
+{{define "content"}}
+<div class="articles-header beats-header">
+    <div class="beats-header-title">
+    </div>
+    <div class="search-page-container beats-search-container">
+        <form action="/api/v1/beats/search" method="get" class="search-page-form"
+              hx-get="/api/v1/beats/search"
+              hx-target="#articles-with-pagination"
+              hx-push-url="true">
+            <div class="search-input-wrapper">
+                <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="search" id="search-query" name="q" placeholder="搜尋 Beats" value="{{.SearchQuery}}" class="search-page-input">
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="articles-with-pagination">
+    <div id="articles-container" class="view-threads">
+        <div id="articles-list">
+            {{range .Beats}}
+            {{template "beat-card.html" .}}
+            {{else}}
+            <p class="no-articles">Nothing here yet.</p>
+            {{end}}
+
+            <!-- Pagination Controls -->
+            {{template "pagination" .}}
+        </div>
+    </div>
+</div>
+{{end}}
