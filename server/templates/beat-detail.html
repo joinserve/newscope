@@ -7,32 +7,7 @@
     <div class="beat-header" style="margin-bottom: 2rem;">
         <a href="/beats" class="back-link" style="display:inline-block; margin-bottom: 1rem; text-decoration:none;">← Back to Inbox</a>
         <h1 class="beat-title">{{if .Beat.CanonicalTitle}}{{unescapeHTML (index .Beat.CanonicalTitle)}}{{else}}Processing...{{end}}</h1>
-        
-        <div class="card-avatar avatar-stack" style="margin: 1rem 0;">
-            {{range $index, $member := .Beat.Members}}
-                {{if lt $index 3}}
-                    {{$iconSrc := ""}}
-                    {{if .FeedIconURL}}
-                        {{if isImageURL .FeedIconURL}}
-                            {{$iconSrc = .FeedIconURL}}
-                        {{else}}
-                            {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" .FeedIconURL}}
-                        {{end}}
-                    {{else}}
-                        {{$domain := getDomain .FeedURL}}
-                        {{if $domain}}
-                            {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $domain}}
-                        {{end}}
-                    {{end}}
-                    {{if $iconSrc}}
-                    <img src="{{$iconSrc}}" alt="{{.FeedName}}" class="avatar-img favicon-img stack-{{$index}}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                    <div class="avatar-img avatar-fallback stack-{{$index}}" style="display:none;">{{with .FeedName}}{{slice . 0 1}}{{end}}</div>
-                    {{else}}
-                    <div class="avatar-img avatar-fallback stack-{{$index}}">{{with .FeedName}}{{slice . 0 1}}{{end}}</div>
-                    {{end}}
-                {{end}}
-            {{end}}
-        </div>
+
         <div class="beat-meta" style="margin-bottom: 1rem;">
             <span class="feed-name">{{len .Beat.Members}} sources</span>
             <span class="card-time" style="margin-left: 0.5rem;">{{.Beat.FirstSeenAt.Local.Format "2006-01-02 15:04"}}</span>
