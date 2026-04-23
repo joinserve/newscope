@@ -69,8 +69,8 @@ type ClassifiedItem struct {
 	Extraction     *ExtractedContent
 	Classification *Classification
 	UserFeedback   *Feedback
-	// ProcessedAt is set once the user dismisses the item from the main board
-	// (via like, dislike, or done). Nil means the item is still in the inbox.
+	// ProcessedAt is set when the user marks an item "done", dismissing it from
+	// the inbox. Like and dislike record a preference signal but leave this nil.
 	ProcessedAt *time.Time
 }
 

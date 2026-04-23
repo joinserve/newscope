@@ -1189,7 +1189,10 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 
 	err = repos.Classification.UpdateItemFeedback(context.Background(), items[2].ID, &domain.Feedback{Type: domain.FeedbackDislike})
 	require.NoError(t, err)
-	// items[3] has no feedback
+
+	// items[3] is the only one explicitly dismissed ("done")
+	err = repos.Classification.UpdateItemFeedback(context.Background(), items[3].ID, &domain.Feedback{Type: domain.FeedbackDone})
+	require.NoError(t, err)
 
 	t.Run("filter liked only", func(t *testing.T) {
 		filter := &domain.ItemFilter{
@@ -1212,7 +1215,7 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 		assert.Equal(t, domain.FeedbackLike, result[1].UserFeedback.Type)
 	})
 
-	t.Run("default inbox hides processed items", func(t *testing.T) {
+	t.Run("default inbox shows liked and disliked items", func(t *testing.T) {
 		filter := &domain.ItemFilter{
 			MinScore:      0.0,
 			ShowLikedOnly: false,
@@ -1222,11 +1225,14 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 
 		result, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
 		require.NoError(t, err)
-		require.Len(t, result, 1) // only the unprocessed item remains in inbox
-		assert.Equal(t, "Neutral Article", result[0].Title)
+		// liked and disliked items stay in inbox; only done dismisses
+		require.Len(t, result, 3)
+		assert.Equal(t, "Disliked Article", result[0].Title) // baseTime+3h (newest in inbox)
+		assert.Equal(t, "Liked Article 2", result[1].Title)
+		assert.Equal(t, "Liked Article 1", result[2].Title)
 	})
 
-	t.Run("show processed returns everything", func(t *testing.T) {
+	t.Run("show processed returns only done items", func(t *testing.T) {
 		filter := &domain.ItemFilter{
 			MinScore:      0.0,
 			ShowProcessed: true,
@@ -1236,11 +1242,8 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 
 		result, err := repos.Classification.GetClassifiedItems(context.Background(), filter)
 		require.NoError(t, err)
-		require.Len(t, result, 3) // three processed items
-
-		assert.Equal(t, "Disliked Article", result[0].Title)
-		assert.Equal(t, "Liked Article 2", result[1].Title)
-		assert.Equal(t, "Liked Article 1", result[2].Title)
+		require.Len(t, result, 1) // only the "done" item is processed
+		assert.Equal(t, "Neutral Article", result[0].Title)
 	})
 
 	t.Run("count with liked filter", func(t *testing.T) {
@@ -1262,7 +1265,7 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 
 		count, err := repos.Classification.GetClassifiedItemsCount(context.Background(), filter)
 		require.NoError(t, err)
-		assert.Equal(t, 1, count) // only unprocessed item
+		assert.Equal(t, 3, count) // liked + disliked stay in inbox; only done is excluded
 	})
 
 	t.Run("count processed", func(t *testing.T) {
@@ -1273,7 +1276,7 @@ func TestClassificationRepository_GetClassifiedItems_LikedFilter(t *testing.T) {
 
 		count, err := repos.Classification.GetClassifiedItemsCount(context.Background(), filter)
 		require.NoError(t, err)
-		assert.Equal(t, 3, count) // three processed items
+		assert.Equal(t, 1, count) // only the "done" item is processed
 	})
 }
 
@@ -1462,14 +1465,14 @@ func TestClassificationRepository_SearchItems(t *testing.T) {
 		{
 			name:        "search for golang",
 			searchQuery: "golang",
-			filter:      &domain.ItemFilter{ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   1,
 			wantTitles:  []string{"Golang Best Practices"},
 		},
 		{
 			name:        "search for programming",
 			searchQuery: "programming",
-			filter:      &domain.ItemFilter{ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   1,
 			wantTitles:  []string{"Golang Best Practices"},
 		},
@@ -1483,14 +1486,14 @@ func TestClassificationRepository_SearchItems(t *testing.T) {
 		{
 			name:        "search with min score filter",
 			searchQuery: "programming OR python",
-			filter:      &domain.ItemFilter{MinScore: 7.5, ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{MinScore: 7.5, Limit: 10},
 			wantCount:   1,
 			wantTitles:  []string{"Golang Best Practices"},
 		},
 		{
 			name:        "search with topic filter",
 			searchQuery: "web",
-			filter:      &domain.ItemFilter{Topic: "javascript", ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{Topic: "javascript", Limit: 10},
 			wantCount:   1,
 			wantTitles:  []string{"JavaScript Frameworks"},
 		},
@@ -1504,37 +1507,37 @@ func TestClassificationRepository_SearchItems(t *testing.T) {
 		{
 			name:        "no results",
 			searchQuery: "rust",
-			filter:      &domain.ItemFilter{ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   0,
 			wantTitles:  []string{},
 		},
 		{
 			name:        "search for GPT should find ChatGPT",
 			searchQuery: "GPT",
-			filter:      &domain.ItemFilter{ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   1,
 			wantTitles:  []string{"ChatGPT and AI Revolution"},
 		},
 		{
 			name:        "search for ChatGPT exact match",
 			searchQuery: "ChatGPT",
-			filter:      &domain.ItemFilter{ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   1,
 			wantTitles:  []string{"ChatGPT and AI Revolution"},
 		},
 		{
 			name:        "complex query with OR operator",
 			searchQuery: "golang OR chatgpt",
-			filter:      &domain.ItemFilter{ShowProcessed: true, Limit: 10},
+			filter:      &domain.ItemFilter{Limit: 10},
 			wantCount:   2,
 			wantTitles:  []string{"Golang Best Practices", "ChatGPT and AI Revolution"},
 		},
 		{
-			name:        "inbox hides processed by default",
+			name:        "inbox includes liked and disliked items",
 			searchQuery: "golang OR python",
 			filter:      &domain.ItemFilter{Limit: 10},
-			wantCount:   1,
-			wantTitles:  []string{"Python Machine Learning"},
+			wantCount:   2,
+			wantTitles:  []string{"Golang Best Practices", "Python Machine Learning"},
 		},
 	}
 
