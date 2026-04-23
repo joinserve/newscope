@@ -1394,4 +1394,57 @@ func TestServer_feedbackHandler_InboxBehavior(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "Test Article", "done in processed view should re-render")
 	})
+
+	t.Run("liked item retains intersect trigger then dismisses on done", func(t *testing.T) {
+		// after a like, processed_at is nil so the card must still carry the
+		// intersect trigger — confirmed by checking the rendered HTML.
+		// when the user scrolls past, the intersect fires the done endpoint and
+		// the card is removed (empty 200).
+		likedArticle := &domain.ClassifiedItem{
+			Item: &domain.Item{
+				ID:        2,
+				Title:     "Liked Article",
+				Link:      "https://example.com/liked",
+				Published: time.Now(),
+			},
+			FeedName:       "Test Feed",
+			Classification: &domain.Classification{Score: 8.0},
+			UserFeedback:   &domain.Feedback{Type: domain.FeedbackLike},
+			// ProcessedAt is nil — like does not dismiss the item
+		}
+		db := &mocks.DatabaseMock{
+			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
+				return nil
+			},
+			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
+				return likedArticle, nil
+			},
+		}
+		sched := &mocks.SchedulerMock{TriggerPreferenceUpdateFunc: func() {}}
+		srv := testServer(t, cfg, db, sched)
+
+		// step 1: like the item — card re-renders in place with intersect trigger still attached
+		likeReq := httptest.NewRequest("POST", "/api/v1/feedback/2/like", http.NoBody)
+		likeReq.SetPathValue("id", "2")
+		likeReq.SetPathValue("action", "like")
+		likeReq.Header.Set("HX-Request", "true")
+		likeW := httptest.NewRecorder()
+		srv.feedbackHandler(likeW, likeReq)
+
+		require.Equal(t, http.StatusOK, likeW.Code)
+		assert.Contains(t, likeW.Body.String(), "Liked Article")
+		assert.Contains(t, likeW.Body.String(), `hx-trigger="intersect once threshold:0.5"`,
+			"liked item (ProcessedAt nil) must retain intersect trigger so scroll-past can dismiss it")
+
+		// step 2: intersect trigger fires done — card is dismissed (empty body)
+		doneReq := httptest.NewRequest("POST", "/api/v1/feedback/2/done", http.NoBody)
+		doneReq.SetPathValue("id", "2")
+		doneReq.SetPathValue("action", "done")
+		doneReq.Header.Set("HX-Request", "true")
+		doneW := httptest.NewRecorder()
+		srv.feedbackHandler(doneW, doneReq)
+
+		assert.Equal(t, http.StatusOK, doneW.Code)
+		assert.Empty(t, doneW.Body.String(), "done on a liked item should dismiss it (empty body)")
+	})
 }
