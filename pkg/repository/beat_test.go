@@ -481,6 +481,50 @@ func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
 	assert.InDelta(t, 5.0, beats[2].AggregateScore, 0.001)
 }
 
+// ListBeats must hide half-baked multi-member beats (canonical_title still NULL
+// because merge_worker hasn't populated them yet) while keeping singletons and
+// already-canonicalised multi-member beats.
+func TestBeatRepository_ListBeats_HidesUncanonicalisedMultiMember(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	// singleton beat — no canonical_title, but still shown
+	idSolo := mkItem(pub, "solo", []float32{1, 0, 0})
+	_, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idSolo, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// multi-member beat with canonical — shown
+	idA := mkItem(pub.Add(time.Hour), "a", []float32{0, 1, 0})
+	idB := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0})
+	bCanon, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, bCanon, domain.BeatCanonical{Title: "canon"}))
+
+	// multi-member beat without canonical — hidden
+	idC := mkItem(pub.Add(2*time.Hour), "c", []float32{0, 0, 1})
+	idD := mkItem(pub.Add(2*time.Hour), "d", []float32{0, 0, 1})
+	bHalf, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idC, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idD, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	require.NoError(t, err)
+
+	var ids []int64
+	for _, b := range beats {
+		ids = append(ids, b.ID)
+	}
+	assert.Contains(t, ids, bCanon, "canonicalised multi-member beat must appear")
+	assert.NotContains(t, ids, bHalf, "half-baked multi-member beat must be hidden")
+	// singleton should appear too — find it by exclusion
+	assert.Len(t, beats, 2, "expected solo + canonicalised, not the half-baked")
+}
+
 func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
 	repos, cleanup, mkItem := beatTestSetup(t)
 	defer cleanup()

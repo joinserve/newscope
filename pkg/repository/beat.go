@@ -597,6 +597,8 @@ func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
 
 // ListBeats returns beats with members, sorted by aggregate score DESC then first_seen_at DESC.
 // Reads per-beat feedback from beats.feedback (column added in PR 6); no KV/settings indirection.
+// Filters out half-baked multi-member beats (canonical_title still NULL, i.e. merge_worker hasn't
+// run yet): only singleton beats and already-canonicalised multi-member beats make it into the list.
 func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
 	query := `
 		SELECT
@@ -609,6 +611,7 @@ func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]do
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
 		GROUP BY b.id
+		HAVING COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
 		LIMIT ? OFFSET ?`
 
