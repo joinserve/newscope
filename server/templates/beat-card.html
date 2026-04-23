@@ -36,6 +36,9 @@
                 {{end}}
             {{end}}
         {{end}}
+        {{if gt $membersCount 3}}
+        <div class="avatar-overflow">+{{sub $membersCount 3}}</div>
+        {{end}}
         <div class="thread-line"></div>
     </div>
     {{else}}

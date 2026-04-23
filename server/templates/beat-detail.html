@@ -8,7 +8,7 @@
 
 {{define "beat-detail-content"}}
 <div class="beat-detail">
-    <div class="beat-header" style="margin-bottom: 2rem;">
+    <div class="beat-header">
         <a href="/beats" class="back-link" style="display:inline-block; margin-bottom: 1rem; text-decoration:none;">← Back to Inbox</a>
         <h1 class="beat-title">{{if .Beat.CanonicalTitle}}{{unescapeHTML (index .Beat.CanonicalTitle)}}{{else}}{{unescapeHTML (index .Beat.Members 0).Title}}{{end}}</h1>
 

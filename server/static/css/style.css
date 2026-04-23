@@ -2042,6 +2042,36 @@ html.dark-theme .moon-icon { opacity: 1; }
     gap: 1rem;
 }
 
+.beat-detail {
+    padding: 1.5rem;
+}
+
+.beat-header {
+    margin-bottom: 2rem;
+}
+
+.avatar-stack {
+    flex-direction: row;   /* override the column direction from .card-avatar */
+    position: relative;
+    width: fit-content;
+}
+
+.avatar-stack .avatar-img:nth-child(1) { width: 32px; height: 32px; position: relative; z-index: 3; }
+.avatar-stack .avatar-img:nth-child(2) { width: 28px; height: 28px; position: relative; z-index: 2; margin-left: -10px; }
+.avatar-stack .avatar-img:nth-child(3) { width: 24px; height: 24px; position: relative; z-index: 1; margin-left: -8px; }
+
+.avatar-overflow {   /* the "+N" overflow count badge */
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; z-index: 0;
+    margin-left: -8px;
+}
+
 .beats-header-title {
     display: flex;
     width: 100%;
