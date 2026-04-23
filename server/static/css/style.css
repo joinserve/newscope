@@ -218,6 +218,27 @@ body {
     left: 50%;
     transform: translateX(-50%);
     width: auto;
+    overflow: hidden;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.title-text {
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.title-text.marquee-active {
+    animation: title-marquee 9s linear infinite;
+}
+
+@keyframes title-marquee {
+    0%   { transform: translateX(0); }
+    10%  { transform: translateX(0); }
+    70%  { transform: translateX(var(--marquee-offset, -60px)); }
+    85%  { transform: translateX(var(--marquee-offset, -60px)); }
+    86%  { transform: translateX(0); }
+    100% { transform: translateX(0); }
 }
 
 .header-left, .header-right {
