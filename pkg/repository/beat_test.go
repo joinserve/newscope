@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -528,18 +529,18 @@ func TestBeatRepository_GetBeat_EagerLoadsMembers(t *testing.T) {
 	beat, err := repos.Beat.GetBeat(ctx, b1)
 	require.NoError(t, err)
 
-	assert.Equal(t, 9.0, beat.AggregateScore)
+	assert.InDelta(t, 9.0, beat.AggregateScore, 0.001)
 	require.Len(t, beat.Members, 3)
 
 	// should be score-desc order
 	assert.Equal(t, "b", beat.Members[0].Title)
-	assert.Equal(t, 9.0, beat.Members[0].GetRelevanceScore())
+	assert.InDelta(t, 9.0, beat.Members[0].GetRelevanceScore(), 0.001)
 
 	assert.Equal(t, "c", beat.Members[1].Title)
-	assert.Equal(t, 7.0, beat.Members[1].GetRelevanceScore())
+	assert.InDelta(t, 7.0, beat.Members[1].GetRelevanceScore(), 0.001)
 
 	assert.Equal(t, "a", beat.Members[2].Title)
-	assert.Equal(t, 5.0, beat.Members[2].GetRelevanceScore())
+	assert.InDelta(t, 5.0, beat.Members[2].GetRelevanceScore(), 0.001)
 }
 
 func TestBeatRepository_SaveCanonical(t *testing.T) {
@@ -570,4 +571,517 @@ func TestBeatRepository_SaveCanonical(t *testing.T) {
 		`SELECT canonical_summary FROM beats WHERE id = ?`, beatID))
 	assert.Equal(t, "Canonical Title", title)
 	assert.Equal(t, "Canonical summary of the beat.", summary)
+}
+
+// beatWith2Members seeds a beat with 2 items and returns the beat ID.
+func beatWith2Members(t *testing.T, repos *Repositories, mkItem func(time.Time, string, []float32) int64, pub time.Time) int64 {
+	t.Helper()
+	ctx := context.Background()
+	id1 := mkItem(pub, "m1-"+t.Name(), []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Minute), "m2-"+t.Name(), []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Minute)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	return beatID
+}
+
+func TestBeatRepository_ListPendingMerge_RemergeNotReturnedWithin24h(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	// simulate a completed first-time merge (canonical_merged_at = now)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "T", Summary: "S"}))
+
+	// add a third member immediately after — added_at > canonical_merged_at but < 24h later
+	id3 := mkItem(pub.Add(time.Hour), "m3-remerge24h", []float32{1, 0, 0})
+	_, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	for _, b := range beats {
+		assert.NotEqual(t, beatID, b.ID, "beat merged <24h ago must not be returned for re-merge")
+	}
+}
+
+func TestBeatRepository_ListPendingMerge_RemergeReturnedAfter24h(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	// complete the first merge, then back-date canonical_merged_at to 25h ago
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "T", Summary: "S"}))
+	_, err := repos.DB.ExecContext(ctx,
+		`UPDATE beats SET canonical_merged_at = datetime('now', '-25 hours') WHERE id = ?`, beatID)
+	require.NoError(t, err)
+
+	// add a new member with added_at > canonical_merged_at
+	id3 := mkItem(pub.Add(2*time.Hour), "m3-remerge-after24h", []float32{1, 0, 0})
+	_, err = repos.DB.ExecContext(ctx,
+		`INSERT INTO beat_members (beat_id, item_id, added_at) VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
+		beatID, id3)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	ids := make([]int64, len(beats))
+	for i, b := range beats {
+		ids[i] = b.ID
+	}
+	assert.Contains(t, ids, beatID, "beat with new member after 24h must be returned for re-merge")
+}
+
+func TestBeatRepository_ListPendingMerge_RemergeNotReturnedPast48hWindow(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "T", Summary: "S"}))
+	// back-date both canonical_merged_at (>24h) and first_seen_at (>48h — frozen)
+	_, err := repos.DB.ExecContext(ctx, `
+		UPDATE beats SET
+		  canonical_merged_at = datetime('now', '-25 hours'),
+		  first_seen_at       = datetime('now', '-49 hours')
+		WHERE id = ?`, beatID)
+	require.NoError(t, err)
+
+	// add a new member
+	id3 := mkItem(pub.Add(2*time.Hour), "m3-past48h", []float32{1, 0, 0})
+	_, err = repos.DB.ExecContext(ctx,
+		`INSERT INTO beat_members (beat_id, item_id, added_at) VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
+		beatID, id3)
+	require.NoError(t, err)
+
+	beats, err := repos.Beat.ListPendingMerge(ctx, 10)
+	require.NoError(t, err)
+	for _, b := range beats {
+		assert.NotEqual(t, beatID, b.ID, "beat past 48h window must not be returned for re-merge")
+	}
+}
+
+func TestBeatRepository_SaveCanonical_PreservesViewedAndFeedback(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	beatID := beatWith2Members(t, repos, mkItem, pub)
+	require.NoError(t, repos.Beat.MarkViewed(ctx, beatID))
+	require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+
+	// re-summary (simulates PR 7 re-merge)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "New Title", Summary: "New summary."}))
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "Second Title", Summary: "Second summary."}))
+
+	var fb string
+	var lv *time.Time
+	require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+	require.NoError(t, repos.DB.GetContext(ctx, &lv, `SELECT last_viewed_at FROM beats WHERE id = ?`, beatID))
+	assert.Equal(t, "like", fb, "feedback must survive re-summary")
+	assert.NotNil(t, lv, "last_viewed_at must survive re-summary")
+}
+
+func TestBeatRepository_MigrateAddCanonicalMergedAt(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	_, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+
+	// old schema without canonical_merged_at
+	_, err = db.ExecContext(ctx, `CREATE TABLE beats (
+		id                INTEGER PRIMARY KEY AUTOINCREMENT,
+		canonical_title   TEXT,
+		canonical_summary TEXT,
+		first_seen_at     DATETIME NOT NULL,
+		last_viewed_at    DATETIME,
+		feedback          TEXT DEFAULT '',
+		feedback_at       DATETIME,
+		created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	var cols []string
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.NotContains(t, cols, "canonical_merged_at")
+
+	require.NoError(t, migrateAddCanonicalMergedAt(ctx, db))
+
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.Contains(t, cols, "canonical_merged_at")
+
+	// idempotent
+	require.NoError(t, migrateAddCanonicalMergedAt(ctx, db))
+}
+
+func TestBeatRepository_SetFeedback(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id := mkItem(pub, "a", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	t.Run("set like", func(t *testing.T) {
+		require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+
+		var fb string
+		var fbAt *time.Time
+		require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+		require.NoError(t, repos.DB.GetContext(ctx, &fbAt, `SELECT feedback_at FROM beats WHERE id = ?`, beatID))
+		assert.Equal(t, "like", fb)
+		assert.NotNil(t, fbAt, "feedback_at must be set when feedback is non-empty")
+	})
+
+	t.Run("overwrite to dislike", func(t *testing.T) {
+		require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "dislike"))
+
+		var fb string
+		require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+		assert.Equal(t, "dislike", fb)
+	})
+
+	t.Run("clear feedback", func(t *testing.T) {
+		require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, ""))
+
+		var fb string
+		var fbAt *time.Time
+		require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+		require.NoError(t, repos.DB.GetContext(ctx, &fbAt, `SELECT feedback_at FROM beats WHERE id = ?`, beatID))
+		assert.Empty(t, fb)
+		assert.Nil(t, fbAt, "feedback_at must be NULL when feedback is cleared")
+	})
+}
+
+func TestBeatRepository_SetFeedback_InvalidValue(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id := mkItem(pub, "a", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	err = repos.Beat.SetFeedback(ctx, beatID, "done")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid beat feedback value")
+
+	err = repos.Beat.SetFeedback(ctx, beatID, "spam")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid beat feedback value")
+}
+
+func TestBeatRepository_SetFeedback_DoesNotPropagateToItems(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id := mkItem(pub, "a", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+
+	var itemFeedback string
+	require.NoError(t, repos.DB.GetContext(ctx, &itemFeedback,
+		`SELECT COALESCE(user_feedback, '') FROM items WHERE id = ?`, id))
+	assert.Empty(t, itemFeedback, "beat feedback must not propagate to items.user_feedback")
+}
+
+func TestBeatRepository_SetFeedback_SurvivesSaveCanonical(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	id1 := mkItem(pub, "a", []float32{1, 0, 0})
+	id2 := mkItem(pub.Add(time.Hour), "b", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	require.NoError(t, repos.Beat.SetFeedback(ctx, beatID, "like"))
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title: "Re-summarized Title", Summary: "Re-summarized summary.",
+	}))
+
+	var fb string
+	require.NoError(t, repos.DB.GetContext(ctx, &fb, `SELECT feedback FROM beats WHERE id = ?`, beatID))
+	assert.Equal(t, "like", fb, "feedback must survive a SaveCanonical re-summary")
+}
+
+func TestBeatRepository_MigrateAddBeatFeedback(t *testing.T) {
+	ctx := context.Background()
+
+	// open a raw in-memory DB and apply the old schema (beats without feedback columns)
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	db.SetMaxOpenConns(1)
+
+	_, err = db.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+
+	// create the minimal beats table as it existed before PR 6
+	_, err = db.ExecContext(ctx, `CREATE TABLE beats (
+		id                INTEGER PRIMARY KEY AUTOINCREMENT,
+		canonical_title   TEXT,
+		canonical_summary TEXT,
+		first_seen_at     DATETIME NOT NULL,
+		last_viewed_at    DATETIME,
+		created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	// confirm the columns are absent before migration
+	var cols []string
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.NotContains(t, cols, "feedback")
+	assert.NotContains(t, cols, "feedback_at")
+
+	// run the migration
+	require.NoError(t, migrateAddBeatFeedback(ctx, db))
+
+	// confirm both columns now exist
+	require.NoError(t, db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info('beats')`))
+	assert.Contains(t, cols, "feedback")
+	assert.Contains(t, cols, "feedback_at")
+
+	// idempotent: running again must not error
+	require.NoError(t, migrateAddBeatFeedback(ctx, db))
+}
+
+func TestBeatRepository_Search_ByTitle(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "ukraine-war", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "Ukraine War Update",
+		Summary: "Fighting continues in the eastern regions.",
+	}))
+
+	results, err := repos.Beat.Search(ctx, "Ukraine", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, beatID, results[0].ID)
+	assert.Equal(t, "Ukraine War Update", results[0].CanonicalTitle)
+	assert.Equal(t, 1, results[0].MemberCount)
+}
+
+func TestBeatRepository_Search_BySummary(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "climate", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "Climate Summit",
+		Summary: "World leaders agree on carbon reduction targets.",
+	}))
+
+	results, err := repos.Beat.Search(ctx, "carbon", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, beatID, results[0].ID)
+}
+
+func TestBeatRepository_Search_EmptyQueryReturnsNil(t *testing.T) {
+	repos, cleanup, _ := beatTestSetup(t)
+	defer cleanup()
+
+	results, err := repos.Beat.Search(context.Background(), "", 10)
+	require.NoError(t, err)
+	assert.Nil(t, results)
+}
+
+func TestBeatRepository_Search_NoMatch(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "tech-news", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "Apple Releases New iPhone",
+		Summary: "The latest iPhone features improved cameras.",
+	}))
+
+	results, err := repos.Beat.Search(ctx, "soccer", 10)
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
+func TestBeatRepository_Search_RespectsLimit(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// use orthogonal vectors so each item seeds its own beat (cosine=0 < threshold 0.5)
+	vecs := [][]float32{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
+	for i := 0; i < 3; i++ {
+		pub := time.Now().Add(time.Duration(i) * time.Hour)
+		id := mkItem(pub, fmt.Sprintf("item-%d", i), vecs[i])
+		beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+			domain.BeatCandidate{ItemID: id, Vector: vecs[i], PublishedAt: pub},
+			0.5, 48*time.Hour, 20)
+		require.NoError(t, err)
+		require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+			Title:   fmt.Sprintf("Summit %d", i),
+			Summary: "Leaders gather at annual summit.",
+		}))
+	}
+
+	results, err := repos.Beat.Search(ctx, "summit", 2)
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+}
+
+func TestBeatRepository_Search_MemberTitleFallthrough(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// seed a single-member beat without calling SaveCanonical — canonical_title stays NULL
+	pub := time.Now()
+	id := mkItem(pub, "Quantum Computing Breakthrough", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// verify canonical is indeed NULL
+	var canonTitle *string
+	require.NoError(t, repos.DB.GetContext(ctx, &canonTitle,
+		`SELECT canonical_title FROM beats WHERE id = ?`, beatID))
+	assert.Nil(t, canonTitle, "canonical_title must be NULL for this test to be valid")
+
+	// searching for a word from the item title must return the beat via fallthrough
+	results, err := repos.Beat.Search(ctx, "Quantum", 10)
+	require.NoError(t, err)
+	require.Len(t, results, 1, "single-member NULL-canonical beat must be findable via member item title")
+	assert.Equal(t, beatID, results[0].ID)
+	assert.Equal(t, 1, results[0].MemberCount)
+}
+
+func TestBeatRepository_Search_SpecialCharsDoNotError(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	pub := time.Now()
+	id := mkItem(pub, "AI Model", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.5, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID, domain.BeatCanonical{
+		Title:   "AI Model Release",
+		Summary: "A new AI model was released.",
+	}))
+
+	// these queries contain FTS5 special characters that would error without escaping
+	for _, q := range []string{`"AI"`, `AI*`, `(AI OR model)`, `AI"model`} {
+		results, err := repos.Beat.Search(ctx, q, 10)
+		require.NoError(t, err, "query %q must not produce a DB error", q)
+		_ = results
+	}
+}
+
+func TestBeatRepository_MigrateBackfillBeatsFTS(t *testing.T) {
+	ctx := context.Background()
+
+	// open a raw in-memory DB with beats and beats_fts tables but no insert triggers,
+	// simulating an existing deployment before this migration ran.
+	db, err := sqlx.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	_, err = db.ExecContext(ctx, `CREATE TABLE beats (
+		id                INTEGER PRIMARY KEY AUTOINCREMENT,
+		canonical_title   TEXT,
+		canonical_summary TEXT,
+		first_seen_at     DATETIME NOT NULL,
+		created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `CREATE VIRTUAL TABLE beats_fts USING fts5(
+		canonical_title,
+		canonical_summary,
+		content=beats,
+		content_rowid=id,
+		tokenize='porter unicode61'
+	)`)
+	require.NoError(t, err)
+
+	// insert a beat directly — no trigger exists, so beats_fts shadow tables stay empty
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO beats (first_seen_at, canonical_title, canonical_summary) VALUES (?, ?, ?)`,
+		time.Now(), "Uniqueword Beat Title", "Uniqueword beat summary.")
+	require.NoError(t, err)
+
+	// verify the beat is NOT yet findable via FTS (shadow tables empty, no trigger)
+	var matchCount int
+	require.NoError(t, db.GetContext(ctx, &matchCount,
+		`SELECT COUNT(*) FROM beats_fts WHERE beats_fts MATCH 'Uniqueword'`))
+	assert.Equal(t, 0, matchCount, "FTS index should be empty before migration")
+
+	// run backfill migration
+	require.NoError(t, migrateBackfillBeatsFTS(ctx, db))
+
+	// beat should now be findable via FTS
+	require.NoError(t, db.GetContext(ctx, &matchCount,
+		`SELECT COUNT(*) FROM beats_fts WHERE beats_fts MATCH 'Uniqueword'`))
+	assert.Equal(t, 1, matchCount, "beat should be indexed after migration")
+
+	// idempotent: second run must not error or produce duplicates
+	require.NoError(t, migrateBackfillBeatsFTS(ctx, db))
+	require.NoError(t, db.GetContext(ctx, &matchCount,
+		`SELECT COUNT(*) FROM beats_fts WHERE beats_fts MATCH 'Uniqueword'`))
+	assert.Equal(t, 1, matchCount, "migration must be idempotent")
 }

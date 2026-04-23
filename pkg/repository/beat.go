@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -247,14 +248,25 @@ func (r *BeatRepository) ListPendingMerge(ctx context.Context, limit int) ([]dom
 	return r.loadBeatMembers(ctx, beatIDs)
 }
 
-// pendingMergeIDs returns IDs of beats with canonical_summary IS NULL and >1 member.
+// pendingMergeIDs returns IDs of beats that need a (re-)merge:
+//   - first-time: canonical_summary IS NULL and >1 member
+//   - re-merge: already merged, but a new member arrived since the last merge,
+//     canonical_merged_at is older than 24h, and the beat is still within its 48h window
 func (r *BeatRepository) pendingMergeIDs(ctx context.Context, limit int) ([]int64, error) {
 	rows, err := r.db.QueryxContext(ctx, `
-		SELECT b.id
-		FROM beats b
+		SELECT b.id FROM beats b
 		WHERE b.canonical_summary IS NULL
 		  AND (SELECT COUNT(*) FROM beat_members WHERE beat_id = b.id) > 1
-		ORDER BY b.id
+
+		UNION
+
+		SELECT b.id FROM beats b
+		WHERE b.canonical_summary IS NOT NULL
+		  AND b.canonical_merged_at < datetime('now', '-24 hours')
+		  AND b.first_seen_at      >= datetime('now', '-48 hours')
+		  AND (SELECT MAX(added_at) FROM beat_members WHERE beat_id = b.id) > b.canonical_merged_at
+
+		ORDER BY 1
 		LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list pending merge ids: %w", err)
@@ -332,15 +344,47 @@ func (r *BeatRepository) loadBeatMembers(ctx context.Context, beatIDs []int64) (
 	return beats, nil
 }
 
-// SaveCanonical stores the LLM-generated canonical title and summary for a beat.
+// SaveCanonical stores the LLM-generated canonical title and summary for a beat
+// and records the merge timestamp. feedback, feedback_at, and last_viewed_at
+// are deliberately excluded so they survive re-summary.
 func (r *BeatRepository) SaveCanonical(ctx context.Context, beatID int64, c domain.BeatCanonical) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE beats SET canonical_title = ?, canonical_summary = ?,
-		  updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+		  canonical_merged_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+		  updated_at           = strftime('%Y-%m-%d %H:%M:%f', 'now')
 		 WHERE id = ?`,
 		c.Title, c.Summary, beatID)
 	if err != nil {
 		return fmt.Errorf("save canonical: %w", err)
+	}
+	return nil
+}
+
+// SetFeedback records the user's per-beat signal. feedback must be "like",
+// "dislike", or "" (empty clears the signal and nulls feedback_at).
+// This signal is independent from per-item feedback and is never propagated
+// to items.user_feedback or the classifier's preference manager.
+func (r *BeatRepository) SetFeedback(ctx context.Context, beatID int64, feedback string) error {
+	switch feedback {
+	case "like", "dislike", "":
+	default:
+		return fmt.Errorf("invalid beat feedback value %q: must be like, dislike, or empty", feedback)
+	}
+
+	var err error
+	if feedback == "" {
+		_, err = r.db.ExecContext(ctx,
+			`UPDATE beats SET feedback = '', feedback_at = NULL,
+			  updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+			 WHERE id = ?`, beatID)
+	} else {
+		_, err = r.db.ExecContext(ctx,
+			`UPDATE beats SET feedback = ?, feedback_at = strftime('%Y-%m-%d %H:%M:%f', 'now'),
+			  updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+			 WHERE id = ?`, feedback, beatID)
+	}
+	if err != nil {
+		return fmt.Errorf("set beat feedback: %w", err)
 	}
 	return nil
 }
@@ -370,24 +414,136 @@ func (r *BeatRepository) UnreadMemberCount(ctx context.Context, beatID int64) (i
 	return n, nil
 }
 
-// ListBeats returns beats sorted by aggregate score DESC then first_seen_at DESC.
+// Search returns beats whose canonical title or summary match query using FTS5,
+// ordered by relevance. Single-member beats with no canonical title fall through
+// to a secondary search against their member item title. Returns nil when query is empty.
+func (r *BeatRepository) Search(ctx context.Context, query string, limit int) ([]domain.BeatView, error) {
+	if query == "" {
+		return nil, nil
+	}
+
+	escaped := escapeFTS5Query(query)
+
+	// primary: beats indexed in beats_fts (have a canonical title / summary)
+	canonRows, err := r.db.QueryxContext(ctx, `
+		SELECT b.id, COALESCE(b.canonical_title, '') AS canonical_title,
+		       COALESCE(b.canonical_summary, '') AS canonical_summary,
+		       b.first_seen_at, b.last_viewed_at,
+		       COALESCE(b.feedback, '') AS feedback, b.feedback_at,
+		       (SELECT COUNT(*) FROM beat_members WHERE beat_id = b.id) AS member_count
+		FROM beats_fts
+		JOIN beats b ON b.id = beats_fts.rowid
+		WHERE beats_fts MATCH ?
+		ORDER BY beats_fts.rank
+		LIMIT ?`, escaped, limit)
+	if err != nil {
+		return nil, fmt.Errorf("beat search: %w", err)
+	}
+	defer canonRows.Close()
+	out, err := scanBeatViews(canonRows)
+	if err != nil {
+		return nil, err
+	}
+
+	// fallthrough: single-member beats with NULL canonical whose item title matches
+	seen := make(map[int64]bool, len(out))
+	for _, v := range out {
+		seen[v.ID] = true
+	}
+	fallRows, err := r.db.QueryxContext(ctx, `
+		SELECT b.id, '' AS canonical_title, '' AS canonical_summary,
+		       b.first_seen_at, b.last_viewed_at,
+		       COALESCE(b.feedback, '') AS feedback, b.feedback_at,
+		       1 AS member_count
+		FROM beats b
+		JOIN beat_members bm ON bm.beat_id = b.id
+		JOIN items_fts ON items_fts.rowid = bm.item_id
+		WHERE b.canonical_title IS NULL
+		  AND items_fts MATCH ?
+		  AND (SELECT COUNT(*) FROM beat_members WHERE beat_id = b.id) = 1
+		LIMIT ?`, escaped, limit)
+	if err != nil {
+		return nil, fmt.Errorf("beat member title search: %w", err)
+	}
+	defer fallRows.Close()
+	extra, err := scanBeatViews(fallRows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range extra {
+		if !seen[v.ID] && len(out) < limit {
+			out = append(out, v)
+			seen[v.ID] = true
+		}
+	}
+	return out, nil
+}
+
+// escapeFTS5Query wraps each whitespace-separated term in double quotes so that
+// user-supplied special characters (*, (, ), ") are treated as literals by SQLite FTS5.
+func escapeFTS5Query(q string) string {
+	terms := strings.Fields(q)
+	for i, t := range terms {
+		terms[i] = `"` + strings.ReplaceAll(t, `"`, ``) + `"`
+	}
+	return strings.Join(terms, " ")
+}
+
+// scanBeatViews drains rows into a BeatView slice.
+func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
+	var out []domain.BeatView
+	for rows.Next() {
+		var row struct {
+			ID               int64      `db:"id"`
+			CanonicalTitle   string     `db:"canonical_title"`
+			CanonicalSummary string     `db:"canonical_summary"`
+			FirstSeenAt      time.Time  `db:"first_seen_at"`
+			LastViewedAt     *time.Time `db:"last_viewed_at"`
+			Feedback         string     `db:"feedback"`
+			FeedbackAt       *time.Time `db:"feedback_at"`
+			MemberCount      int        `db:"member_count"`
+		}
+		if err := rows.StructScan(&row); err != nil {
+			return nil, fmt.Errorf("scan beat search row: %w", err)
+		}
+		out = append(out, domain.BeatView{
+			ID:               row.ID,
+			CanonicalTitle:   row.CanonicalTitle,
+			CanonicalSummary: row.CanonicalSummary,
+			FirstSeenAt:      row.FirstSeenAt,
+			LastViewedAt:     row.LastViewedAt,
+			Feedback:         row.Feedback,
+			FeedbackAt:       row.FeedbackAt,
+			MemberCount:      row.MemberCount,
+		})
+	}
+	return out, rows.Err()
+}
+
+// ListBeats returns beats with members, sorted by aggregate score DESC then first_seen_at DESC.
+// Reads per-beat feedback from beats.feedback (column added in PR 6); no KV/settings indirection.
+//
+// Known gaps vs. brief — to be fixed by the UI implementer:
+//   - aggregate score is MAX here; brief specifies MEAN (AVG).
+//   - HAVING > 1 excludes single-member beats; brief says they should render inline.
 func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
 	query := `
-		SELECT 
+		SELECT
 			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
-			MAX(i.relevance_score) as aggregate_score,
-			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count,
-			COALESCE(s.value, '') as user_feedback
+			MAX(i.relevance_score) AS aggregate_score,
+			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) AS unread_count,
+			COALESCE(b.feedback, '') AS feedback,
+			b.feedback_at
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
-		LEFT JOIN settings s ON s.key = 'beat_feedback_' || b.id
 		WHERE b.canonical_title IS NOT NULL
 		GROUP BY b.id
 		HAVING COUNT(bm.item_id) > 1
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
-		LIMIT ? OFFSET ?
-	`
+		LIMIT ? OFFSET ?`
+
 	var rows []beatRow
 	if err := r.db.SelectContext(ctx, &rows, query, limit, offset); err != nil {
 		return nil, fmt.Errorf("list beats: %w", err)
@@ -396,142 +552,24 @@ func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]do
 		return nil, nil
 	}
 
-	beatIDs := make([]int64, len(rows))
-	for i, r := range rows {
-		beatIDs[i] = r.ID
-	}
-
-	membersMap, err := r.loadMembersForBeatsUI(ctx, beatIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	var beats []domain.BeatWithMembers
-	for _, row := range rows {
-		members := membersMap[row.ID]
-		topicsMap := make(map[string]bool)
-		var topics []string
-		for _, m := range members {
-			for _, t := range m.GetTopics() {
-				if !topicsMap[t] {
-					topicsMap[t] = true
-					topics = append(topics, t)
-				}
-			}
-		}
-
-		beats = append(beats, domain.BeatWithMembers{
-			ID:               row.ID,
-			CanonicalTitle:   row.CanonicalTitle,
-			CanonicalSummary: row.CanonicalSummary,
-			FirstSeenAt:      row.FirstSeenAt,
-			LastViewedAt:     row.LastViewedAt,
-			UnreadCount:      row.UnreadCount,
-			AggregateScore:   row.AggregateScore,
-			UserFeedback:     row.UserFeedback,
-			Topics:           topics,
-			Members:          members,
-		})
-	}
-	return beats, nil
+	return r.hydrateBeatRows(ctx, rows)
 }
 
-// Search wraps the beat search functionality.
-func (r *BeatRepository) Search(ctx context.Context, query string, limit, offset int) ([]domain.BeatWithMembers, error) {
-	// brute-force LIKE search on canonical fields and member titles
-	sqlQuery := `
-		SELECT 
-			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
-			MAX(i.relevance_score) as aggregate_score,
-			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count,
-			COALESCE(s.value, '') as user_feedback
-		FROM beats b
-		JOIN beat_members bm ON bm.beat_id = b.id
-		JOIN items i ON i.id = bm.item_id
-		LEFT JOIN settings s ON s.key = 'beat_feedback_' || b.id
-		WHERE b.canonical_title IS NOT NULL
-		  AND (b.canonical_title LIKE '%' || ? || '%'
-		       OR b.canonical_summary LIKE '%' || ? || '%'
-		       OR i.title LIKE '%' || ? || '%')
-		GROUP BY b.id
-		HAVING COUNT(bm.item_id) > 1
-		ORDER BY aggregate_score DESC, b.first_seen_at DESC
-		LIMIT ? OFFSET ?
-	`
-	var rows []beatRow
-	if err := r.db.SelectContext(ctx, &rows, sqlQuery, query, query, query, limit, offset); err != nil {
-		return nil, fmt.Errorf("search beats: %w", err)
-	}
-	if len(rows) == 0 {
-		return nil, nil
-	}
-
-	beatIDs := make([]int64, len(rows))
-	for i, row := range rows {
-		beatIDs[i] = row.ID
-	}
-
-	membersMap, err := r.loadMembersForBeatsUI(ctx, beatIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	var beats []domain.BeatWithMembers
-	for _, row := range rows {
-		members := membersMap[row.ID]
-		topicsMap := make(map[string]bool)
-		var topics []string
-		for _, m := range members {
-			for _, t := range m.GetTopics() {
-				if !topicsMap[t] {
-					topicsMap[t] = true
-					topics = append(topics, t)
-				}
-			}
-		}
-
-		beats = append(beats, domain.BeatWithMembers{
-			ID:               row.ID,
-			CanonicalTitle:   row.CanonicalTitle,
-			CanonicalSummary: row.CanonicalSummary,
-			FirstSeenAt:      row.FirstSeenAt,
-			LastViewedAt:     row.LastViewedAt,
-			UnreadCount:      row.UnreadCount,
-			AggregateScore:   row.AggregateScore,
-			UserFeedback:     row.UserFeedback,
-			Topics:           topics,
-			Members:          members,
-		})
-	}
-	return beats, nil
-}
-
-// SetFeedback records a preference signal for a beat without persisting to items.
-func (r *BeatRepository) SetFeedback(ctx context.Context, beatID int64, feedback string) error {
-	key := fmt.Sprintf("beat_feedback_%d", beatID)
-	if feedback == "" {
-		_, err := r.db.ExecContext(ctx, "DELETE FROM settings WHERE key = ?", key)
-		return err
-	}
-	_, err := r.db.ExecContext(ctx, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, feedback)
-	return err
-}
-
-// GetBeat returns a single beat with its members.
+// GetBeat returns a single beat with its members. Reads feedback from beats.feedback.
 func (r *BeatRepository) GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
 	query := `
-		SELECT 
+		SELECT
 			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
-			MAX(i.relevance_score) as aggregate_score,
-			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) as unread_count,
-			COALESCE(s.value, '') as user_feedback
+			MAX(i.relevance_score) AS aggregate_score,
+			SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) AS unread_count,
+			COALESCE(b.feedback, '') AS feedback,
+			b.feedback_at
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
-		LEFT JOIN settings s ON s.key = 'beat_feedback_' || b.id
 		WHERE b.id = ?
-		GROUP BY b.id
-	`
+		GROUP BY b.id`
+
 	var row beatRow
 	if err := r.db.GetContext(ctx, &row, query, beatID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -540,34 +578,56 @@ func (r *BeatRepository) GetBeat(ctx context.Context, beatID int64) (domain.Beat
 		return domain.BeatWithMembers{}, fmt.Errorf("get beat: %w", err)
 	}
 
-	membersMap, err := r.loadMembersForBeatsUI(ctx, []int64{beatID})
+	hydrated, err := r.hydrateBeatRows(ctx, []beatRow{row})
 	if err != nil {
 		return domain.BeatWithMembers{}, err
 	}
+	if len(hydrated) == 0 {
+		return domain.BeatWithMembers{}, fmt.Errorf("beat not found")
+	}
+	return hydrated[0], nil
+}
 
-	members := membersMap[beatID]
-	topicsMap := make(map[string]bool)
-	var topics []string
-	for _, m := range members {
-		for _, t := range m.GetTopics() {
-			if !topicsMap[t] {
-				topicsMap[t] = true
-				topics = append(topics, t)
-			}
-		}
+// hydrateBeatRows loads members and derives topics for each row, returning
+// BeatWithMembers values in the same order as the input.
+func (r *BeatRepository) hydrateBeatRows(ctx context.Context, rows []beatRow) ([]domain.BeatWithMembers, error) {
+	beatIDs := make([]int64, len(rows))
+	for i, row := range rows {
+		beatIDs[i] = row.ID
+	}
+	membersMap, err := r.loadMembersForBeatsUI(ctx, beatIDs)
+	if err != nil {
+		return nil, err
 	}
 
-	return domain.BeatWithMembers{
-		ID:               row.ID,
-		CanonicalTitle:   row.CanonicalTitle,
-		CanonicalSummary: row.CanonicalSummary,
-		FirstSeenAt:      row.FirstSeenAt,
-		LastViewedAt:     row.LastViewedAt,
-		UnreadCount:      row.UnreadCount,
-		AggregateScore:   row.AggregateScore,
-		Topics:           topics,
-		Members:          members,
-	}, nil
+	out := make([]domain.BeatWithMembers, 0, len(rows))
+	for _, row := range rows {
+		members := membersMap[row.ID]
+		topicsMap := make(map[string]bool)
+		var topics []string
+		for _, m := range members {
+			for _, t := range m.GetTopics() {
+				if !topicsMap[t] {
+					topicsMap[t] = true
+					topics = append(topics, t)
+				}
+			}
+		}
+		out = append(out, domain.BeatWithMembers{
+			ID:               row.ID,
+			CanonicalTitle:   row.CanonicalTitle,
+			CanonicalSummary: row.CanonicalSummary,
+			FirstSeenAt:      row.FirstSeenAt,
+			LastViewedAt:     row.LastViewedAt,
+			UnreadCount:      row.UnreadCount,
+			AggregateScore:   row.AggregateScore,
+			UserFeedback:     row.Feedback,
+			FeedbackAt:       row.FeedbackAt,
+			Topics:           topics,
+			Members:          members,
+		})
+	}
+	return out, nil
 }
 
 type beatRow struct {
@@ -578,23 +638,23 @@ type beatRow struct {
 	LastViewedAt     *time.Time `db:"last_viewed_at"`
 	UnreadCount      int        `db:"unread_count"`
 	AggregateScore   float64    `db:"aggregate_score"`
-	UserFeedback     string     `db:"user_feedback"`
+	Feedback         string     `db:"feedback"`
+	FeedbackAt       *time.Time `db:"feedback_at"`
 }
 
 func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []int64) (map[int64][]domain.ClassifiedItem, error) {
 	query, args, err := sqlx.In(`
-		SELECT 
-			bm.beat_id as bm_beat_id,
+		SELECT
+			bm.beat_id AS bm_beat_id,
 			i.*,
-			f.title as feed_title,
-			f.url as feed_url,
-			f.icon_url as feed_icon_url
+			f.title AS feed_title,
+			f.url AS feed_url,
+			f.icon_url AS feed_icon_url
 		FROM beat_members bm
 		JOIN items i ON i.id = bm.item_id
 		JOIN feeds f ON f.id = i.feed_id
 		WHERE bm.beat_id IN (?)
-		ORDER BY bm.beat_id, i.relevance_score DESC
-	`, beatIDs)
+		ORDER BY bm.beat_id, i.relevance_score DESC`, beatIDs)
 	if err != nil {
 		return nil, fmt.Errorf("build members query: %w", err)
 	}
@@ -609,8 +669,6 @@ func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []in
 		return nil, fmt.Errorf("load beat members for UI: %w", err)
 	}
 
-	// we can reuse ClassificationRepository's unexported method via creating a temporary instance,
-	// since they are in the same package and share the db connection.
 	cr := NewClassificationRepository(r.db)
 
 	out := make(map[int64][]domain.ClassifiedItem)

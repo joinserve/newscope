@@ -145,6 +145,9 @@ CREATE TABLE IF NOT EXISTS beats (
     canonical_summary TEXT,
     first_seen_at     DATETIME NOT NULL,
     last_viewed_at    DATETIME,
+    feedback          TEXT     DEFAULT '',
+    feedback_at       DATETIME,
+    canonical_merged_at DATETIME,
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -158,3 +161,26 @@ CREATE TABLE IF NOT EXISTS beat_members (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_beat_members_item ON beat_members(item_id);
 CREATE INDEX IF NOT EXISTS idx_beats_pending_merge ON beats(id) WHERE canonical_summary IS NULL;
+
+-- Beat FTS: full-text search over canonical title and summary
+CREATE VIRTUAL TABLE IF NOT EXISTS beats_fts USING fts5(
+    canonical_title,
+    canonical_summary,
+    content=beats,
+    content_rowid=id,
+    tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS beats_fts_insert AFTER INSERT ON beats BEGIN
+    INSERT INTO beats_fts(rowid, canonical_title, canonical_summary)
+    VALUES (new.id, COALESCE(new.canonical_title, ''), COALESCE(new.canonical_summary, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS beats_fts_delete AFTER DELETE ON beats BEGIN
+    DELETE FROM beats_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS beats_fts_update AFTER UPDATE ON beats BEGIN
+    INSERT OR REPLACE INTO beats_fts(rowid, canonical_title, canonical_summary)
+    VALUES (new.id, COALESCE(new.canonical_title, ''), COALESCE(new.canonical_summary, ''));
+END;

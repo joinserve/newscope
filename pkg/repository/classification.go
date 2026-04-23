@@ -270,11 +270,9 @@ func (r *ClassificationRepository) GetTopTopicsByScore(ctx context.Context, minS
 	return topics, nil
 }
 
-// UpdateItemFeedback updates user feedback on an item, adjusts its score,
-// and marks it as processed (dismissed from the main board). Any feedback
-// action — like, dislike, or done — sets processed_at so the item leaves
-// the inbox. Score adjustments apply only to like (+1) and dislike (-2);
-// done is neutral and does not influence the preference model.
+// UpdateItemFeedback records user feedback on an item. Only "done" sets
+// processed_at (dismisses the item from the inbox); "like" and "dislike"
+// record the signal and adjust the relevance score without dismissing.
 func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemID int64, feedback *domain.Feedback) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -282,35 +280,35 @@ func (r *ClassificationRepository) UpdateItemFeedback(ctx context.Context, itemI
 	}
 	defer tx.Rollback()
 
-	// update feedback and mark as processed in one go
-	query := `
-		UPDATE items
-		SET user_feedback = ?, feedback_at = datetime('now'), processed_at = datetime('now')
-		WHERE id = ?
-	`
-	if _, err := tx.ExecContext(ctx, query, string(feedback.Type), itemID); err != nil {
-		return fmt.Errorf("update item feedback: %w", err)
-	}
-
-	// adjust score based on feedback
-	var scoreAdjustment float64
-	switch feedback.Type {
-	case domain.FeedbackLike:
-		scoreAdjustment = 1.0 // increase score by 1
-	case domain.FeedbackDislike:
-		scoreAdjustment = -2.0 // decrease score by 2 (stronger signal)
-	default:
-		// done and any other type: mark processed but leave score untouched
+	if feedback.Type == domain.FeedbackDone {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE items SET user_feedback = ?, feedback_at = datetime('now'), processed_at = datetime('now') WHERE id = ?`,
+			string(feedback.Type), itemID); err != nil {
+			return fmt.Errorf("update item feedback: %w", err)
+		}
 		return tx.Commit()
 	}
 
-	// update score, ensuring it stays within 0-10 range
-	scoreQuery := `
-		UPDATE items
-		SET relevance_score = MAX(0, MIN(10, relevance_score + ?))
-		WHERE id = ?
-	`
-	if _, err := tx.ExecContext(ctx, scoreQuery, scoreAdjustment, itemID); err != nil {
+	// like / dislike: record signal but leave processed_at untouched so the item stays in the inbox
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE items SET user_feedback = ?, feedback_at = datetime('now') WHERE id = ?`,
+		string(feedback.Type), itemID); err != nil {
+		return fmt.Errorf("update item feedback: %w", err)
+	}
+
+	var scoreAdjustment float64
+	switch feedback.Type {
+	case domain.FeedbackLike:
+		scoreAdjustment = 1.0
+	case domain.FeedbackDislike:
+		scoreAdjustment = -2.0
+	default:
+		return tx.Commit()
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE items SET relevance_score = MAX(0, MIN(10, relevance_score + ?)) WHERE id = ?`,
+		scoreAdjustment, itemID); err != nil {
 		return fmt.Errorf("update item score: %w", err)
 	}
 

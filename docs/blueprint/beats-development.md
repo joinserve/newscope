@@ -176,6 +176,77 @@ proceed to PR 4 until this passes.
 - Handler unit tests
 - Template render tests
 
+## Session 5 — backend cleanup (runs BEFORE PR 5 UI)
+
+Three independently-shippable backend PRs. **Build order: PR 6 → 7 → 8, then
+PR 5.** PR 5's templates depend on the fields and routes added here:
+
+- PR 6 adds `beats.feedback` (the ❤ button needs somewhere to write).
+- PR 7 adds the re-summary mechanic (PR 5's "N new since last visit" badge
+  is more useful when canonical text actually refreshes).
+- PR 8 adds the search route (PR 5 wires the search box).
+
+UI work stays out of this session; PR 5 picks up all four pieces at once.
+
+### PR 6 — beat-level feedback
+
+**Decision (recorded):** beat ❤ expresses interest in the *event*, not in any
+member article. It does NOT propagate to members — disliking a journalist is
+a separate signal. Beat ❤ also does not affect read-state; "viewed" remains
+the only read trigger.
+
+**Scope:**
+- New column `beats.feedback` (`like` / `dislike` / NULL).
+- `BeatStore.SetFeedback(ctx, beatID, feedback) error` + reader on the Beat
+  type so handlers can render it.
+- Feedback persists across re-summary (PR 7) and re-attach.
+- **Not** mirrored into `classifications.feedback` for any member; the
+  classifier preference summary continues to read only per-item feedback.
+
+**Tests:**
+- Round-trip set/get.
+- Re-summary in PR 7 must preserve `feedback`.
+
+### PR 7 — beat re-summary on member attach
+
+**Problem:** today, `beats.canonical_summary` is written once when the beat
+crosses 1→2 members, then never again. New members landing within the 48h
+window add to the beat but don't update the user-facing canonical text.
+
+**Scope:**
+- When `AttachOrSeed` adds a member to an *existing* beat, mark the beat
+  re-merge-eligible (e.g. set `canonical_dirty_at` or null out
+  `canonical_summary` once a per-day debounce permits).
+- `merge_worker` picks up dirty beats just like NULL-canonical ones.
+- **Cadence cap: at most one re-merge per beat per 24h.** Avoids burning LLM
+  spend (and rewriting the user's mental anchor) on every drip-update.
+- Only beats still inside the 48h attach window are eligible — once the
+  window has closed, the canonical is frozen.
+- `feedback` and `last_viewed_at` MUST be preserved across re-summary.
+  `unread_count` semantics (PR 5) decide whether new members reset the badge
+  or just increment it.
+
+**Tests:**
+- New member within 24h cap → no immediate re-merge.
+- New member after 24h cap → re-merge enqueued, ❤ + last_viewed_at intact.
+- New member after 48h window → no re-merge.
+
+### PR 8 — beat search
+
+**Scope:**
+- FTS5 virtual table over `canonical_title` + `canonical_summary`,
+  back-filled and kept in sync via triggers.
+- Fall-through to member-title FTS for beats whose canonical is still NULL
+  (single-member beats, or pre-PR-7 stale entries).
+- `BeatStore.Search(ctx, query, limit) ([]Beat, error)` + handler/route.
+- No semantic search yet; the embeddings table makes adding it later cheap
+  but FTS5 covers the immediate need without API spend.
+
+**Tests:**
+- FTS index populated on beat insert and on canonical update from PR 7.
+- Single-member fallthrough returns the beat when only the member title
+  matches.
+
 ## What not to build
 
 - **Stories** (multi-day event timelines). Separate concern, separate ADR
@@ -196,6 +267,9 @@ Each PR is reversible:
   renders the items inbox
 - PR 4: revert canonical fields to NULL; PR 3's behaviour returns
 - PR 5: set `embedding.provider=""`; UI reverts to items inbox
+- PR 6: drop `beats.feedback` column; readers tolerate absence
+- PR 7: stop re-merge worker; existing canonicals stay frozen as before
+- PR 8: drop FTS table + triggers; `Search` route 404s
 
 If a deeper rollback is needed, `DROP TABLE` the three beats tables — no
 other table references them.

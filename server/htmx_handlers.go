@@ -1352,9 +1352,9 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 
 	feedName, _ = url.QueryUnescape(feedName)
 
-	limit := 100 // reasonable limit for a single feed view
+	limit := 100 // Reasonable limit for a single feed view
 
-	// fetch unread articles
+	// Fetch unread articles
 	unreadReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: false,
@@ -1367,7 +1367,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// fetch read articles
+	// Fetch read articles
 	readReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: true,
@@ -1386,7 +1386,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 		UnreadArticles []domain.ClassifiedItem
 		ReadArticles   []domain.ClassifiedItem
 	}{
-		ActivePage:     feedName, // display the feed name in the header
+		ActivePage:     feedName, // Display the feed name in the header
 		FeedName:       feedName,
 		UnreadArticles: unreadArticles,
 		ReadArticles:   readArticles,
@@ -1510,51 +1510,6 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.renderPage(w, "beat-detail.html", data); err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
 		return
-	}
-}
-
-// beatSearchHandler handles searching within beats.
-func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// get search query
-	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
-
-	// get page parameter
-	page := 1
-	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
-
-	pageSize := s.GetPageSize()
-	offset := (page - 1) * pageSize
-
-	var beats []domain.BeatWithMembers
-	var err error
-
-	if searchQuery == "" {
-		beats, err = s.db.ListBeats(ctx, pageSize, offset)
-	} else {
-		beats, err = s.db.Search(ctx, searchQuery, pageSize, offset)
-	}
-
-	if err != nil {
-		s.respondWithError(w, http.StatusInternalServerError, "Failed to search beats", err)
-		return
-	}
-
-	// just render the list since it's an API route wrapping search,
-	// but the requirement "wraps BeatRepository.Search" implies returning JSON?
-	// the prompt:
-	// GET /api/v1/beats/search?q=… — wraps BeatRepository.Search.
-	// oh, wait, the prompt says "GET /api/v1/beats — paginated []domain.BeatView".
-	// since beatsHandler returns HTML, maybe it wants JSON?
-	// but `GET /beats` exists, and maybe it wants API routes. Let's just return JSON.
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(beats); err != nil {
-		log.Printf("[ERROR] failed to encode beats search results: %v", err)
 	}
 }
 

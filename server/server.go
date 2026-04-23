@@ -82,7 +82,6 @@ type Database interface {
 	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
 	ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error)
-	Search(ctx context.Context, query string, limit, offset int) ([]domain.BeatWithMembers, error)
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
@@ -387,7 +386,8 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /articles/{id}/hide", s.hideContentHandler)
 
 		// beats
-		r.HandleFunc("GET /beats/search", s.beatSearchHandler)
+		// TODO: /beats/search route intentionally unwired pending repository shape decision.
+		// See feat/beats-ui handoff notes and pkg/repository/beat.go Search (BeatView, no members).
 		r.HandleFunc("POST /beats/{id}/feedback", s.beatFeedbackHandler)
 
 		// feed management

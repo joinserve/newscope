@@ -25,7 +25,21 @@ type BeatCanonical struct {
 	Summary string
 }
 
-// BeatWithMembers represents a beat with all its member items eager-loaded.
+// BeatView is the read-side representation of a beat, surfaced to HTTP handlers
+// that don't need member data (search JSON, programmatic callers).
+type BeatView struct {
+	ID               int64
+	CanonicalTitle   string
+	CanonicalSummary string
+	FirstSeenAt      time.Time
+	LastViewedAt     *time.Time
+	Feedback         string // "like", "dislike", or "" (no signal)
+	FeedbackAt       *time.Time
+	MemberCount      int
+}
+
+// BeatWithMembers is the UI-side representation of a beat with its member
+// items eager-loaded, used by inbox cards and detail pages.
 type BeatWithMembers struct {
 	ID               int64
 	CanonicalTitle   *string
@@ -34,12 +48,13 @@ type BeatWithMembers struct {
 	LastViewedAt     *time.Time
 	UnreadCount      int
 	AggregateScore   float64
-	UserFeedback     string   // from settings table
+	UserFeedback     string // "like", "dislike", or "" — sourced from beats.feedback
+	FeedbackAt       *time.Time
 	Topics           []string // union of member topics
 	Members          []ClassifiedItem
 }
 
-// GetUserFeedback returns user feedback as string or empty string
+// GetUserFeedback returns user feedback as string or empty string.
 func (b *BeatWithMembers) GetUserFeedback() string {
 	return b.UserFeedback
 }

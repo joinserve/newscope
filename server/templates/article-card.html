@@ -3,7 +3,7 @@
          data-share-url="{{.Link}}"
          data-share-title="{{unescapeHTML .Title}}"
          data-user-feedback="{{.GetUserFeedback}}"
-         {{if eq .GetUserFeedback ""}}
+         {{if not .ProcessedAt}}
          hx-post="/api/v1/feedback/{{.ID}}/done"
          hx-trigger="intersect once threshold:0.5"
          hx-swap="none"
