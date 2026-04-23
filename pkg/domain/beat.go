@@ -24,3 +24,17 @@ type BeatCanonical struct {
 	Title   string
 	Summary string
 }
+
+// BeatView is the read-side representation of a beat, surfaced to HTTP handlers.
+// Distinct from Beat (the merge-worker's minimal input shape) so the two can evolve
+// independently.
+type BeatView struct {
+	ID               int64
+	CanonicalTitle   string
+	CanonicalSummary string
+	FirstSeenAt      time.Time
+	LastViewedAt     *time.Time
+	Feedback         string // "like", "dislike", or "" (no signal)
+	FeedbackAt       *time.Time
+	MemberCount      int
+}

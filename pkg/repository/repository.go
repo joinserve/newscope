@@ -114,6 +114,9 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 	if err := migrateAddIconURL(ctx, db); err != nil {
 		return fmt.Errorf("migrate icon_url: %w", err)
 	}
+	if err := migrateAddBeatFeedback(ctx, db); err != nil {
+		return fmt.Errorf("migrate beat feedback: %w", err)
+	}
 
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
@@ -190,6 +193,43 @@ func migrateAddIconURL(ctx context.Context, db *sqlx.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE feeds ADD COLUMN icon_url TEXT DEFAULT ''`); err != nil {
 		return fmt.Errorf("add icon_url column: %w", err)
+	}
+	return nil
+}
+
+// migrateAddBeatFeedback adds the feedback and feedback_at columns to beats if missing.
+// Safe to run on a fresh DB: beats table won't exist yet and the function is a no-op.
+func migrateAddBeatFeedback(ctx context.Context, db *sqlx.DB) error {
+	var tableCount int
+	if err := db.GetContext(ctx, &tableCount,
+		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='beats'`); err != nil {
+		return fmt.Errorf("check beats table: %w", err)
+	}
+	if tableCount == 0 {
+		return nil
+	}
+
+	var columns []string
+	if err := db.SelectContext(ctx, &columns,
+		`SELECT name FROM pragma_table_info('beats')`); err != nil {
+		return fmt.Errorf("read beats columns: %w", err)
+	}
+	has := make(map[string]bool, len(columns))
+	for _, c := range columns {
+		has[c] = true
+	}
+
+	if !has["feedback"] {
+		if _, err := db.ExecContext(ctx,
+			`ALTER TABLE beats ADD COLUMN feedback TEXT DEFAULT ''`); err != nil {
+			return fmt.Errorf("add feedback column: %w", err)
+		}
+	}
+	if !has["feedback_at"] {
+		if _, err := db.ExecContext(ctx,
+			`ALTER TABLE beats ADD COLUMN feedback_at DATETIME`); err != nil {
+			return fmt.Errorf("add feedback_at column: %w", err)
+		}
 	}
 	return nil
 }
