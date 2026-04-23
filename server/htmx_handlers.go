@@ -729,6 +729,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		IsHTMX        bool
 		IsSearch      bool
 		SearchQuery   string
+		ActivePage    string
 	}{
 		Articles:      req.articles,
 		TotalCount:    req.totalCount,
@@ -747,6 +748,7 @@ func (s *Server) writePaginationControls(w http.ResponseWriter, req articlesPage
 		IsHTMX:        true,
 		IsSearch:      req.isSearch,
 		SearchQuery:   req.searchQuery,
+		ActivePage:    "articles",
 	}
 
 	// execute the pagination template
