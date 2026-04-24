@@ -1952,9 +1952,10 @@ func newTestServer(t *testing.T) *Server {
 				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
 				strings.HasSuffix(lower, ".ico")
 		},
-		"getDomain":    func(u string) string { return u },
-		"extractImage": func(content string, url string) string { return "" },
-		"isBigTag":     func(tag string) bool { return false },
+		"getDomain":        func(u string) string { return u },
+		"extractImage":     func(content string, url string) string { return "" },
+		"isBigTag":         func(tag string) bool { return false },
+		"beatPrimaryTopic": func(b *domain.BeatWithMembers) string { return b.PrimaryTopic() },
 		"stripHTML": func(s string) string {
 			return s
 		},
@@ -2021,6 +2022,62 @@ func TestBeatsHandler_RendersInbox(t *testing.T) {
 	srv.beatsHandler(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "Merged Beat Title")
+}
+
+func TestBeatCard_BottomTopics_BigTagClass(t *testing.T) {
+	bigTags := map[string]bool{"china": true, "security": true}
+	funcMap := template.FuncMap{
+		"sub":       func(a, b int) int { return a - b },
+		"add":       func(a, b int) int { return a + b },
+		"mul":       func(a, b float64) float64 { return a * b },
+		"hasPrefix": strings.HasPrefix,
+		"printf":    func(format string, a ...interface{}) string { return "" },
+		"isImageURL": func(s string) bool {
+			lower := strings.ToLower(s)
+			return strings.HasSuffix(lower, ".png") || strings.HasSuffix(lower, ".jpg") ||
+				strings.HasSuffix(lower, ".jpeg") || strings.HasSuffix(lower, ".gif") ||
+				strings.HasSuffix(lower, ".svg") || strings.HasSuffix(lower, ".webp") ||
+				strings.HasSuffix(lower, ".ico")
+		},
+		"getDomain":        func(u string) string { return u },
+		"extractImage":     func(content, url string) string { return "" },
+		"isBigTag":         func(tag string) bool { return bigTags[tag] },
+		"beatPrimaryTopic": func(b *domain.BeatWithMembers) string { return b.PrimaryTopic() },
+		"stripHTML":        func(s string) string { return s },
+		"unescapeHTML":     func(s string) template.HTML { return template.HTML(s) }, //nolint:gosec // test only
+	}
+	tmpl := template.New("").Funcs(funcMap)
+	tmpl, err := tmpl.ParseFiles("templates/beat-card.html")
+	require.NoError(t, err)
+
+	title := "Security in China"
+	beat := &domain.BeatWithMembers{
+		ID:             42,
+		CanonicalTitle: &title,
+		AggregateScore: 8.5,
+		Topics:         []string{"china", "security", "surveillance"},
+		Members: []domain.ClassifiedItem{
+			{
+				Item:     &domain.Item{Title: "Article 1", Link: "http://example.com/1"},
+				FeedName: "CNA",
+				FeedURL:  "http://cna.com",
+				Classification: &domain.Classification{
+					Topics: []string{"china", "security"},
+				},
+			},
+		},
+	}
+
+	w := httptest.NewRecorder()
+	require.NoError(t, tmpl.ExecuteTemplate(w, "beat-card.html", beat))
+	body := w.Body.String()
+
+	// big tags should have topic-chip-big class and # prefix
+	assert.Contains(t, body, `topic-chip-big`)
+	assert.Contains(t, body, `#china`)
+	assert.Contains(t, body, `#security`)
+	// small tag should not have topic-chip-big class or # prefix
+	assert.NotContains(t, body, `#surveillance`)
 }
 
 func TestBeatsHandler_NotMountedWhenDisabled(t *testing.T) {

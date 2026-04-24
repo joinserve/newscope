@@ -1621,6 +1621,11 @@ html.dark-theme .moon-icon { opacity: 1; }
 }
 .topic-chip-big:hover { opacity: 0.85; }
 
+.card-head .card-topic.topic-chip-big {
+    background: var(--accent-blue, #3b82f6);
+    color: white;
+}
+
 .content-actions {
     display: none; /* Hide content and extract buttons completely */
 }

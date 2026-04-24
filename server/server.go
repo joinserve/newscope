@@ -51,7 +51,7 @@ var staticFS embed.FS
 // bigTagsCache caches the set of "big" tags (those appearing in ≥threshold items).
 type bigTagsCache struct {
 	mu      sync.RWMutex
-	tags    map[string]struct{}
+	tags    map[string]int
 	expires time.Time
 }
 
@@ -157,7 +157,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 	// initialized as fresh-empty so the first request doesn't block on DB, and all tags
 	// start as "small" until the cache naturally expires and refreshes.
 	cache := &bigTagsCache{
-		tags:    map[string]struct{}{},
+		tags:    map[string]int{},
 		expires: time.Now().Add(5 * time.Minute),
 	}
 
@@ -261,8 +261,12 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"isBigTag": func(tag string) bool {
 			cache.mu.RLock()
 			defer cache.mu.RUnlock()
-			_, ok := cache.tags[tag]
-			return ok
+			return cache.tags[tag] > 0
+		},
+		"beatPrimaryTopic": func(b *domain.BeatWithMembers) string {
+			cache.mu.RLock()
+			defer cache.mu.RUnlock()
+			return b.PrimaryTopicWithCounts(cache.tags)
 		},
 	}
 
@@ -342,13 +346,8 @@ func (s *Server) refreshBigTags(ctx context.Context) {
 		return
 	}
 
-	tags := make(map[string]struct{}, len(counts))
-	for tag := range counts {
-		tags[tag] = struct{}{}
-	}
-
 	s.bigTags.mu.Lock()
-	s.bigTags.tags = tags
+	s.bigTags.tags = counts
 	s.bigTags.expires = time.Now().Add(5 * time.Minute)
 	s.bigTags.mu.Unlock()
 }
@@ -470,7 +469,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
 		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
 
-		// RSSHub integration
+		// rSSHub integration
 		r.HandleFunc("GET /rsshub/radar/", s.radarProxyHandler)
 		r.HandleFunc("GET /rsshub/categories", s.rsshubCategoriesHandler)
 		r.HandleFunc("GET /rsshub/namespaces", s.rsshubNamespacesHandler)

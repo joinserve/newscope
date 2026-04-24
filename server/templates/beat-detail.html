@@ -13,9 +13,10 @@
 
         <div class="beat-meta" style="margin-bottom: 1rem;">
             <span class="feed-name">{{len .Beat.Members}} sources</span>
-            {{if .Beat.PrimaryTopic}}
-            {{if isBigTag .Beat.PrimaryTopic}}
-            <span class="topic-chip-big" style="margin-left: 0.5rem;">#{{.Beat.PrimaryTopic}}</span>
+            {{$beatPrimary := beatPrimaryTopic .Beat}}
+            {{if $beatPrimary}}
+            {{if isBigTag $beatPrimary}}
+            <span class="topic-chip-big" style="margin-left: 0.5rem;">#{{$beatPrimary}}</span>
             {{end}}
             {{end}}
             <span class="card-time" style="margin-left: 0.5rem;">{{.Beat.FirstSeenAt.Local.Format "2006-01-02 15:04"}}</span>

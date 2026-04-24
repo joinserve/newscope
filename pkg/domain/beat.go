@@ -62,6 +62,14 @@ func (b *BeatWithMembers) GetUserFeedback() string {
 // PrimaryTopic returns the topic that appears most frequently across all member items.
 // Ties are broken by first occurrence. Returns "" when no member has any topic.
 func (b *BeatWithMembers) PrimaryTopic() string {
+	return b.PrimaryTopicWithCounts(nil)
+}
+
+// PrimaryTopicWithCounts returns the most frequent topic across all members.
+// When multiple topics tie for the highest member-count, globalCounts breaks the tie
+// by picking the one with the largest global count. Falls back to first occurrence
+// when globalCounts is nil or the winning topic is not present.
+func (b *BeatWithMembers) PrimaryTopicWithCounts(globalCounts map[string]int) string {
 	counts := make(map[string]int)
 	var order []string
 
@@ -78,9 +86,30 @@ func (b *BeatWithMembers) PrimaryTopic() string {
 		return ""
 	}
 
-	best := order[0]
-	for _, t := range order[1:] {
-		if counts[t] > counts[best] {
+	// find the highest member-count
+	maxCount := 0
+	for _, t := range order {
+		if counts[t] > maxCount {
+			maxCount = counts[t]
+		}
+	}
+
+	// collect all topics that tied at maxCount
+	var tied []string
+	for _, t := range order {
+		if counts[t] == maxCount {
+			tied = append(tied, t)
+		}
+	}
+
+	if len(tied) == 1 || len(globalCounts) == 0 {
+		return tied[0]
+	}
+
+	// break the tie using global counts
+	best := tied[0]
+	for _, t := range tied[1:] {
+		if globalCounts[t] > globalCounts[best] {
 			best = t
 		}
 	}

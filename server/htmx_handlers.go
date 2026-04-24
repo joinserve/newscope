@@ -1376,9 +1376,9 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 
 	feedName, _ = url.QueryUnescape(feedName)
 
-	limit := 100 // Reasonable limit for a single feed view
+	limit := 100 // reasonable limit for a single feed view
 
-	// Fetch unread articles
+	// fetch unread articles
 	unreadReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: false,
@@ -1391,7 +1391,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch read articles
+	// fetch read articles
 	readReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: true,

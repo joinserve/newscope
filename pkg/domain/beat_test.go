@@ -71,3 +71,68 @@ func TestBeatWithMembers_PrimaryTopic(t *testing.T) {
 		})
 	}
 }
+
+func TestBeatWithMembers_PrimaryTopicWithCounts(t *testing.T) {
+	mkItem := func(topics []string) ClassifiedItem {
+		return ClassifiedItem{
+			Item: &Item{},
+			Classification: &Classification{
+				Topics: topics,
+			},
+		}
+	}
+
+	tests := []struct {
+		name         string
+		beat         BeatWithMembers
+		globalCounts map[string]int
+		want         string
+	}{
+		{
+			name: "single member, tie broken by global counts",
+			beat: BeatWithMembers{Members: []ClassifiedItem{
+				mkItem([]string{"security", "china", "surveillance"}),
+			}},
+			globalCounts: map[string]int{"security": 50, "china": 130, "surveillance": 20},
+			want:         "china",
+		},
+		{
+			name: "single member, nil global counts falls back to first occurrence",
+			beat: BeatWithMembers{Members: []ClassifiedItem{
+				mkItem([]string{"security", "china", "surveillance"}),
+			}},
+			globalCounts: nil,
+			want:         "security",
+		},
+		{
+			name: "majority wins regardless of global counts",
+			beat: BeatWithMembers{Members: []ClassifiedItem{
+				mkItem([]string{"ai", "tech"}),
+				mkItem([]string{"ai", "policy"}),
+				mkItem([]string{"ai"}),
+			}},
+			globalCounts: map[string]int{"tech": 999, "ai": 1},
+			want:         "ai",
+		},
+		{
+			name: "tie, topic missing from global counts falls back to first occurrence",
+			beat: BeatWithMembers{Members: []ClassifiedItem{
+				mkItem([]string{"tech", "ai"}),
+				mkItem([]string{"ai", "tech"}),
+			}},
+			globalCounts: map[string]int{},
+			want:         "tech",
+		},
+		{
+			name: "no members",
+			beat: BeatWithMembers{},
+			want: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.beat.PrimaryTopicWithCounts(tc.globalCounts))
+		})
+	}
+}
