@@ -2097,12 +2097,19 @@ func TestBeatDetailHandler_WritesLastViewed(t *testing.T) {
 
 	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
 	req := httptest.NewRequest("GET", "/beats/123", http.NoBody)
+	req.Header.Set("HX-Request", "true")
 	req.SetPathValue("id", "123")
 	w := httptest.NewRecorder()
 
 	srv.beatDetailHandler(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "Detail Title")
+	body := w.Body.String()
+	assert.Contains(t, body, "Detail Title")
+	// OOB blocks are written AFTER ExecuteTemplate returns successfully; if the
+	// template errored mid-render, the handler bails via respondWithError and
+	// never emits the OOB swap markers.
+	assert.Contains(t, body, "hx-swap-oob",
+		"template render must complete so OOB updates are appended")
 	assert.True(t, markViewedCalled, "MarkViewed should be called before rendering")
 }
 
