@@ -77,7 +77,22 @@
             {{if gt $membersCount 1}}
             <span class="feed-name">{{$membersCount}} sources</span>
             {{else}}
-            <span class="feed-name">{{(index .Members 0).FeedName}}</span>
+            <a href="/source/{{(index .Members 0).FeedName}}" class="feed-name clickable-topic">{{(index .Members 0).FeedName}}</a>
+            {{end}}
+
+            {{$primaryTopic := beatPrimaryTopic .}}
+            {{if $primaryTopic}}
+            {{if isBigTag $primaryTopic}}
+            <span class="card-head-sep" aria-hidden="true">›</span>
+            <a href="#" class="card-topic clickable-topic topic-chip-big"
+               hx-get="/beats"
+               hx-vals='{"topic":"{{$primaryTopic}}"}'
+               hx-push-url="true"
+               hx-trigger="click"
+               hx-target="#articles-with-pagination"
+               hx-swap="innerHTML show:body:top"
+               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">#{{$primaryTopic}}</a>
+            {{end}}
             {{end}}
 
             <span class="card-time">
@@ -122,6 +137,7 @@
                data-topic="{{.}}"
                hx-get="/beats"
                hx-vals='{"topic":"{{.}}"}'
+               hx-push-url="true"
                hx-trigger="click"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"

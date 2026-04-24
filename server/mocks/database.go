@@ -32,6 +32,9 @@ import (
 //			GetBeatFunc: func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
 //				panic("mock out the GetBeat method")
 //			},
+//			GetBigTagsFunc: func(ctx context.Context, threshold int) (map[string]int, error) {
+//				panic("mock out the GetBigTags method")
+//			},
 //			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 //				panic("mock out the GetClassifiedItem method")
 //			},
@@ -65,7 +68,7 @@ import (
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
 //			},
-//			ListBeatsFunc: func(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error) {
+//			ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the ListBeats method")
 //			},
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
@@ -114,6 +117,9 @@ type DatabaseMock struct {
 	// GetBeatFunc mocks the GetBeat method.
 	GetBeatFunc func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 
+	// GetBigTagsFunc mocks the GetBigTags method.
+	GetBigTagsFunc func(ctx context.Context, threshold int) (map[string]int, error)
+
 	// GetClassifiedItemFunc mocks the GetClassifiedItem method.
 	GetClassifiedItemFunc func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error)
 
@@ -148,7 +154,7 @@ type DatabaseMock struct {
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
 
 	// ListBeatsFunc mocks the ListBeats method.
-	ListBeatsFunc func(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error)
+	ListBeatsFunc func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
@@ -208,6 +214,13 @@ type DatabaseMock struct {
 			Ctx context.Context
 			// BeatID is the beatID argument value.
 			BeatID int64
+		}
+		// GetBigTags holds details about calls to the GetBigTags method.
+		GetBigTags []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Threshold is the threshold argument value.
+			Threshold int
 		}
 		// GetClassifiedItem holds details about calls to the GetClassifiedItem method.
 		GetClassifiedItem []struct {
@@ -296,6 +309,8 @@ type DatabaseMock struct {
 		ListBeats []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Topic is the topic argument value.
+			Topic string
 			// Limit is the limit argument value.
 			Limit int
 			// Offset is the offset argument value.
@@ -383,6 +398,7 @@ type DatabaseMock struct {
 	lockGetActiveFeedNames            sync.RWMutex
 	lockGetAllFeeds                   sync.RWMutex
 	lockGetBeat                       sync.RWMutex
+	lockGetBigTags                    sync.RWMutex
 	lockGetClassifiedItem             sync.RWMutex
 	lockGetClassifiedItems            sync.RWMutex
 	lockGetClassifiedItemsCount       sync.RWMutex
@@ -578,6 +594,42 @@ func (mock *DatabaseMock) GetBeatCalls() []struct {
 	mock.lockGetBeat.RLock()
 	calls = mock.calls.GetBeat
 	mock.lockGetBeat.RUnlock()
+	return calls
+}
+
+// GetBigTags calls GetBigTagsFunc.
+func (mock *DatabaseMock) GetBigTags(ctx context.Context, threshold int) (map[string]int, error) {
+	if mock.GetBigTagsFunc == nil {
+		panic("DatabaseMock.GetBigTagsFunc: method is nil but Database.GetBigTags was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Threshold int
+	}{
+		Ctx:       ctx,
+		Threshold: threshold,
+	}
+	mock.lockGetBigTags.Lock()
+	mock.calls.GetBigTags = append(mock.calls.GetBigTags, callInfo)
+	mock.lockGetBigTags.Unlock()
+	return mock.GetBigTagsFunc(ctx, threshold)
+}
+
+// GetBigTagsCalls gets all the calls that were made to GetBigTags.
+// Check the length with:
+//
+//	len(mockedDatabase.GetBigTagsCalls())
+func (mock *DatabaseMock) GetBigTagsCalls() []struct {
+	Ctx       context.Context
+	Threshold int
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Threshold int
+	}
+	mock.lockGetBigTags.RLock()
+	calls = mock.calls.GetBigTags
+	mock.lockGetBigTags.RUnlock()
 	return calls
 }
 
@@ -990,23 +1042,25 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 }
 
 // ListBeats calls ListBeatsFunc.
-func (mock *DatabaseMock) ListBeats(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error) {
+func (mock *DatabaseMock) ListBeats(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 	if mock.ListBeatsFunc == nil {
 		panic("DatabaseMock.ListBeatsFunc: method is nil but Database.ListBeats was just called")
 	}
 	callInfo := struct {
 		Ctx    context.Context
+		Topic  string
 		Limit  int
 		Offset int
 	}{
 		Ctx:    ctx,
+		Topic:  topic,
 		Limit:  limit,
 		Offset: offset,
 	}
 	mock.lockListBeats.Lock()
 	mock.calls.ListBeats = append(mock.calls.ListBeats, callInfo)
 	mock.lockListBeats.Unlock()
-	return mock.ListBeatsFunc(ctx, limit, offset)
+	return mock.ListBeatsFunc(ctx, topic, limit, offset)
 }
 
 // ListBeatsCalls gets all the calls that were made to ListBeats.
@@ -1015,11 +1069,13 @@ func (mock *DatabaseMock) ListBeats(ctx context.Context, limit int, offset int) 
 //	len(mockedDatabase.ListBeatsCalls())
 func (mock *DatabaseMock) ListBeatsCalls() []struct {
 	Ctx    context.Context
+	Topic  string
 	Limit  int
 	Offset int
 } {
 	var calls []struct {
 		Ctx    context.Context
+		Topic  string
 		Limit  int
 		Offset int
 	}

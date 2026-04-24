@@ -71,7 +71,8 @@ func (s *Server) feedbackHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to reload article", http.StatusInternalServerError)
 		return
 	}
-	s.renderArticleCard(w, article)
+	s.refreshBigTags(ctx)
+	s.renderArticleCard(w, article, "")
 }
 
 // extractHandler triggers content extraction for an item
@@ -101,7 +102,8 @@ func (s *Server) extractHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// for HTMX, return the updated article card HTML
-	s.renderArticleCard(w, article)
+	s.refreshBigTags(ctx)
+	s.renderArticleCard(w, article, "")
 }
 
 // createFeedHandler handles feed creation

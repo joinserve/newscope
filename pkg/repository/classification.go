@@ -479,6 +479,37 @@ func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedS
 	return item
 }
 
+// GetBigTags returns a map of topic → count for the top 10 most-frequent topics
+// that appear at least threshold times across classified items.
+func (r *ClassificationRepository) GetBigTags(ctx context.Context, threshold int) (map[string]int, error) {
+	query := `
+		SELECT value AS tag, COUNT(*) AS cnt
+		FROM items, json_each(items.topics)
+		WHERE classified_at IS NOT NULL
+		AND topics != '[]'
+		GROUP BY value
+		HAVING COUNT(*) >= ?
+		ORDER BY cnt DESC
+		LIMIT 10
+	`
+	rows, err := r.db.QueryContext(ctx, query, threshold)
+	if err != nil {
+		return nil, fmt.Errorf("get big tags: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]int)
+	for rows.Next() {
+		var tag string
+		var cnt int
+		if err := rows.Scan(&tag, &cnt); err != nil {
+			return nil, fmt.Errorf("scan big tag row: %w", err)
+		}
+		result[tag] = cnt
+	}
+	return result, rows.Err()
+}
+
 // GetClassifiedItemsCount returns the total count of classified items matching the filter
 func (r *ClassificationRepository) GetClassifiedItemsCount(ctx context.Context, filter *domain.ItemFilter) (int, error) {
 	query := `

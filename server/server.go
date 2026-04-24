@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-pkgz/lgr"
@@ -47,6 +48,13 @@ var templateFS embed.FS
 //go:embed static/css/* static/img/*
 var staticFS embed.FS
 
+// bigTagsCache caches the set of "big" tags (those appearing in ≥threshold items).
+type bigTagsCache struct {
+	mu      sync.RWMutex
+	tags    map[string]int
+	expires time.Time
+}
+
 // Server represents HTTP server instance
 type Server struct {
 	config        ConfigProvider
@@ -57,6 +65,7 @@ type Server struct {
 	templates     *template.Template
 	pageTemplates map[string]*template.Template
 	router        *routegroup.Bundle
+	bigTags       *bigTagsCache
 }
 
 // Database interface for server operations
@@ -81,11 +90,12 @@ type Database interface {
 	SetSetting(ctx context.Context, key, value string) error
 	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
-	ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SearchBeatsWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
+	GetBigTags(ctx context.Context, threshold int) (map[string]int, error)
 }
 
 // Scheduler interface for on-demand operations
@@ -143,6 +153,12 @@ func generatePageNumbers(currentPage, totalPages int) []int {
 
 // New initializes a new server instance
 func New(cfg ConfigProvider, database Database, scheduler Scheduler, version string, debug bool) *Server {
+	// big-tag cache is created before funcMap so the isBigTag closure can reference it.
+	// zero-valued expires ensures the first request triggers a refresh.
+	cache := &bigTagsCache{
+		tags: map[string]int{},
+	}
+
 	// create bluemonday policy for HTML sanitization
 	htmlPolicy := bluemonday.UGCPolicy()
 	// allow additional safe elements that might be in article content
@@ -240,6 +256,16 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			}
 			return ""
 		},
+		"isBigTag": func(tag string) bool {
+			cache.mu.RLock()
+			defer cache.mu.RUnlock()
+			return cache.tags[tag] > 0
+		},
+		"beatPrimaryTopic": func(b *domain.BeatWithMembers) string {
+			cache.mu.RLock()
+			defer cache.mu.RUnlock()
+			return b.PrimaryTopicWithCounts(cache.tags)
+		},
 	}
 
 	// parse component templates only
@@ -290,12 +316,38 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		router:        routegroup.New(http.NewServeMux()),
 		templates:     templates,
 		pageTemplates: pageTemplates,
+		bigTags:       cache,
 	}
 
 	s.setupMiddleware()
 	s.setupRoutes()
 
 	return s
+}
+
+// refreshBigTags refreshes the big-tags cache if it has expired (TTL: 5 minutes).
+// no-op when bigTags is nil (server created outside New, e.g. in tests).
+func (s *Server) refreshBigTags(ctx context.Context) {
+	if s.bigTags == nil {
+		return
+	}
+	s.bigTags.mu.RLock()
+	expired := time.Now().After(s.bigTags.expires)
+	s.bigTags.mu.RUnlock()
+	if !expired {
+		return
+	}
+
+	counts, err := s.db.GetBigTags(ctx, 5)
+	if err != nil {
+		log.Printf("[WARN] failed to refresh big tags cache: %v", err)
+		return
+	}
+
+	s.bigTags.mu.Lock()
+	s.bigTags.tags = counts
+	s.bigTags.expires = time.Now().Add(5 * time.Minute)
+	s.bigTags.mu.Unlock()
 }
 
 // Run starts the HTTP server and handles graceful shutdown
@@ -415,7 +467,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("DELETE /preferences/reset", s.preferenceResetHandler)
 		r.HandleFunc("POST /preferences/toggle", s.preferenceToggleHandler)
 
-		// RSSHub integration
+		// rSSHub integration
 		r.HandleFunc("GET /rsshub/radar/", s.radarProxyHandler)
 		r.HandleFunc("GET /rsshub/categories", s.rsshubCategoriesHandler)
 		r.HandleFunc("GET /rsshub/namespaces", s.rsshubNamespacesHandler)

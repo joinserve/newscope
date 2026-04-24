@@ -94,6 +94,12 @@ func getViewMode(r *http.Request) string {
 	}
 }
 
+// articleCardData wraps a classified item with page-level context needed for rendering.
+type articleCardData struct {
+	*domain.ClassifiedItem
+	SelectedTopic string
+}
+
 // articlesPageRequest holds data for rendering articles page
 type articlesPageRequest struct {
 	articles      []domain.ClassifiedItem
@@ -211,6 +217,8 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 		feeds = []string{} // continue with empty feeds
 	}
 
+	s.refreshBigTags(ctx)
+
 	// check if this is an HTMX request for partial update
 	if r.Header.Get("HX-Request") == "true" {
 		s.handleHTMXArticlesRequest(w, r, articlesPageRequest{
@@ -242,7 +250,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data for full page render
 	data := struct {
 		commonPageData
-		Articles     []domain.ClassifiedItem
+		Articles     []articleCardData
 		ArticleCount int
 		TotalCount   int
 		// pagination
@@ -268,7 +276,7 @@ func (s *Server) articlesHandler(w http.ResponseWriter, r *http.Request) {
 			FilterTopics:  topics,
 			FilterFeeds:   feeds,
 		},
-		Articles:     articles,
+		Articles:     wrapArticleCards(articles, topic),
 		ArticleCount: len(articles),
 		TotalCount:   totalCount,
 		// pagination
@@ -337,7 +345,7 @@ func (s *Server) writeArticlesList(w http.ResponseWriter, req articlesPageReques
 		}
 	} else {
 		for i := range req.articles {
-			s.renderArticleCard(w, &req.articles[i])
+			s.renderArticleCard(w, &req.articles[i], req.selectedTopic)
 		}
 	}
 
@@ -634,11 +642,20 @@ func (s *Server) renderPage(w http.ResponseWriter, templateName string, data int
 }
 
 // renderArticleCard renders a single article card as HTML
-func (s *Server) renderArticleCard(w http.ResponseWriter, article *domain.ClassifiedItem) {
-	if err := s.templates.ExecuteTemplate(w, "article-card.html", article); err != nil {
+func (s *Server) renderArticleCard(w http.ResponseWriter, article *domain.ClassifiedItem, selectedTopic string) {
+	data := articleCardData{ClassifiedItem: article, SelectedTopic: selectedTopic}
+	if err := s.templates.ExecuteTemplate(w, "article-card.html", data); err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render article", err)
-		return
 	}
+}
+
+// wrapArticleCards wraps a slice of items in articleCardData with the given selectedTopic.
+func wrapArticleCards(items []domain.ClassifiedItem, selectedTopic string) []articleCardData {
+	result := make([]articleCardData, len(items))
+	for i := range items {
+		result[i] = articleCardData{ClassifiedItem: &items[i], SelectedTopic: selectedTopic}
+	}
+	return result
 }
 
 // renderFeedCard renders a single feed card
@@ -992,7 +1009,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	if searchQuery == "" {
 		data := struct {
 			commonPageData
-			Articles     []domain.ClassifiedItem
+			Articles     []articleCardData
 			ArticleCount int
 			TotalCount   int
 			// pagination
@@ -1018,7 +1035,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 				FilterTopics:  []string{},
 				FilterFeeds:   []string{},
 			},
-			Articles:     []domain.ClassifiedItem{},
+			Articles:     []articleCardData{},
 			ArticleCount: 0,
 			TotalCount:   0,
 			IsHTMX:       false,
@@ -1074,6 +1091,8 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 		feeds = []string{} // continue with empty feeds
 	}
 
+	s.refreshBigTags(ctx)
+
 	// check if this is an HTMX request for partial update
 	if r.Header.Get("HX-Request") == "true" {
 		s.handleHTMXArticlesRequest(w, r, articlesPageRequest{
@@ -1105,7 +1124,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data for full page render
 	data := struct {
 		commonPageData
-		Articles     []domain.ClassifiedItem
+		Articles     []articleCardData
 		ArticleCount int
 		TotalCount   int
 		// pagination
@@ -1131,7 +1150,7 @@ func (s *Server) searchHandler(w http.ResponseWriter, r *http.Request) {
 			FilterTopics:  topics,
 			FilterFeeds:   feeds,
 		},
-		Articles:     articles,
+		Articles:     wrapArticleCards(articles, topic),
 		ArticleCount: len(articles),
 		TotalCount:   totalCount,
 		// pagination
@@ -1357,9 +1376,9 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 
 	feedName, _ = url.QueryUnescape(feedName)
 
-	limit := 100 // Reasonable limit for a single feed view
+	limit := 100 // reasonable limit for a single feed view
 
-	// Fetch unread articles
+	// fetch unread articles
 	unreadReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: false,
@@ -1372,7 +1391,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch read articles
+	// fetch read articles
 	readReq := domain.ArticlesRequest{
 		FeedName:      feedName,
 		ShowProcessed: true,
@@ -1385,21 +1404,32 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := struct {
-		ActivePage     string
-		FeedName       string
-		UnreadArticles []domain.ClassifiedItem
-		ReadArticles   []domain.ClassifiedItem
-	}{
-		ActivePage:     feedName, // Display the feed name in the header
-		FeedName:       feedName,
-		UnreadArticles: unreadArticles,
-		ReadArticles:   readArticles,
+	s.refreshBigTags(ctx)
+
+	backURL := r.Referer()
+	if backURL == "" {
+		backURL = "/articles"
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.pageTemplates["source.html"].Execute(w, data); err != nil {
+	data := struct {
+		commonPageData
+		FeedName       string
+		UnreadArticles []articleCardData
+		ReadArticles   []articleCardData
+	}{
+		commonPageData: commonPageData{
+			ActivePage: "feeds",
+			PageTitle:  feedName,
+			BackURL:    backURL,
+		},
+		FeedName:       feedName,
+		UnreadArticles: wrapArticleCards(unreadArticles, ""),
+		ReadArticles:   wrapArticleCards(readArticles, ""),
+	}
+
+	if err := s.renderPage(w, "source.html", data); err != nil {
 		log.Printf("[WARN] failed to render source page: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
 	}
 }
 
@@ -1418,7 +1448,9 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	pageSize := s.GetPageSize()
 	offset := (page - 1) * pageSize
 
-	beats, err := s.db.ListBeats(ctx, pageSize, offset)
+	topic := strings.TrimSpace(r.URL.Query().Get("topic"))
+
+	beats, err := s.db.ListBeats(ctx, topic, pageSize, offset)
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to load beats", err)
 		return
@@ -1426,6 +1458,15 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	hasNext := len(beats) == pageSize
 	hasPrev := page > 1
+
+	s.refreshBigTags(ctx)
+
+	pageTitle := ""
+	backURL := ""
+	if topic != "" {
+		pageTitle = "#" + topic
+		backURL = "/beats"
+	}
 
 	data := struct {
 		commonPageData
@@ -1437,9 +1478,10 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 		IsHTMX      bool
 	}{
 		commonPageData: commonPageData{
-			ActivePage: "beats",
-			BackURL:    "",
-			PageTitle:  "",
+			ActivePage:    "beats",
+			BackURL:       backURL,
+			PageTitle:     pageTitle,
+			SelectedTopic: topic,
 		},
 		Beats:       beats,
 		CurrentPage: page,
@@ -1457,8 +1499,13 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderBeatsListHTMX(w, beats, "Nothing here yet.", data)
-	fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'>Beats</h2>")
-	fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'></div>")
+	if topic != "" {
+		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' hx-get='/beats' hx-target='main.container' hx-push-url='true' hx-swap='innerHTML' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+	} else {
+		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'>Beats</h2>")
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'></div>")
+	}
 }
 
 // renderBeatsListHTMX renders a list of beats as an HTMX fragment
@@ -1500,6 +1547,8 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 		s.respondWithError(w, http.StatusBadRequest, "Invalid beat ID", err)
 		return
 	}
+
+	s.refreshBigTags(ctx)
 
 	// mark beat as viewed BEFORE rendering
 	if err := s.db.MarkViewed(ctx, id); err != nil {
@@ -1560,6 +1609,8 @@ func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
 	searchQuery := strings.TrimSpace(r.URL.Query().Get("q"))
 
 	pageSize := s.GetPageSize()
+
+	s.refreshBigTags(ctx)
 
 	var beats []domain.BeatWithMembers
 	var err error

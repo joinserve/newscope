@@ -34,6 +34,7 @@ func TestServer_statusHandler(t *testing.T) {
 		},
 	}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.2.3", false)
 
 	// create test request
@@ -152,6 +153,7 @@ func TestServer_extractHandler(t *testing.T) {
 		},
 	}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	req := httptest.NewRequest("POST", "/api/v1/extract/456", http.NoBody)
@@ -202,6 +204,7 @@ func TestServer_createFeedHandler(t *testing.T) {
 		},
 	}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	form := "url=https://newsite.com/feed&title=New+Site&fetch_interval=30"
@@ -258,6 +261,7 @@ func TestServer_updateFeedHandler(t *testing.T) {
 			// do nothing in tests
 		},
 	}
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	// create form data
@@ -398,6 +402,7 @@ func TestServer_FetchFeedHandler(t *testing.T) {
 		},
 	}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	req := httptest.NewRequest("POST", "/api/v1/feeds/123/fetch", http.NoBody)
@@ -742,6 +747,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 	t.Run("invalid ID", func(t *testing.T) {
 		database := &mocks.DatabaseMock{}
 		scheduler := &mocks.SchedulerMock{}
+		stubBigTags(database)
 		srv := New(cfg, database, scheduler, "1.0.0", false)
 
 		req := httptest.NewRequest("PUT", "/api/v1/feeds/invalid", strings.NewReader(""))
@@ -762,6 +768,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 		}
 
 		scheduler := &mocks.SchedulerMock{}
+		stubBigTags(database)
 		srv := New(cfg, database, scheduler, "1.0.0", false)
 
 		form := "title=New+Title&fetch_interval=40"
@@ -787,6 +794,7 @@ func TestServer_UpdateFeedHandler_Errors(t *testing.T) {
 		}
 
 		scheduler := &mocks.SchedulerMock{}
+		stubBigTags(database)
 		srv := New(cfg, database, scheduler, "1.0.0", false)
 
 		form := "title=New+Title&fetch_interval=40"
@@ -891,6 +899,7 @@ func TestServer_FetchFeedHandler_Errors(t *testing.T) {
 		database := &mocks.DatabaseMock{}
 		scheduler := &mocks.SchedulerMock{}
 
+		stubBigTags(database)
 		srv := New(cfg, database, scheduler, "1.0.0", false)
 
 		req := httptest.NewRequest("POST", "/api/v1/feeds/invalid/fetch", http.NoBody)
@@ -911,6 +920,7 @@ func TestServer_FetchFeedHandler_Errors(t *testing.T) {
 			},
 		}
 
+		stubBigTags(database)
 		srv := New(cfg, database, scheduler, "1.0.0", false)
 
 		req := httptest.NewRequest("POST", "/api/v1/feeds/456/fetch", http.NoBody)

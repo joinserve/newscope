@@ -23,8 +23,18 @@ import (
 
 // testServer creates a server instance using the actual New function
 func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler Scheduler) *Server {
-	// use the actual New function which properly loads and separates templates
+	stubBigTags(database)
 	return New(cfg, database, scheduler, "test", false)
+}
+
+// stubBigTags supplies a no-op GetBigTagsFunc when the mock hasn't set one,
+// so handler tests don't need to stub it just to survive refreshBigTags.
+func stubBigTags(database Database) {
+	if m, ok := database.(*mocks.DatabaseMock); ok && m.GetBigTagsFunc == nil {
+		m.GetBigTagsFunc = func(ctx context.Context, threshold int) (map[string]int, error) {
+			return map[string]int{}, nil
+		}
+	}
 }
 
 func TestServer_New(t *testing.T) {
@@ -41,6 +51,7 @@ func TestServer_New(t *testing.T) {
 		},
 	}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 	assert.NotNil(t, srv)
 	assert.Equal(t, "1.0.0", srv.version)
@@ -73,6 +84,7 @@ func TestServer_Run(t *testing.T) {
 
 	scheduler := &mocks.SchedulerMock{}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -252,6 +264,7 @@ func TestServer_SafeHTML(t *testing.T) {
 	database := &mocks.DatabaseMock{}
 	scheduler := &mocks.SchedulerMock{}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	// create a simple template to test the safeHTML function
@@ -345,6 +358,7 @@ func TestServer_BeatsRouteNotMountedWhenFeatureOff(t *testing.T) {
 		TriggerPreferenceUpdateFunc: func() {},
 	}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "test", false)
 
 	// /api/v1/beats must not be mounted when embedding.provider is empty

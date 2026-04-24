@@ -64,6 +64,7 @@ func TestServer_rssFeedHandler(t *testing.T) {
 		},
 	}
 
+	stubBigTags(database)
 	srv := New(cfg, database, scheduler, "1.0.0", false)
 
 	// create test request with path parameter

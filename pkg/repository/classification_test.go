@@ -1562,3 +1562,84 @@ func TestClassificationRepository_SearchItems(t *testing.T) {
 		})
 	}
 }
+
+func TestClassificationRepository_GetBigTags(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	feed := createTestFeed(t, repos, "Test Feed")
+	ctx := context.Background()
+
+	// helper: create item with topics
+	addItem := func(guid string, topics []string) {
+		item := &domain.Item{
+			FeedID:    feed.ID,
+			GUID:      guid,
+			Title:     guid,
+			Link:      "https://example.com/" + guid,
+			Published: time.Now(),
+		}
+		require.NoError(t, repos.Item.CreateItem(ctx, item))
+		require.NoError(t, repos.Item.UpdateItemClassification(ctx, item.ID, &domain.Classification{
+			GUID:   guid,
+			Score:  7.0,
+			Topics: topics,
+		}))
+	}
+
+	// "ai" appears 6 times, "tech" appears 3 times, "policy" appears 1 time
+	addItem("g1", []string{"ai", "tech"})
+	addItem("g2", []string{"ai", "tech"})
+	addItem("g3", []string{"ai", "tech"})
+	addItem("g4", []string{"ai"})
+	addItem("g5", []string{"ai"})
+	addItem("g6", []string{"ai"})
+	addItem("g7", []string{"policy"})
+
+	tests := []struct {
+		name       string
+		threshold  int
+		wantTags   map[string]int // tag → expected count
+		wantAbsent []string
+	}{
+		{
+			name:       "threshold=1 returns all tags",
+			threshold:  1,
+			wantTags:   map[string]int{"ai": 6, "tech": 3, "policy": 1},
+			wantAbsent: nil,
+		},
+		{
+			name:       "threshold=3 excludes policy",
+			threshold:  3,
+			wantTags:   map[string]int{"ai": 6, "tech": 3},
+			wantAbsent: []string{"policy"},
+		},
+		{
+			name:       "threshold=5 returns only ai",
+			threshold:  5,
+			wantTags:   map[string]int{"ai": 6},
+			wantAbsent: []string{"tech", "policy"},
+		},
+		{
+			name:       "threshold above all counts returns empty",
+			threshold:  100,
+			wantTags:   map[string]int{},
+			wantAbsent: []string{"ai", "tech", "policy"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := repos.Classification.GetBigTags(ctx, tc.threshold)
+			require.NoError(t, err)
+
+			assert.Len(t, got, len(tc.wantTags))
+			for tag, wantCount := range tc.wantTags {
+				assert.Equal(t, wantCount, got[tag], "count for tag %q", tag)
+			}
+			for _, absent := range tc.wantAbsent {
+				assert.NotContains(t, got, absent)
+			}
+		})
+	}
+}

@@ -599,8 +599,20 @@ func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
 // Reads per-beat feedback from beats.feedback (column added in PR 6); no KV/settings indirection.
 // Filters out half-baked multi-member beats (canonical_title still NULL, i.e. merge_worker hasn't
 // run yet): only singleton beats and already-canonicalised multi-member beats make it into the list.
-func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
-	query := `
+// When topic is non-empty, only beats containing at least one member with that topic are returned.
+func (r *BeatRepository) ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
+	topicFilter := ""
+	args := []interface{}{limit, offset}
+	if topic != "" {
+		topicFilter = `AND EXISTS (
+			SELECT 1 FROM beat_members bm2
+			JOIN items i2 ON i2.id = bm2.item_id, json_each(i2.topics)
+			WHERE bm2.beat_id = b.id AND json_each.value = ?
+		)`
+		args = []interface{}{topic, limit, offset}
+	}
+
+	query := fmt.Sprintf(`
 		SELECT
 			b.id, b.canonical_title, b.canonical_summary, b.first_seen_at, b.last_viewed_at,
 			AVG(i.relevance_score) AS aggregate_score,
@@ -610,13 +622,14 @@ func (r *BeatRepository) ListBeats(ctx context.Context, limit, offset int) ([]do
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
+		WHERE 1=1 %s
 		GROUP BY b.id
 		HAVING COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
-		LIMIT ? OFFSET ?`
+		LIMIT ? OFFSET ?`, topicFilter)
 
 	var rows []beatRow
-	if err := r.db.SelectContext(ctx, &rows, query, limit, offset); err != nil {
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("list beats: %w", err)
 	}
 	if len(rows) == 0 {

@@ -53,6 +53,7 @@ type ClassificationRepo interface {
 	GetFeedbackCount(ctx context.Context) (int64, error)
 	SearchItems(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error)
+	GetBigTags(ctx context.Context, threshold int) (map[string]int, error)
 }
 
 // SettingRepo defines the setting repository interface used by the adapter
@@ -67,7 +68,7 @@ type SettingRepo interface {
 // The UI implementer decides the final shape — either a SearchWithMembers
 // method on the repo, or enrichment in the handler.
 type BeatRepo interface {
-	ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
@@ -336,6 +337,11 @@ func (r *RepositoryAdapter) GetSearchItemsCount(ctx context.Context, searchQuery
 	return r.classificationRepo.GetSearchItemsCount(ctx, searchQuery, filter)
 }
 
+// GetBigTags returns tags that appear in at least threshold classified items.
+func (r *RepositoryAdapter) GetBigTags(ctx context.Context, threshold int) (map[string]int, error) {
+	return r.classificationRepo.GetBigTags(ctx, threshold)
+}
+
 // getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL
 func getFeedDisplayName(title, feedURL string) string {
 	if title != "" {
@@ -354,12 +360,12 @@ func getFeedDisplayName(title, feedURL string) string {
 	return feedURL
 }
 
-// ListBeats lists beat aggregation summaries
-func (r *RepositoryAdapter) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
+// ListBeats lists beat aggregation summaries, optionally filtered by topic.
+func (r *RepositoryAdapter) ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
 	if r.beatRepo == nil {
 		return nil, nil // graceful degradation
 	}
-	return r.beatRepo.ListBeats(ctx, limit, offset)
+	return r.beatRepo.ListBeats(ctx, topic, limit, offset)
 }
 
 // SetFeedback updates the user feedback for a beat.
