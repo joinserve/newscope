@@ -479,8 +479,8 @@ func (r *ClassificationRepository) toDomainClassifiedItem(sqlItem *itemWithFeedS
 	return item
 }
 
-// GetBigTags returns a map of topic → count for all topics that appear at least threshold times
-// across classified items.
+// GetBigTags returns a map of topic → count for the top 10 most-frequent topics
+// that appear at least threshold times across classified items.
 func (r *ClassificationRepository) GetBigTags(ctx context.Context, threshold int) (map[string]int, error) {
 	query := `
 		SELECT value AS tag, COUNT(*) AS cnt
@@ -489,6 +489,8 @@ func (r *ClassificationRepository) GetBigTags(ctx context.Context, threshold int
 		AND topics != '[]'
 		GROUP BY value
 		HAVING COUNT(*) >= ?
+		ORDER BY cnt DESC
+		LIMIT 10
 	`
 	rows, err := r.db.QueryContext(ctx, query, threshold)
 	if err != nil {
