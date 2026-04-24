@@ -413,7 +413,7 @@ func (s *Server) rsshubExplorerHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		commonPageData: commonPageData{
 			ActivePage:   "feeds",
-			PageTitle:    "RSSHub Explorer",
+			PageTitle:    "分類",
 			BackURL:      "/feeds",
 			IsSearch:     false,
 			SearchQuery:  "",

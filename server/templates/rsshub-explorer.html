@@ -7,6 +7,7 @@
 <style>
 .rsshub-page {
     background-color: var(--bg-primary);
+    border-radius: 24px 24px 0 0;
     min-height: 100vh;
 }
 .view-header {
@@ -96,7 +97,6 @@
     
     <!-- Step 1: Categories View -->
     <div id="view-categories" class="rsshub-content">
-        <h4 style="color: var(--text-secondary); font-size: 0.9375rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; margin-top: 0;">Categories</h4>
         <div id="categories-grid" class="rsshub-list">
             <p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading categories...</p>
         </div>
@@ -118,7 +118,6 @@
         <div id="current-platform-avatar" style="display:none;"></div>
         <span id="current-platform-name" style="display:none;"></span>
         <span id="current-platform-domain" style="display:none;"></span>
-        <h4 style="color: var(--text-secondary); font-size: 0.9375rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; margin-top: 0;">Available Resources</h4>
         <div id="routes-list" class="rsshub-list">
             <p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading routes...</p>
         </div>
@@ -129,7 +128,7 @@
         <span id="current-route-title" style="display:none;"></span>
         <span id="current-route-target" style="display:none;"></span>
 
-        <div class="rsshub-content" style="background-color: var(--bg-primary); border-top: 1px solid var(--border-primary); padding-bottom: 2rem; margin: 0 -1.5rem; padding-left: 1.5rem; padding-right: 1.5rem; padding-top: 1.5rem;">
+        <div class="rsshub-content" style="background-color: var(--bg-primary); border-top: 1px solid var(--border-primary); padding: 1.5rem 0 2rem;">
             <form hx-post="/api/v1/feeds" 
                   hx-target="body" 
                   hx-swap="none"
@@ -567,7 +566,7 @@ function showView(viewName) {
     // update header
     switch(viewName) {
         case 'categories':
-            updatePageHeader('RSSHub Explorer', 'url', '/feeds');
+            updatePageHeader('分類', 'url', '/feeds');
             break;
         case 'platforms':
             updatePageHeader(currentCategory || 'Platforms', 'view', "showView('categories')");
