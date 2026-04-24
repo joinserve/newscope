@@ -1570,14 +1570,14 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		commonPageData
-		Beat domain.BeatWithMembers
+		Beat *domain.BeatWithMembers
 	}{
 		commonPageData: commonPageData{
 			ActivePage: "beats",
 			BackURL:    "/beats",
 			PageTitle:  pageTitle,
 		},
-		Beat: beat,
+		Beat: &beat,
 	}
 
 	if r.Header.Get("HX-Request") == "true" {
