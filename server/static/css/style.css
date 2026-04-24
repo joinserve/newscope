@@ -663,7 +663,7 @@ html.dark-theme .moon-icon { opacity: 1; }
 
 .feeds-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
 }
 
@@ -681,9 +681,7 @@ html.dark-theme .moon-icon { opacity: 1; }
 }
 
 .rsshub-list {
-    border-top: 1px solid var(--border-primary);
     border-bottom: 1px solid var(--border-primary);
-    margin: 0 -1.5rem;
 }
 
 .rsshub-list-item {
