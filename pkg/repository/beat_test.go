@@ -552,6 +552,41 @@ func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
 	assert.Equal(t, 2, beats[0].UnreadCount)
 }
 
+func TestBeatRepository_ListBeats_HidesViewedWithoutNewMembers(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	// beat A: viewed, no new members → should be hidden
+	idA := mkItem(pub, "a", []float32{1, 0, 0})
+	bA, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, repos.Beat.MarkViewed(ctx, bA))
+
+	// beat B: viewed, then new member added → should surface again
+	idB := mkItem(pub, "b", []float32{0, 1, 0})
+	bB, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{0, 1, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, bB, domain.BeatCanonical{Title: "B"}))
+	require.NoError(t, repos.Beat.MarkViewed(ctx, bB))
+	time.Sleep(10 * time.Millisecond)
+	idB2 := mkItem(pub.Add(time.Hour), "b2", []float32{0, 1, 0})
+	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB2, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+
+	// beat C: never viewed → should show
+	idC := mkItem(pub, "c", []float32{0, 0, 1})
+	bC, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idC, Vector: []float32{0, 0, 1}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+
+	beats, err := repos.Beat.ListBeats(ctx, "", 10, 0)
+	require.NoError(t, err)
+	var ids []int64
+	for _, b := range beats {
+		ids = append(ids, b.ID)
+	}
+	assert.NotContains(t, ids, bA, "viewed beat with no new members must be hidden")
+	assert.Contains(t, ids, bB, "viewed beat with new member (triggers re-canonical) must surface")
+	assert.Contains(t, ids, bC, "never-viewed beat must show")
+}
+
 func TestBeatRepository_ListBeats_TopicFilter(t *testing.T) {
 	repos, cleanup, mkItem := beatTestSetup(t)
 	defer cleanup()

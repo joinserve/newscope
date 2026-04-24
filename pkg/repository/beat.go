@@ -624,7 +624,8 @@ func (r *BeatRepository) ListBeats(ctx context.Context, topic string, limit, off
 		JOIN items i ON i.id = bm.item_id
 		WHERE 1=1 %s
 		GROUP BY b.id
-		HAVING COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL
+		HAVING (COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL)
+		   AND unread_count > 0
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
 		LIMIT ? OFFSET ?`, topicFilter)
 
