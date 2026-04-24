@@ -154,11 +154,9 @@ func generatePageNumbers(currentPage, totalPages int) []int {
 // New initializes a new server instance
 func New(cfg ConfigProvider, database Database, scheduler Scheduler, version string, debug bool) *Server {
 	// big-tag cache is created before funcMap so the isBigTag closure can reference it.
-	// initialized as fresh-empty so the first request doesn't block on DB, and all tags
-	// start as "small" until the cache naturally expires and refreshes.
+	// zero-valued expires ensures the first request triggers a refresh.
 	cache := &bigTagsCache{
-		tags:    map[string]int{},
-		expires: time.Now().Add(5 * time.Minute),
+		tags: map[string]int{},
 	}
 
 	// create bluemonday policy for HTML sanitization

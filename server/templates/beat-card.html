@@ -133,7 +133,7 @@
         {{if .Topics}}
         <div class="topics">
             {{range .Topics}}
-            <a href="#" class="topic-tag clickable-topic {{if isBigTag .}}topic-chip-big{{end}}"
+            <a href="#" class="topic-tag clickable-topic"
                data-topic="{{.}}"
                hx-get="/beats"
                hx-vals='{"topic":"{{.}}"}'
@@ -141,7 +141,7 @@
                hx-trigger="click"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"
-               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{if isBigTag .}}#{{end}}{{.}}</a>
+               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{.}}</a>
             {{end}}
         </div>
         {{end}}
