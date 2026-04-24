@@ -17,6 +17,9 @@ import (
 //
 //		// make and configure a mocked server.ClassificationRepo
 //		mockedClassificationRepo := &ClassificationRepoMock{
+//			GetBigTagsFunc: func(ctx context.Context, threshold int) (map[string]int, error) {
+//				panic("mock out the GetBigTags method")
+//			},
 //			GetClassifiedItemFunc: func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error) {
 //				panic("mock out the GetClassifiedItem method")
 //			},
@@ -54,6 +57,9 @@ import (
 //
 //	}
 type ClassificationRepoMock struct {
+	// GetBigTagsFunc mocks the GetBigTags method.
+	GetBigTagsFunc func(ctx context.Context, threshold int) (map[string]int, error)
+
 	// GetClassifiedItemFunc mocks the GetClassifiedItem method.
 	GetClassifiedItemFunc func(ctx context.Context, itemID int64) (*domain.ClassifiedItem, error)
 
@@ -86,6 +92,13 @@ type ClassificationRepoMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// GetBigTags holds details about calls to the GetBigTags method.
+		GetBigTags []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Threshold is the threshold argument value.
+			Threshold int
+		}
 		// GetClassifiedItem holds details about calls to the GetClassifiedItem method.
 		GetClassifiedItem []struct {
 			// Ctx is the ctx argument value.
@@ -161,6 +174,7 @@ type ClassificationRepoMock struct {
 			Feedback *domain.Feedback
 		}
 	}
+	lockGetBigTags              sync.RWMutex
 	lockGetClassifiedItem       sync.RWMutex
 	lockGetClassifiedItems      sync.RWMutex
 	lockGetClassifiedItemsCount sync.RWMutex
@@ -171,6 +185,42 @@ type ClassificationRepoMock struct {
 	lockGetTopicsFiltered       sync.RWMutex
 	lockSearchItems             sync.RWMutex
 	lockUpdateItemFeedback      sync.RWMutex
+}
+
+// GetBigTags calls GetBigTagsFunc.
+func (mock *ClassificationRepoMock) GetBigTags(ctx context.Context, threshold int) (map[string]int, error) {
+	if mock.GetBigTagsFunc == nil {
+		panic("ClassificationRepoMock.GetBigTagsFunc: method is nil but ClassificationRepo.GetBigTags was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Threshold int
+	}{
+		Ctx:       ctx,
+		Threshold: threshold,
+	}
+	mock.lockGetBigTags.Lock()
+	mock.calls.GetBigTags = append(mock.calls.GetBigTags, callInfo)
+	mock.lockGetBigTags.Unlock()
+	return mock.GetBigTagsFunc(ctx, threshold)
+}
+
+// GetBigTagsCalls gets all the calls that were made to GetBigTags.
+// Check the length with:
+//
+//	len(mockedClassificationRepo.GetBigTagsCalls())
+func (mock *ClassificationRepoMock) GetBigTagsCalls() []struct {
+	Ctx       context.Context
+	Threshold int
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Threshold int
+	}
+	mock.lockGetBigTags.RLock()
+	calls = mock.calls.GetBigTags
+	mock.lockGetBigTags.RUnlock()
+	return calls
 }
 
 // GetClassifiedItem calls GetClassifiedItemFunc.

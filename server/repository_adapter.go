@@ -53,6 +53,7 @@ type ClassificationRepo interface {
 	GetFeedbackCount(ctx context.Context) (int64, error)
 	SearchItems(ctx context.Context, searchQuery string, filter *domain.ItemFilter) ([]*domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, filter *domain.ItemFilter) (int, error)
+	GetBigTags(ctx context.Context, threshold int) (map[string]int, error)
 }
 
 // SettingRepo defines the setting repository interface used by the adapter
@@ -334,6 +335,11 @@ func (r *RepositoryAdapter) GetSearchItemsCount(ctx context.Context, searchQuery
 	}
 
 	return r.classificationRepo.GetSearchItemsCount(ctx, searchQuery, filter)
+}
+
+// GetBigTags returns tags that appear in at least threshold classified items.
+func (r *RepositoryAdapter) GetBigTags(ctx context.Context, threshold int) (map[string]int, error) {
+	return r.classificationRepo.GetBigTags(ctx, threshold)
 }
 
 // getFeedDisplayName returns the feed title if available, otherwise extracts hostname from URL

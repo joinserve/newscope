@@ -39,14 +39,15 @@
             {{if .GetTopics}}
             {{$primaryTopic := index .GetTopics 0}}
             <span class="card-head-sep" aria-hidden="true">›</span>
-            <a href="#" class="card-topic clickable-topic"
+            <a href="#" class="card-topic clickable-topic {{if isBigTag $primaryTopic}}topic-chip-big{{end}}"
                data-topic="{{$primaryTopic}}"
                hx-get="/articles"
-               hx-vals='{"topic":"{{$primaryTopic}}"}'
+               {{if ne $.SelectedTopic $primaryTopic}}hx-vals='{"topic":"{{$primaryTopic}}"}'{{end}}
+               hx-push-url="true"
                hx-trigger="click"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"
-               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{$primaryTopic}}</a>
+               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{if isBigTag $primaryTopic}}#{{end}}{{$primaryTopic}}</a>
             {{end}}
 
             <span class="card-time">
@@ -89,14 +90,15 @@
         {{if .GetTopics}}
         <div class="topics">
             {{range .GetTopics}}
-            <a href="#" class="topic-tag clickable-topic"
+            <a href="#" class="topic-tag clickable-topic {{if isBigTag .}}topic-chip-big{{end}}"
                data-topic="{{.}}"
                hx-get="/articles"
-               hx-vals='{"topic":"{{.}}"}'
+               {{if ne $.SelectedTopic .}}hx-vals='{"topic":"{{.}}"}'{{end}}
+               hx-push-url="true"
                hx-trigger="click"
                hx-target="#articles-with-pagination"
                hx-swap="innerHTML show:body:top"
-               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{.}}</a>
+               hx-include="#score-filter, #feed-filter, #sort-filter, #date-range-filter">{{if isBigTag .}}#{{end}}{{.}}</a>
             {{end}}
         </div>
         {{end}}

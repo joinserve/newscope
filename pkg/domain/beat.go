@@ -58,3 +58,31 @@ type BeatWithMembers struct {
 func (b *BeatWithMembers) GetUserFeedback() string {
 	return b.UserFeedback
 }
+
+// PrimaryTopic returns the topic that appears most frequently across all member items.
+// Ties are broken by first occurrence. Returns "" when no member has any topic.
+func (b *BeatWithMembers) PrimaryTopic() string {
+	counts := make(map[string]int)
+	var order []string
+
+	for _, m := range b.Members {
+		for _, t := range m.GetTopics() {
+			if _, seen := counts[t]; !seen {
+				order = append(order, t)
+			}
+			counts[t]++
+		}
+	}
+
+	if len(order) == 0 {
+		return ""
+	}
+
+	best := order[0]
+	for _, t := range order[1:] {
+		if counts[t] > counts[best] {
+			best = t
+		}
+	}
+	return best
+}

@@ -243,7 +243,7 @@ func TestServer_feedsHandler(t *testing.T) {
 	srv.feedsHandler(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "Feed Management")
+	assert.Contains(t, w.Body.String(), "訂閱源")
 	assert.Contains(t, w.Body.String(), "Example Feed")
 	assert.Contains(t, w.Body.String(), "https://example.com/feed.xml")
 	assert.Contains(t, w.Body.String(), "Test RSS")
@@ -639,7 +639,7 @@ func TestServer_RenderArticleCard_TemplateError(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	srv.renderArticleCard(w, article)
+	srv.renderArticleCard(w, article, "")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "Failed to render article")
@@ -1912,7 +1912,7 @@ func TestServer_renderArticleCard_ThreadsLayout(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	srv.renderArticleCard(w, article)
+	srv.renderArticleCard(w, article, "")
 	body := w.Body.String()
 
 	// threads-style card structure
@@ -1954,6 +1954,7 @@ func newTestServer(t *testing.T) *Server {
 		},
 		"getDomain":    func(u string) string { return u },
 		"extractImage": func(content string, url string) string { return "" },
+		"isBigTag":     func(tag string) bool { return false },
 		"stripHTML": func(s string) string {
 			return s
 		},

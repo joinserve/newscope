@@ -1610,6 +1610,17 @@ html.dark-theme .moon-icon { opacity: 1; }
     color: var(--text-primary);
 }
 
+.topic-chip-big {
+    background: var(--accent-blue, #3b82f6);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8125rem;
+    text-decoration: none;
+    font-weight: 500;
+}
+.topic-chip-big:hover { opacity: 0.85; }
+
 .content-actions {
     display: none; /* Hide content and extract buttons completely */
 }
