@@ -469,7 +469,7 @@ func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
 	repos.Item.UpdateItemClassification(ctx, id4b, &domain.Classification{Score: 7.0})
 	require.NoError(t, repos.Beat.SaveCanonical(ctx, b3, domain.BeatCanonical{Title: "T3"}))
 
-	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	beats, err := repos.Beat.ListBeats(ctx, "", 10, 0)
 	require.NoError(t, err)
 	require.Len(t, beats, 3)
 
@@ -512,7 +512,7 @@ func TestBeatRepository_ListBeats_HidesUncanonicalisedMultiMember(t *testing.T) 
 	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idD, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
-	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	beats, err := repos.Beat.ListBeats(ctx, "", 10, 0)
 	require.NoError(t, err)
 
 	var ids []int64
@@ -546,10 +546,54 @@ func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
 	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 
-	beats, err := repos.Beat.ListBeats(ctx, 10, 0)
+	beats, err := repos.Beat.ListBeats(ctx, "", 10, 0)
 	require.NoError(t, err)
 	require.Len(t, beats, 1)
 	assert.Equal(t, 2, beats[0].UnreadCount)
+}
+
+func TestBeatRepository_ListBeats_TopicFilter(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	// beat A: topic "ai"
+	idA := mkItem(pub, "ai-article", []float32{1, 0, 0})
+	bA, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idA, &domain.Classification{Score: 7, Topics: []string{"ai", "tech"}}))
+
+	// beat B: topic "china" (single member, no canonical needed)
+	idB := mkItem(pub.Add(time.Hour), "china-article", []float32{0, 1, 0})
+	bB, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idB, &domain.Classification{Score: 8, Topics: []string{"china", "security"}}))
+
+	// no filter — both beats returned
+	all, err := repos.Beat.ListBeats(ctx, "", 10, 0)
+	require.NoError(t, err)
+	var allIDs []int64
+	for _, b := range all {
+		allIDs = append(allIDs, b.ID)
+	}
+	assert.Contains(t, allIDs, bA)
+	assert.Contains(t, allIDs, bB)
+
+	// filter by "ai" — only beat A
+	aiBeats, err := repos.Beat.ListBeats(ctx, "ai", 10, 0)
+	require.NoError(t, err)
+	require.Len(t, aiBeats, 1)
+	assert.Equal(t, bA, aiBeats[0].ID)
+
+	// filter by "china" — only beat B
+	chinaBeats, err := repos.Beat.ListBeats(ctx, "china", 10, 0)
+	require.NoError(t, err)
+	require.Len(t, chinaBeats, 1)
+	assert.Equal(t, bB, chinaBeats[0].ID)
+
+	// filter by unknown topic — empty result
+	noneBeats, err := repos.Beat.ListBeats(ctx, "nonexistent", 10, 0)
+	require.NoError(t, err)
+	assert.Empty(t, noneBeats)
 }
 
 func TestBeatRepository_GetBeat_EagerLoadsMembers(t *testing.T) {

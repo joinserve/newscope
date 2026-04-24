@@ -1991,7 +1991,7 @@ func TestBeatsHandler_RendersInbox(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		ListBeatsFunc: func(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error) {
+		ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 			title := "Merged Beat Title"
 			return []domain.BeatWithMembers{
 				{
@@ -2104,4 +2104,94 @@ func TestBeatDetailHandler_WritesLastViewed(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "Detail Title")
 	assert.True(t, markViewedCalled, "MarkViewed should be called before rendering")
+}
+
+func TestBeatsHandler_TopicFilter(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	var capturedTopic string
+	aiTitle := "AI Beat"
+	database := &mocks.DatabaseMock{
+		ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+			capturedTopic = topic
+			if topic == "ai" {
+				return []domain.BeatWithMembers{{
+					ID:             1,
+					CanonicalTitle: &aiTitle,
+					AggregateScore: 8.0,
+					Members: []domain.ClassifiedItem{
+						{
+							Item:           &domain.Item{Title: "AI Article", Link: "https://example.com/ai"},
+							FeedName:       "Tech Feed",
+							Classification: &domain.Classification{Topics: []string{"ai"}},
+						},
+					},
+				}}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+	req := httptest.NewRequest("GET", "/beats?topic=ai", http.NoBody)
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+
+	srv.beatsHandler(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "ai", capturedTopic)
+	assert.Contains(t, w.Body.String(), "AI Beat")
+}
+
+func TestSourceHandler_Renders(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	database := &mocks.DatabaseMock{
+		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
+			return []domain.ClassifiedItem{
+				{
+					Item:           &domain.Item{ID: 1, Title: "Source Article", Link: "https://example.com/1"},
+					FeedName:       "CNA",
+					Classification: &domain.Classification{Score: 7.5, Topics: []string{"tech"}},
+				},
+			}, nil
+		},
+	}
+
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+	req := httptest.NewRequest("GET", "/source/CNA", http.NoBody)
+	req.SetPathValue("name", "CNA")
+	w := httptest.NewRecorder()
+
+	srv.sourceHandler(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.NotContains(t, body, "incomplete or empty template")
+	assert.Contains(t, body, "CNA")
+	assert.Contains(t, body, "Source Article")
 }

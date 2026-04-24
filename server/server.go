@@ -90,7 +90,7 @@ type Database interface {
 	SetSetting(ctx context.Context, key, value string) error
 	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
-	ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error

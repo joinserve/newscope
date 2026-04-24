@@ -68,7 +68,7 @@ import (
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
 //			},
-//			ListBeatsFunc: func(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error) {
+//			ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the ListBeats method")
 //			},
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
@@ -154,7 +154,7 @@ type DatabaseMock struct {
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
 
 	// ListBeatsFunc mocks the ListBeats method.
-	ListBeatsFunc func(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error)
+	ListBeatsFunc func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
@@ -309,6 +309,8 @@ type DatabaseMock struct {
 		ListBeats []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Topic is the topic argument value.
+			Topic string
 			// Limit is the limit argument value.
 			Limit int
 			// Offset is the offset argument value.
@@ -1040,23 +1042,25 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 }
 
 // ListBeats calls ListBeatsFunc.
-func (mock *DatabaseMock) ListBeats(ctx context.Context, limit int, offset int) ([]domain.BeatWithMembers, error) {
+func (mock *DatabaseMock) ListBeats(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 	if mock.ListBeatsFunc == nil {
 		panic("DatabaseMock.ListBeatsFunc: method is nil but Database.ListBeats was just called")
 	}
 	callInfo := struct {
 		Ctx    context.Context
+		Topic  string
 		Limit  int
 		Offset int
 	}{
 		Ctx:    ctx,
+		Topic:  topic,
 		Limit:  limit,
 		Offset: offset,
 	}
 	mock.lockListBeats.Lock()
 	mock.calls.ListBeats = append(mock.calls.ListBeats, callInfo)
 	mock.lockListBeats.Unlock()
-	return mock.ListBeatsFunc(ctx, limit, offset)
+	return mock.ListBeatsFunc(ctx, topic, limit, offset)
 }
 
 // ListBeatsCalls gets all the calls that were made to ListBeats.
@@ -1065,11 +1069,13 @@ func (mock *DatabaseMock) ListBeats(ctx context.Context, limit int, offset int) 
 //	len(mockedDatabase.ListBeatsCalls())
 func (mock *DatabaseMock) ListBeatsCalls() []struct {
 	Ctx    context.Context
+	Topic  string
 	Limit  int
 	Offset int
 } {
 	var calls []struct {
 		Ctx    context.Context
+		Topic  string
 		Limit  int
 		Offset int
 	}

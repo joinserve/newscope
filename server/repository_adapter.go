@@ -68,7 +68,7 @@ type SettingRepo interface {
 // The UI implementer decides the final shape — either a SearchWithMembers
 // method on the repo, or enrichment in the handler.
 type BeatRepo interface {
-	ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
@@ -360,12 +360,12 @@ func getFeedDisplayName(title, feedURL string) string {
 	return feedURL
 }
 
-// ListBeats lists beat aggregation summaries
-func (r *RepositoryAdapter) ListBeats(ctx context.Context, limit, offset int) ([]domain.BeatWithMembers, error) {
+// ListBeats lists beat aggregation summaries, optionally filtered by topic.
+func (r *RepositoryAdapter) ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
 	if r.beatRepo == nil {
 		return nil, nil // graceful degradation
 	}
-	return r.beatRepo.ListBeats(ctx, limit, offset)
+	return r.beatRepo.ListBeats(ctx, topic, limit, offset)
 }
 
 // SetFeedback updates the user feedback for a beat.
