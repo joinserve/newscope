@@ -3,6 +3,11 @@
 {{define "title"}}Beats - Newscope{{end}}
 
 {{define "content"}}
+<div id="ptr-indicator" class="ptr-indicator" aria-hidden="true">
+    <span class="ptr-arrow">↓</span>
+    <span class="ptr-label">下拉重新整理</span>
+</div>
+
 <div class="articles-header beats-header">
     <div class="beats-header-title">
     </div>
@@ -35,4 +40,59 @@
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    const THRESHOLD = 80;
+    const indicator = document.getElementById('ptr-indicator');
+    if (!indicator) return;
+    const label = indicator.querySelector('.ptr-label');
+    let startY = null;
+    let tracking = false;
+
+    function reset() {
+        indicator.classList.remove('pulling', 'ready', 'loading');
+        label.textContent = '下拉重新整理';
+        startY = null;
+        tracking = false;
+    }
+
+    document.addEventListener('touchstart', function(e) {
+        if (window.scrollY > 0) return;
+        startY = e.touches[0].clientY;
+        tracking = true;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function(e) {
+        if (!tracking || startY === null) return;
+        const dy = e.touches[0].clientY - startY;
+        if (dy <= 0) {
+            indicator.classList.remove('pulling', 'ready');
+            return;
+        }
+        indicator.classList.add('pulling');
+        if (dy >= THRESHOLD) {
+            indicator.classList.add('ready');
+            label.textContent = '放開即可重新整理';
+        } else {
+            indicator.classList.remove('ready');
+            label.textContent = '下拉重新整理';
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchend', function() {
+        if (!tracking) return;
+        const armed = indicator.classList.contains('ready');
+        if (!armed) { reset(); return; }
+        indicator.classList.remove('ready');
+        indicator.classList.add('loading');
+        label.textContent = '載入中...';
+        const url = window.location.pathname + window.location.search;
+        htmx.ajax('GET', url, { target: '#articles-with-pagination', swap: 'innerHTML' })
+            .then(reset).catch(reset);
+        tracking = false;
+        startY = null;
+    }, { passive: true });
+})();
+</script>
 {{end}}

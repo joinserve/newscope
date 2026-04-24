@@ -2173,3 +2173,46 @@ main.container {
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(main-content), ::view-transition-new(main-content) { animation: none; }
 }
+
+/* Pull-to-refresh indicator for /beats */
+.ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  padding: 0.5rem 1rem;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color, rgba(0,0,0,0.1));
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: var(--text-primary, #333);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  z-index: 1000;
+  opacity: 0;
+  transition: transform 200ms ease, opacity 200ms ease;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.ptr-indicator.pulling {
+  transform: translate(-50%, 16px);
+  opacity: 1;
+}
+.ptr-arrow {
+  display: inline-block;
+  transition: transform 180ms ease;
+}
+.ptr-indicator.ready .ptr-arrow {
+  transform: rotate(180deg);
+}
+.ptr-indicator.loading .ptr-arrow {
+  animation: ptr-spin 0.9s linear infinite;
+}
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ptr-indicator, .ptr-arrow { transition: none; }
+  .ptr-indicator.loading .ptr-arrow { animation: none; }
+}
