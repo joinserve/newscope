@@ -96,7 +96,6 @@
     
     <!-- Step 1: Categories View -->
     <div id="view-categories" class="rsshub-content">
-        <h4 style="color: var(--text-secondary); font-size: 0.9375rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; margin-top: 0;">Categories</h4>
         <div id="categories-grid" class="rsshub-list">
             <p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading categories...</p>
         </div>
@@ -567,7 +566,7 @@ function showView(viewName) {
     // update header
     switch(viewName) {
         case 'categories':
-            updatePageHeader('RSSHub Explorer', 'url', '/feeds');
+            updatePageHeader('分類', 'url', '/feeds');
             break;
         case 'platforms':
             updatePageHeader(currentCategory || 'Platforms', 'view', "showView('categories')");
