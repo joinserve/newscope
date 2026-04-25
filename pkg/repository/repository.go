@@ -30,6 +30,7 @@ type Repositories struct {
 	Setting        *SettingRepository
 	Embedding      *EmbeddingRepository
 	Beat           *BeatRepository
+	Grouping       *GroupingRepository
 	DB             *sqlx.DB
 }
 
@@ -88,6 +89,7 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 		Setting:        NewSettingRepository(db),
 		Embedding:      NewEmbeddingRepository(db),
 		Beat:           NewBeatRepository(db),
+		Grouping:       NewGroupingRepository(db),
 		DB:             db,
 	}
 

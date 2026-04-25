@@ -16,6 +16,7 @@ import (
 //go:generate moq -out mocks/classification_repo.go -pkg mocks -skip-ensure -fmt goimports . ClassificationRepo
 //go:generate moq -out mocks/setting_repo.go -pkg mocks -skip-ensure -fmt goimports . SettingRepo
 //go:generate moq -out mocks/beat_repo.go -pkg mocks -skip-ensure -fmt goimports . BeatRepo
+//go:generate moq -out mocks/grouping_repo.go -pkg mocks -skip-ensure -fmt goimports . GroupingRepo
 
 // RepositoryAdapter adapts repositories to server.Database interface
 type RepositoryAdapter struct {
@@ -24,6 +25,7 @@ type RepositoryAdapter struct {
 	classificationRepo ClassificationRepo
 	settingRepo        SettingRepo
 	beatRepo           BeatRepo
+	groupingRepo       GroupingRepo
 }
 
 // FeedRepo defines the feed repository interface used by the adapter
@@ -75,6 +77,17 @@ type BeatRepo interface {
 	SearchWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
 }
 
+// GroupingRepo defines the grouping repository interface used by the adapter.
+type GroupingRepo interface {
+	ListGroupings(ctx context.Context) ([]domain.Grouping, error)
+	GetGrouping(ctx context.Context, id int64) (domain.Grouping, error)
+	GetGroupingBySlug(ctx context.Context, slug string) (domain.Grouping, error)
+	CreateGrouping(ctx context.Context, g domain.Grouping) (int64, error)
+	UpdateGrouping(ctx context.Context, g domain.Grouping) error
+	DeleteGrouping(ctx context.Context, id int64) error
+	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
+}
+
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
 func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 	return &RepositoryAdapter{
@@ -83,6 +96,7 @@ func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 		classificationRepo: repos.Classification,
 		settingRepo:        repos.Setting,
 		beatRepo:           repos.Beat,
+		groupingRepo:       repos.Grouping,
 	}
 }
 
@@ -398,4 +412,39 @@ func (r *RepositoryAdapter) SearchBeatsWithMembers(ctx context.Context, query st
 		return nil, nil
 	}
 	return r.beatRepo.SearchWithMembers(ctx, query, limit)
+}
+
+// ListGroupings returns all user-defined groupings ordered by display_order.
+func (r *RepositoryAdapter) ListGroupings(ctx context.Context) ([]domain.Grouping, error) {
+	return r.groupingRepo.ListGroupings(ctx)
+}
+
+// GetGrouping returns a grouping by its id.
+func (r *RepositoryAdapter) GetGrouping(ctx context.Context, id int64) (domain.Grouping, error) {
+	return r.groupingRepo.GetGrouping(ctx, id)
+}
+
+// GetGroupingBySlug returns a grouping by its URL slug.
+func (r *RepositoryAdapter) GetGroupingBySlug(ctx context.Context, slug string) (domain.Grouping, error) {
+	return r.groupingRepo.GetGroupingBySlug(ctx, slug)
+}
+
+// CreateGrouping inserts a new grouping and returns its id.
+func (r *RepositoryAdapter) CreateGrouping(ctx context.Context, g domain.Grouping) (int64, error) {
+	return r.groupingRepo.CreateGrouping(ctx, g)
+}
+
+// UpdateGrouping updates name and tags of an existing grouping.
+func (r *RepositoryAdapter) UpdateGrouping(ctx context.Context, g domain.Grouping) error {
+	return r.groupingRepo.UpdateGrouping(ctx, g)
+}
+
+// DeleteGrouping removes a grouping.
+func (r *RepositoryAdapter) DeleteGrouping(ctx context.Context, id int64) error {
+	return r.groupingRepo.DeleteGrouping(ctx, id)
+}
+
+// ReorderGroupings sets display_order for the provided id list in order.
+func (r *RepositoryAdapter) ReorderGroupings(ctx context.Context, idsInOrder []int64) error {
+	return r.groupingRepo.ReorderGroupings(ctx, idsInOrder)
 }
