@@ -165,7 +165,7 @@ func TestBeatDetailHandler_TimelineRender(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	body := w.Body.String()
 
-	assert.Contains(t, body, "How this story developed", "timeline heading must be present")
+	assert.Contains(t, body, "Timeline", "timeline heading must be present")
 	assert.Contains(t, body, "current", "current badge or class must appear for the single revision segment")
 	assert.Contains(t, body, "Article 1", "member articles must appear in the timeline")
 	// expandable details/summary structure

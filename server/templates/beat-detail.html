@@ -22,9 +22,15 @@
             <span class="card-time" style="margin-left: 0.5rem;">{{.Beat.FirstSeenAt.Local.Format "2006-01-02 15:04"}}</span>
         </div>
 
+        {{if .Beat.CanonicalSummary}}
         <div class="beat-summary" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 1rem;">
-            <p>{{if .Beat.CanonicalSummary}}{{index .Beat.CanonicalSummary}}{{else}}Awaiting canonical summary...{{end}}</p>
+            <p>{{index .Beat.CanonicalSummary}}</p>
         </div>
+        {{else if and (eq (len .Beat.Members) 1) (index .Beat.Members 0).GetSummary}}
+        <div class="beat-summary" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 1rem;">
+            <p>{{(index .Beat.Members 0).GetSummary}}</p>
+        </div>
+        {{end}}
 
         {{if .Beat.Topics}}
         <div class="topics">
@@ -36,7 +42,7 @@
     </div>
 
     <section class="beat-timeline">
-        <h3 class="timeline-heading">↻ How this story developed</h3>
+        <h3 class="timeline-heading">Timeline</h3>
 
         {{range .Timeline.Segments}}
         <div class="timeline-segment{{if .IsCurrent}} current{{end}}">
@@ -49,8 +55,9 @@
                 <h4 class="revision-title">{{.Revision.Title}}{{if .IsCurrent}} <span class="badge-current">current</span>{{end}}</h4>
             </div>
             <div class="timeline-members">
+                {{$isCurrent := .IsCurrent}}
                 {{range .Members}}
-                <details class="timeline-member-details">
+                <details class="timeline-member-details"{{if $isCurrent}} open{{end}}>
                     <summary class="timeline-member-summary">
                         {{if not .AddedAt.IsZero}}<time>{{.AddedAt | formatTime}}</time>{{end}}
                         <span class="feed-name">{{.FeedName}}</span>
