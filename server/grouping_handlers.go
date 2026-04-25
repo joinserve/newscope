@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"strconv"
@@ -229,7 +230,7 @@ func (s *Server) suggestTagsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html")
 	for _, t := range tags {
-		fmt.Fprintf(w, "<option value=%q>\n", t)
+		fmt.Fprintf(w, "<option value=%q>\n", html.EscapeString(t))
 	}
 }
 

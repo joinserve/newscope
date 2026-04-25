@@ -347,6 +347,22 @@ func TestSuggestTagsHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Empty(t, w.Body.String())
 	})
+
+	t.Run("html-escapes special chars", func(t *testing.T) {
+		db := baseGroupingDB()
+		db.SuggestTagsFunc = func(ctx context.Context, prefix string, limit int) ([]string, error) {
+			return []string{`</option><script>alert(1)</script>`}, nil
+		}
+		srv := testGroupingServer(t, db)
+
+		req := httptest.NewRequest("GET", "/api/v1/tags/suggest?q=x", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.suggestTagsHandler(w, req)
+
+		body := w.Body.String()
+		assert.NotContains(t, body, "<script>")
+		assert.Contains(t, body, "&lt;script&gt;")
+	})
 }
 
 func TestParseTags(t *testing.T) {
