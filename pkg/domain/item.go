@@ -72,6 +72,8 @@ type ClassifiedItem struct {
 	// ProcessedAt is set when the user marks an item "done", dismissing it from
 	// the inbox. Like and dislike record a preference signal but leave this nil.
 	ProcessedAt *time.Time
+	// AddedAt is the time this item was attached to its beat. Zero when not loaded from beat_members context.
+	AddedAt time.Time
 }
 
 // GetRelevanceScore returns the relevance score or 0 if not classified.

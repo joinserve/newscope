@@ -75,6 +75,7 @@ type BeatRepo interface {
 	MarkViewed(ctx context.Context, beatID int64) error
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	SearchWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
+	ListTitleRevisions(ctx context.Context, beatID int64) ([]domain.TitleRevision, error)
 }
 
 // GroupingRepo defines the grouping repository interface used by the adapter.
@@ -488,4 +489,12 @@ func (r *RepositoryAdapter) SuggestTags(ctx context.Context, prefix string, limi
 		return nil, nil
 	}
 	return r.groupingRepo.SuggestTags(ctx, prefix, limit)
+}
+
+// ListTitleRevisions returns all title revisions for a beat, ordered by generated_at ASC.
+func (r *RepositoryAdapter) ListTitleRevisions(ctx context.Context, beatID int64) ([]domain.TitleRevision, error) {
+	if r.beatRepo == nil {
+		return nil, nil
+	}
+	return r.beatRepo.ListTitleRevisions(ctx, beatID)
 }

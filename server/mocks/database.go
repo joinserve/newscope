@@ -89,6 +89,9 @@ import (
 //			ListGroupingsFunc: func(ctx context.Context) ([]domain.Grouping, error) {
 //				panic("mock out the ListGroupings method")
 //			},
+//			ListTitleRevisionsFunc: func(ctx context.Context, beatID int64) ([]domain.TitleRevision, error) {
+//				panic("mock out the ListTitleRevisions method")
+//			},
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
 //				panic("mock out the MarkViewed method")
 //			},
@@ -200,6 +203,9 @@ type DatabaseMock struct {
 
 	// ListGroupingsFunc mocks the ListGroupings method.
 	ListGroupingsFunc func(ctx context.Context) ([]domain.Grouping, error)
+
+	// ListTitleRevisionsFunc mocks the ListTitleRevisions method.
+	ListTitleRevisionsFunc func(ctx context.Context, beatID int64) ([]domain.TitleRevision, error)
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
@@ -410,6 +416,13 @@ type DatabaseMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
+		// ListTitleRevisions holds details about calls to the ListTitleRevisions method.
+		ListTitleRevisions []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// BeatID is the beatID argument value.
+			BeatID int64
+		}
 		// MarkViewed holds details about calls to the MarkViewed method.
 		MarkViewed []struct {
 			// Ctx is the ctx argument value.
@@ -534,6 +547,7 @@ type DatabaseMock struct {
 	lockGroupingCounts                sync.RWMutex
 	lockListBeats                     sync.RWMutex
 	lockListGroupings                 sync.RWMutex
+	lockListTitleRevisions            sync.RWMutex
 	lockMarkViewed                    sync.RWMutex
 	lockReorderGroupings              sync.RWMutex
 	lockSearchBeatsWithMembers        sync.RWMutex
@@ -1420,6 +1434,42 @@ func (mock *DatabaseMock) ListGroupingsCalls() []struct {
 	mock.lockListGroupings.RLock()
 	calls = mock.calls.ListGroupings
 	mock.lockListGroupings.RUnlock()
+	return calls
+}
+
+// ListTitleRevisions calls ListTitleRevisionsFunc.
+func (mock *DatabaseMock) ListTitleRevisions(ctx context.Context, beatID int64) ([]domain.TitleRevision, error) {
+	if mock.ListTitleRevisionsFunc == nil {
+		panic("DatabaseMock.ListTitleRevisionsFunc: method is nil but Database.ListTitleRevisions was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		BeatID int64
+	}{
+		Ctx:    ctx,
+		BeatID: beatID,
+	}
+	mock.lockListTitleRevisions.Lock()
+	mock.calls.ListTitleRevisions = append(mock.calls.ListTitleRevisions, callInfo)
+	mock.lockListTitleRevisions.Unlock()
+	return mock.ListTitleRevisionsFunc(ctx, beatID)
+}
+
+// ListTitleRevisionsCalls gets all the calls that were made to ListTitleRevisions.
+// Check the length with:
+//
+//	len(mockedDatabase.ListTitleRevisionsCalls())
+func (mock *DatabaseMock) ListTitleRevisionsCalls() []struct {
+	Ctx    context.Context
+	BeatID int64
+} {
+	var calls []struct {
+		Ctx    context.Context
+		BeatID int64
+	}
+	mock.lockListTitleRevisions.RLock()
+	calls = mock.calls.ListTitleRevisions
+	mock.lockListTitleRevisions.RUnlock()
 	return calls
 }
 

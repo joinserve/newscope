@@ -222,6 +222,7 @@
                 {{end}}
             </div>
             <h2 id="page-title" class="page-title">
+                {{block "page-title-content" .}}
                 {{if .PageTitle}}
                 <span class="title-text">{{.PageTitle}}</span>
                 {{else if eq .ActivePage "home"}}主頁
@@ -231,6 +232,7 @@
                 {{else if eq .ActivePage "settings"}}設定
                 {{else if eq .ActivePage "rss-help"}}RSS 說明
                 {{else}}{{.ActivePage}}
+                {{end}}
                 {{end}}
             </h2>
             <div class="header-right"></div>
