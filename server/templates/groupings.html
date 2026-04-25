@@ -98,7 +98,14 @@ document.addEventListener('htmx:afterSettle', initGroupingsDrag);
     </div>
     <div class="form-group">
         <label for="grouping-tags">Tags <small class="text-muted">(comma-separated)</small></label>
-        <input type="text" id="grouping-tags" name="tags" class="form-control" placeholder="e.g. ai, llm">
+        <input type="text" id="grouping-tags" name="tags" class="form-control" placeholder="e.g. ai, llm"
+               list="tag-suggestions-new"
+               hx-get="/api/v1/tags/suggest"
+               hx-vals='js:{"q": this.value.split(",").pop().trim()}'
+               hx-target="#tag-suggestions-new"
+               hx-trigger="keyup changed delay:300ms"
+               hx-swap="innerHTML">
+        <datalist id="tag-suggestions-new"></datalist>
     </div>
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">Create</button>

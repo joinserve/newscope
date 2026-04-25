@@ -107,6 +107,8 @@ type Database interface {
 	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
 	// grouping counts for dropdown
 	GroupingCounts(ctx context.Context) (map[int64]int, error)
+	// tag autocomplete
+	SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error)
 }
 
 // GroupingEngine reassigns beats to groupings based on tag matching.
@@ -473,6 +475,7 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("PUT /groupings/{id}", s.updateGroupingHandler)
 		r.HandleFunc("DELETE /groupings/{id}", s.deleteGroupingHandler)
 		r.HandleFunc("POST /groupings/reorder", s.reorderGroupingsHandler)
+		r.HandleFunc("GET /tags/suggest", s.suggestTagsHandler)
 
 		// beats
 		r.HandleFunc("GET /beats/search", s.beatSearchHandler)

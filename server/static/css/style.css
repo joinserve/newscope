@@ -2198,6 +2198,22 @@ html.dark-theme .moon-icon { opacity: 1; }
     font-size: 0.82rem;
 }
 
+@keyframes grouping-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+}
+
+.grouping-unread-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-danger, #ef4444);
+    vertical-align: middle;
+    margin: 0 3px 1px;
+    animation: grouping-dot-pulse 2s ease-in-out infinite;
+}
+
 .grouping-menu-separator {
     height: 1px;
     background: var(--border-primary);

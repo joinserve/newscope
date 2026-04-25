@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -296,6 +297,57 @@ func (m *mockGroupingEngine) ReassignAll(ctx context.Context, window time.Durati
 }
 
 func (m *mockGroupingEngine) InvalidateCache() {}
+
+func TestSuggestTagsHandler(t *testing.T) {
+	t.Run("returns matching options", func(t *testing.T) {
+		db := baseGroupingDB()
+		db.SuggestTagsFunc = func(ctx context.Context, prefix string, limit int) ([]string, error) {
+			assert.Equal(t, "an", prefix)
+			return []string{"anthropic", "android"}, nil
+		}
+		srv := testGroupingServer(t, db)
+
+		req := httptest.NewRequest("GET", "/api/v1/tags/suggest?q=an", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.suggestTagsHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		body := w.Body.String()
+		assert.Contains(t, body, `<option value="anthropic">`)
+		assert.Contains(t, body, `<option value="android">`)
+	})
+
+	t.Run("empty query returns options", func(t *testing.T) {
+		db := baseGroupingDB()
+		db.SuggestTagsFunc = func(ctx context.Context, prefix string, limit int) ([]string, error) {
+			assert.Empty(t, prefix)
+			return []string{"ai", "llm"}, nil
+		}
+		srv := testGroupingServer(t, db)
+
+		req := httptest.NewRequest("GET", "/api/v1/tags/suggest", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.suggestTagsHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `<option value="ai">`)
+	})
+
+	t.Run("db error returns empty", func(t *testing.T) {
+		db := baseGroupingDB()
+		db.SuggestTagsFunc = func(ctx context.Context, prefix string, limit int) ([]string, error) {
+			return nil, fmt.Errorf("db error")
+		}
+		srv := testGroupingServer(t, db)
+
+		req := httptest.NewRequest("GET", "/api/v1/tags/suggest?q=x", http.NoBody)
+		w := httptest.NewRecorder()
+		srv.suggestTagsHandler(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Empty(t, w.Body.String())
+	})
+}
 
 func TestParseTags(t *testing.T) {
 	tests := []struct {

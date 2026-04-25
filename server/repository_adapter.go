@@ -87,6 +87,7 @@ type GroupingRepo interface {
 	DeleteGrouping(ctx context.Context, id int64) error
 	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
 	GroupingCounts(ctx context.Context) (map[int64]int, error)
+	SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error)
 }
 
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
@@ -479,4 +480,12 @@ func (r *RepositoryAdapter) GroupingCounts(ctx context.Context) (map[int64]int, 
 		return map[int64]int{}, nil // graceful degradation
 	}
 	return r.groupingRepo.GroupingCounts(ctx)
+}
+
+// SuggestTags returns tags from items.topics and items.entities matching the given prefix.
+func (r *RepositoryAdapter) SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if r.groupingRepo == nil {
+		return nil, nil
+	}
+	return r.groupingRepo.SuggestTags(ctx, prefix, limit)
 }

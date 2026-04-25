@@ -37,6 +37,9 @@ import (
 //			ReorderGroupingsFunc: func(ctx context.Context, idsInOrder []int64) error {
 //				panic("mock out the ReorderGroupings method")
 //			},
+//			SuggestTagsFunc: func(ctx context.Context, prefix string, limit int) ([]string, error) {
+//				panic("mock out the SuggestTags method")
+//			},
 //			UpdateGroupingFunc: func(ctx context.Context, g domain.Grouping) error {
 //				panic("mock out the UpdateGrouping method")
 //			},
@@ -67,6 +70,9 @@ type GroupingRepoMock struct {
 
 	// ReorderGroupingsFunc mocks the ReorderGroupings method.
 	ReorderGroupingsFunc func(ctx context.Context, idsInOrder []int64) error
+
+	// SuggestTagsFunc mocks the SuggestTags method.
+	SuggestTagsFunc func(ctx context.Context, prefix string, limit int) ([]string, error)
 
 	// UpdateGroupingFunc mocks the UpdateGrouping method.
 	UpdateGroupingFunc func(ctx context.Context, g domain.Grouping) error
@@ -118,6 +124,15 @@ type GroupingRepoMock struct {
 			// IdsInOrder is the idsInOrder argument value.
 			IdsInOrder []int64
 		}
+		// SuggestTags holds details about calls to the SuggestTags method.
+		SuggestTags []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Prefix is the prefix argument value.
+			Prefix string
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// UpdateGrouping holds details about calls to the UpdateGrouping method.
 		UpdateGrouping []struct {
 			// Ctx is the ctx argument value.
@@ -133,6 +148,7 @@ type GroupingRepoMock struct {
 	lockGroupingCounts    sync.RWMutex
 	lockListGroupings     sync.RWMutex
 	lockReorderGroupings  sync.RWMutex
+	lockSuggestTags       sync.RWMutex
 	lockUpdateGrouping    sync.RWMutex
 }
 
@@ -377,6 +393,46 @@ func (mock *GroupingRepoMock) ReorderGroupingsCalls() []struct {
 	mock.lockReorderGroupings.RLock()
 	calls = mock.calls.ReorderGroupings
 	mock.lockReorderGroupings.RUnlock()
+	return calls
+}
+
+// SuggestTags calls SuggestTagsFunc.
+func (mock *GroupingRepoMock) SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if mock.SuggestTagsFunc == nil {
+		panic("GroupingRepoMock.SuggestTagsFunc: method is nil but GroupingRepo.SuggestTags was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Prefix string
+		Limit  int
+	}{
+		Ctx:    ctx,
+		Prefix: prefix,
+		Limit:  limit,
+	}
+	mock.lockSuggestTags.Lock()
+	mock.calls.SuggestTags = append(mock.calls.SuggestTags, callInfo)
+	mock.lockSuggestTags.Unlock()
+	return mock.SuggestTagsFunc(ctx, prefix, limit)
+}
+
+// SuggestTagsCalls gets all the calls that were made to SuggestTags.
+// Check the length with:
+//
+//	len(mockedGroupingRepo.SuggestTagsCalls())
+func (mock *GroupingRepoMock) SuggestTagsCalls() []struct {
+	Ctx    context.Context
+	Prefix string
+	Limit  int
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Prefix string
+		Limit  int
+	}
+	mock.lockSuggestTags.RLock()
+	calls = mock.calls.SuggestTags
+	mock.lockSuggestTags.RUnlock()
 	return calls
 }
 

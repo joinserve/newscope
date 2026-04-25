@@ -178,11 +178,14 @@ func (r *GroupingRepository) ReorderGroupings(ctx context.Context, idsInOrder []
 // Two queries are used because combining multiple json_each columns in one SQLite query
 // is verbose and error-prone; the Go-side union is cleaner.
 func (r *GroupingRepository) BeatTagSet(ctx context.Context, beatID int64) ([]string, error) {
+	// COALESCE guards against SQL NULL (pre-migration rows) and json_each.value IS NOT
+	// NULL guards against JSON null literals that produce a NULL value row.
 	const baseQuery = `
 		SELECT DISTINCT json_each.value
 		FROM beat_members bm
-		JOIN items i ON i.id = bm.item_id, json_each(%s)
-		WHERE bm.beat_id = ?`
+		JOIN items i ON i.id = bm.item_id, json_each(COALESCE(%s, '[]'))
+		WHERE bm.beat_id = ?
+		  AND json_each.value IS NOT NULL`
 
 	seen := make(map[string]struct{})
 	for _, col := range []string{"i.topics", "i.entities"} {
@@ -258,6 +261,33 @@ func (r *GroupingRepository) GroupingCounts(ctx context.Context) (map[int64]int,
 		out[r.GID] = r.Count
 	}
 	return out, nil
+}
+
+// SuggestTags returns up to limit distinct tags (from items.topics and items.entities)
+// whose lowercase representation starts with the given prefix (case-insensitive).
+// Results are sorted alphabetically.
+func (r *GroupingRepository) SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var tags []string
+	err := r.db.SelectContext(ctx, &tags, `
+		SELECT DISTINCT tag FROM (
+			SELECT json_each.value AS tag
+			FROM items, json_each(COALESCE(topics, '[]'))
+			WHERE json_each.value IS NOT NULL AND length(json_each.value) >= 2
+			UNION
+			SELECT json_each.value AS tag
+			FROM items, json_each(COALESCE(entities, '[]'))
+			WHERE json_each.value IS NOT NULL AND length(json_each.value) >= 2
+		)
+		WHERE lower(tag) LIKE lower(?) || '%'
+		ORDER BY tag
+		LIMIT ?`, prefix, limit)
+	if err != nil {
+		return nil, fmt.Errorf("suggest tags: %w", err)
+	}
+	return tags, nil
 }
 
 // uniqueSlug returns a slug that does not conflict with any existing row

@@ -10,7 +10,15 @@
     </div>
     <div class="form-group">
         <label for="edit-grouping-tags">Tags <small class="text-muted">(comma-separated)</small></label>
-        <input type="text" id="edit-grouping-tags" name="tags" class="form-control" value="{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}">
+        <input type="text" id="edit-grouping-tags" name="tags" class="form-control"
+               value="{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}"
+               list="tag-suggestions-edit"
+               hx-get="/api/v1/tags/suggest"
+               hx-vals='js:{"q": this.value.split(",").pop().trim()}'
+               hx-target="#tag-suggestions-edit"
+               hx-trigger="keyup changed delay:300ms"
+               hx-swap="innerHTML">
+        <datalist id="tag-suggestions-edit"></datalist>
     </div>
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">Save</button>

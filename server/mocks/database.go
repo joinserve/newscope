@@ -107,6 +107,9 @@ import (
 //			SetSettingFunc: func(ctx context.Context, key string, value string) error {
 //				panic("mock out the SetSetting method")
 //			},
+//			SuggestTagsFunc: func(ctx context.Context, prefix string, limit int) ([]string, error) {
+//				panic("mock out the SuggestTags method")
+//			},
 //			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error {
 //				panic("mock out the UpdateFeed method")
 //			},
@@ -215,6 +218,9 @@ type DatabaseMock struct {
 
 	// SetSettingFunc mocks the SetSetting method.
 	SetSettingFunc func(ctx context.Context, key string, value string) error
+
+	// SuggestTagsFunc mocks the SuggestTags method.
+	SuggestTagsFunc func(ctx context.Context, prefix string, limit int) ([]string, error)
 
 	// UpdateFeedFunc mocks the UpdateFeed method.
 	UpdateFeedFunc func(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error
@@ -454,6 +460,15 @@ type DatabaseMock struct {
 			// Value is the value argument value.
 			Value string
 		}
+		// SuggestTags holds details about calls to the SuggestTags method.
+		SuggestTags []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Prefix is the prefix argument value.
+			Prefix string
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// UpdateFeed holds details about calls to the UpdateFeed method.
 		UpdateFeed []struct {
 			// Ctx is the ctx argument value.
@@ -525,6 +540,7 @@ type DatabaseMock struct {
 	lockSearchItems                   sync.RWMutex
 	lockSetFeedback                   sync.RWMutex
 	lockSetSetting                    sync.RWMutex
+	lockSuggestTags                   sync.RWMutex
 	lockUpdateFeed                    sync.RWMutex
 	lockUpdateFeedStatus              sync.RWMutex
 	lockUpdateGrouping                sync.RWMutex
@@ -1636,6 +1652,46 @@ func (mock *DatabaseMock) SetSettingCalls() []struct {
 	mock.lockSetSetting.RLock()
 	calls = mock.calls.SetSetting
 	mock.lockSetSetting.RUnlock()
+	return calls
+}
+
+// SuggestTags calls SuggestTagsFunc.
+func (mock *DatabaseMock) SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if mock.SuggestTagsFunc == nil {
+		panic("DatabaseMock.SuggestTagsFunc: method is nil but Database.SuggestTags was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Prefix string
+		Limit  int
+	}{
+		Ctx:    ctx,
+		Prefix: prefix,
+		Limit:  limit,
+	}
+	mock.lockSuggestTags.Lock()
+	mock.calls.SuggestTags = append(mock.calls.SuggestTags, callInfo)
+	mock.lockSuggestTags.Unlock()
+	return mock.SuggestTagsFunc(ctx, prefix, limit)
+}
+
+// SuggestTagsCalls gets all the calls that were made to SuggestTags.
+// Check the length with:
+//
+//	len(mockedDatabase.SuggestTagsCalls())
+func (mock *DatabaseMock) SuggestTagsCalls() []struct {
+	Ctx    context.Context
+	Prefix string
+	Limit  int
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Prefix string
+		Limit  int
+	}
+	mock.lockSuggestTags.RLock()
+	calls = mock.calls.SuggestTags
+	mock.lockSuggestTags.RUnlock()
 	return calls
 }
 

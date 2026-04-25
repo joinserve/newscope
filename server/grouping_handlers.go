@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -215,6 +216,21 @@ func (s *Server) triggerReassignAll() {
 			log.Printf("[WARN] grouping reassign all: %v", err)
 		}
 	}()
+}
+
+// suggestTagsHandler handles GET /api/v1/tags/suggest?q=<prefix>.
+// Returns HTML <option> elements for a <datalist> autocomplete widget.
+func (s *Server) suggestTagsHandler(w http.ResponseWriter, r *http.Request) {
+	prefix := strings.TrimSpace(r.URL.Query().Get("q"))
+	tags, err := s.db.SuggestTags(r.Context(), prefix, 50)
+	if err != nil {
+		log.Printf("[WARN] suggest tags: %v", err)
+		tags = nil
+	}
+	w.Header().Set("Content-Type", "text/html")
+	for _, t := range tags {
+		fmt.Fprintf(w, "<option value=%q>\n", t)
+	}
 }
 
 // parseTags splits a comma-separated tag string into a slice; ignores blank entries.

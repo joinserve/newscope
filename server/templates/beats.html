@@ -22,7 +22,11 @@
                 </li>
                 {{range .Groupings}}
                 <li class="grouping-menu-item{{if and $.CurrentGrouping (eq $.CurrentGrouping.ID .ID)}} grouping-menu-active{{end}}">
-                    <a href="/beats?group={{.Slug}}">{{.Name}} <span class="grouping-menu-count">({{index $.GroupingCounts .ID}})</span></a>
+                    <a href="/beats?group={{.Slug}}">
+                        {{.Name}}
+                        {{if gt (index $.GroupingCounts .ID) 0}}<span class="grouping-unread-dot" aria-hidden="true"></span>{{end}}
+                        <span class="grouping-menu-count">({{index $.GroupingCounts .ID}})</span>
+                    </a>
                 </li>
                 {{end}}
                 <li class="grouping-menu-separator"></li>

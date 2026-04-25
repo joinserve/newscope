@@ -425,3 +425,48 @@ func TestItemRepository_BeatForItem(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, ok)
 }
+
+func TestGroupingRepository_SuggestTags(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	feed := createTestFeed(t, repos, "test-feed")
+
+	// seed items with topics and entities
+	_, err := repos.DB.ExecContext(ctx, `
+		INSERT INTO items (feed_id, guid, title, link, published, topics, entities, relevance_score, classified_at)
+		VALUES
+			(?, 'g1', 'T1', 'http://a', datetime('now'), '["anthropic","ai","llm"]', '["claude","openai"]', 8.0, datetime('now')),
+			(?, 'g2', 'T2', 'http://b', datetime('now'), '["security","privacy"]', '["apple","google"]', 7.0, datetime('now'))`,
+		feed.ID, feed.ID)
+	require.NoError(t, err)
+
+	t.Run("prefix match", func(t *testing.T) {
+		tags, err := repos.Grouping.SuggestTags(ctx, "an", 50)
+		require.NoError(t, err)
+		assert.Contains(t, tags, "anthropic")
+		assert.NotContains(t, tags, "ai") // "ai" doesn't start with "an"
+	})
+
+	t.Run("empty prefix returns all", func(t *testing.T) {
+		tags, err := repos.Grouping.SuggestTags(ctx, "", 100)
+		require.NoError(t, err)
+		assert.Contains(t, tags, "anthropic")
+		assert.Contains(t, tags, "claude")
+		assert.Contains(t, tags, "security")
+		assert.Contains(t, tags, "apple")
+	})
+
+	t.Run("case insensitive", func(t *testing.T) {
+		tags, err := repos.Grouping.SuggestTags(ctx, "ANT", 50)
+		require.NoError(t, err)
+		assert.Contains(t, tags, "anthropic")
+	})
+
+	t.Run("limit respected", func(t *testing.T) {
+		tags, err := repos.Grouping.SuggestTags(ctx, "", 2)
+		require.NoError(t, err)
+		assert.Len(t, tags, 2)
+	})
+}
