@@ -2113,6 +2113,72 @@ func TestBeatDetailHandler_WritesLastViewed(t *testing.T) {
 	assert.True(t, markViewedCalled, "MarkViewed should be called before rendering")
 }
 
+func TestBeatViewHandler_MarksViewed(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	called := int64(0)
+	database := &mocks.DatabaseMock{
+		MarkViewedFunc: func(ctx context.Context, beatID int64) error {
+			called = beatID
+			return nil
+		},
+	}
+
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+	req := httptest.NewRequest("POST", "/api/v1/beats/42/view", http.NoBody)
+	req.SetPathValue("id", "42")
+	w := httptest.NewRecorder()
+	srv.beatViewHandler(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, int64(42), called, "MarkViewed must be invoked with the path id")
+}
+
+func TestBeatViewHandler_BadID(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+	called := false
+	database := &mocks.DatabaseMock{
+		MarkViewedFunc: func(ctx context.Context, beatID int64) error {
+			called = true
+			return nil
+		},
+	}
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+	req := httptest.NewRequest("POST", "/api/v1/beats/abc/view", http.NoBody)
+	req.SetPathValue("id", "abc")
+	w := httptest.NewRecorder()
+	srv.beatViewHandler(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.False(t, called, "MarkViewed must not be invoked for an unparseable id")
+}
+
 func TestBeatsHandler_TopicFilter(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
