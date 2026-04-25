@@ -223,6 +223,12 @@ body {
     flex: 1;
 }
 
+/* allow dropdown menu to overflow when page-title hosts the grouping switcher */
+.page-title:has(.grouping-switcher) {
+    overflow: visible;
+    white-space: normal;
+}
+
 .title-text {
     display: inline-block;
     white-space: nowrap;
