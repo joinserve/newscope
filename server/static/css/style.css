@@ -2266,16 +2266,15 @@ main.container {
 }
 
 .groupings-body {
-    display: grid;
-    grid-template-columns: 1fr 380px;
-    gap: 1.5rem;
-    align-items: start;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
     padding: 0 1.5rem 1.5rem;
 }
 
 @media (max-width: 768px) {
     .groupings-body {
-        grid-template-columns: 1fr;
+        gap: 1.5rem;
     }
 }
 
@@ -2352,6 +2351,11 @@ main.container {
     font-size: 0.9375rem;
     font-weight: 600;
     color: var(--text-primary);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
 }
 
 .grouping-slug {
@@ -2361,7 +2365,11 @@ main.container {
     background-color: var(--bg-tertiary);
     padding: 1px 5px;
     border-radius: 4px;
-    width: fit-content;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
 }
 
 .grouping-tags {

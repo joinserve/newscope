@@ -1501,7 +1501,7 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	s.renderBeatsListHTMX(w, beats, "Nothing here yet.", data)
 	if topic != "" {
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' hx-get='/beats' hx-target='main.container' hx-push-url='true' hx-swap='innerHTML' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
 	} else {
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'>Beats</h2>")
 		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'></div>")
@@ -1593,7 +1593,7 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 		// OOB updates
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' hx-get='/beats' hx-target='main.container' hx-push-url='true' hx-swap='innerHTML' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
 		return
 	}
 

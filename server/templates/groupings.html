@@ -25,7 +25,8 @@
 <script>
 function initGroupingsDrag() {
     const list = document.getElementById('groupings-list');
-    if (!list) return;
+    if (!list || list.dataset.dragInitialized) return;
+    list.dataset.dragInitialized = 'true';
 
     let dragged = null;
 
@@ -36,9 +37,10 @@ function initGroupingsDrag() {
             e.dataTransfer.effectAllowed = 'move';
         });
         row.addEventListener('dragend', () => {
+            if (!dragged) return;
             row.classList.remove('dragging');
             dragged = null;
-            sendReorder();
+            setTimeout(sendReorder, 50);
         });
         row.addEventListener('dragover', e => {
             e.preventDefault();
@@ -51,12 +53,18 @@ function initGroupingsDrag() {
                 row.before(dragged);
             }
         });
+        row.addEventListener('drop', e => {
+            e.preventDefault();
+        });
     });
 }
 
+let isReordering = false;
 function sendReorder() {
+    if (isReordering) return;
     const list = document.getElementById('groupings-list');
     if (!list) return;
+    isReordering = true;
     const ids = Array.from(list.querySelectorAll('.grouping-row[data-id]'))
         .map(r => parseInt(r.dataset.id, 10));
     fetch('/api/v1/groupings/reorder', {
@@ -67,6 +75,8 @@ function sendReorder() {
         const current = document.getElementById('groupings-list');
         if (current) current.outerHTML = html;
         initGroupingsDrag();
+    }).finally(() => {
+        isReordering = false;
     });
 }
 

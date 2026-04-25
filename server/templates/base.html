@@ -32,7 +32,7 @@
         })();
     </script>
 </head>
-<body>
+<body hx-history="false">
     <aside class="sidebar">
         <div class="sidebar-top">
             <a href="/" class="logo-link"><img src="/static/img/logo.svg" alt="Newscope Logo" class="logo"></a>
@@ -214,7 +214,7 @@
         <header class="page-header">
             <div id="header-back" class="header-left">
                 {{if .BackURL}}
-                <a href="{{.BackURL}}" class="back-button" hx-get="{{.BackURL}}" hx-target="main.container" hx-push-url="true" hx-swap="innerHTML" title="返回">
+                <a href="{{.BackURL}}" class="back-button" title="返回">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="m15 18-6-6 6-6"/>
                     </svg>
