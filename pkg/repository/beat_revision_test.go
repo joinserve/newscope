@@ -165,3 +165,53 @@ func TestBeatRepository_AppendTitleRevision_IntegrationWithSaveCanonical(t *test
 	require.Len(t, revisions, 1)
 	assert.Equal(t, "Canon Title", revisions[0].Title)
 }
+
+func TestMigrateBackfillTitleRevisions(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	// create two beats, each with a canonical title (simulating pre-existing data)
+	beatA := beatWith2Members(t, repos, mkItem, pub)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatA, domain.BeatCanonical{
+		Title: "Beat A Title", Summary: "Beat A Summary",
+	}))
+
+	// beatB uses an orthogonal vector; threshold=0.9 ensures it seeds a new beat
+	idB1 := mkItem(pub, "b1", []float32{0, 1, 0})
+	idB2 := mkItem(pub.Add(time.Minute), "b2", []float32{0, 1, 0})
+	beatB, _, _ := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: idB1, Vector: []float32{0, 1, 0}, PublishedAt: pub}, 0.9, 48*time.Hour, 20)
+	repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: idB2, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Minute)}, 0.9, 48*time.Hour, 20)
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatB, domain.BeatCanonical{
+		Title: "Beat B Title", Summary: "Beat B Summary",
+	}))
+
+	// ensure no revisions exist yet (simulates state before this migration was added)
+	var count int
+	require.NoError(t, repos.DB.GetContext(ctx, &count, `SELECT COUNT(*) FROM beat_title_revisions`))
+	assert.Equal(t, 0, count, "precondition: no revisions")
+
+	// run the backfill
+	require.NoError(t, migrateBackfillTitleRevisions(ctx, repos.DB))
+
+	// each beat should have exactly one revision row
+	revsA, err := repos.Beat.ListTitleRevisions(ctx, beatA)
+	require.NoError(t, err)
+	require.Len(t, revsA, 1)
+	assert.Equal(t, "Beat A Title", revsA[0].Title)
+	assert.Equal(t, "Beat A Summary", revsA[0].Summary)
+	assert.False(t, revsA[0].GeneratedAt.IsZero())
+
+	revsB, err := repos.Beat.ListTitleRevisions(ctx, beatB)
+	require.NoError(t, err)
+	require.Len(t, revsB, 1)
+	assert.Equal(t, "Beat B Title", revsB[0].Title)
+
+	// running again must be a no-op (idempotent)
+	require.NoError(t, migrateBackfillTitleRevisions(ctx, repos.DB))
+	require.NoError(t, repos.DB.GetContext(ctx, &count, `SELECT COUNT(*) FROM beat_title_revisions`))
+	assert.Equal(t, 2, count, "second run must not insert duplicate rows")
+}

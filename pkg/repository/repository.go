@@ -139,6 +139,9 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 	if err := migrateBackfillBeatsFTS(ctx, db); err != nil {
 		return fmt.Errorf("migrate beats_fts backfill: %w", err)
 	}
+	if err := migrateBackfillTitleRevisions(ctx, db); err != nil {
+		return fmt.Errorf("migrate title revisions backfill: %w", err)
+	}
 
 	return nil
 }
@@ -285,6 +288,35 @@ func migrateAddItemEntities(ctx context.Context, db *sqlx.DB) error {
 			`ALTER TABLE items ADD COLUMN entities_extracted_at DATETIME`); err != nil {
 			return fmt.Errorf("add entities_extracted_at column: %w", err)
 		}
+	}
+	return nil
+}
+
+// migrateBackfillTitleRevisions inserts one revision row per beat that already
+// has a canonical title but no revision row yet. It is idempotent: the
+// NOT IN sub-select guarantees at most one row is inserted per beat per run.
+// Runs as a post-schema migration so beat_title_revisions already exists.
+func migrateBackfillTitleRevisions(ctx context.Context, db *sqlx.DB) error {
+	var pending int
+	if err := db.GetContext(ctx, &pending, `
+		SELECT COUNT(*) FROM beats
+		WHERE canonical_title IS NOT NULL
+		  AND id NOT IN (SELECT DISTINCT beat_id FROM beat_title_revisions)`); err != nil {
+		return fmt.Errorf("count beats pending revision backfill: %w", err)
+	}
+	if pending == 0 {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO beat_title_revisions (beat_id, title, summary, generated_at)
+		SELECT id,
+		       canonical_title,
+		       COALESCE(canonical_summary, ''),
+		       COALESCE(canonical_merged_at, first_seen_at)
+		FROM beats
+		WHERE canonical_title IS NOT NULL
+		  AND id NOT IN (SELECT DISTINCT beat_id FROM beat_title_revisions)`); err != nil {
+		return fmt.Errorf("backfill title revisions: %w", err)
 	}
 	return nil
 }
