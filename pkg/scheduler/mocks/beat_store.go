@@ -17,6 +17,9 @@ import (
 //
 //		// make and configure a mocked scheduler.BeatStore
 //		mockedBeatStore := &BeatStoreMock{
+//			AppendTitleRevisionFunc: func(ctx context.Context, beatID int64, title string, summary string) error {
+//				panic("mock out the AppendTitleRevision method")
+//			},
 //			AttachOrSeedFunc: func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, bool, error) {
 //				panic("mock out the AttachOrSeed method")
 //			},
@@ -36,6 +39,9 @@ import (
 //
 //	}
 type BeatStoreMock struct {
+	// AppendTitleRevisionFunc mocks the AppendTitleRevision method.
+	AppendTitleRevisionFunc func(ctx context.Context, beatID int64, title string, summary string) error
+
 	// AttachOrSeedFunc mocks the AttachOrSeed method.
 	AttachOrSeedFunc func(ctx context.Context, item domain.BeatCandidate, threshold float64, window time.Duration, maxMembers int) (int64, bool, error)
 
@@ -50,6 +56,17 @@ type BeatStoreMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// AppendTitleRevision holds details about calls to the AppendTitleRevision method.
+		AppendTitleRevision []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// BeatID is the beatID argument value.
+			BeatID int64
+			// Title is the title argument value.
+			Title string
+			// Summary is the summary argument value.
+			Summary string
+		}
 		// AttachOrSeed holds details about calls to the AttachOrSeed method.
 		AttachOrSeed []struct {
 			// Ctx is the ctx argument value.
@@ -87,10 +104,55 @@ type BeatStoreMock struct {
 			C domain.BeatCanonical
 		}
 	}
-	lockAttachOrSeed     sync.RWMutex
-	lockGetUnbeatItems   sync.RWMutex
-	lockListPendingMerge sync.RWMutex
-	lockSaveCanonical    sync.RWMutex
+	lockAppendTitleRevision sync.RWMutex
+	lockAttachOrSeed        sync.RWMutex
+	lockGetUnbeatItems      sync.RWMutex
+	lockListPendingMerge    sync.RWMutex
+	lockSaveCanonical       sync.RWMutex
+}
+
+// AppendTitleRevision calls AppendTitleRevisionFunc.
+func (mock *BeatStoreMock) AppendTitleRevision(ctx context.Context, beatID int64, title string, summary string) error {
+	if mock.AppendTitleRevisionFunc == nil {
+		panic("BeatStoreMock.AppendTitleRevisionFunc: method is nil but BeatStore.AppendTitleRevision was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		BeatID  int64
+		Title   string
+		Summary string
+	}{
+		Ctx:     ctx,
+		BeatID:  beatID,
+		Title:   title,
+		Summary: summary,
+	}
+	mock.lockAppendTitleRevision.Lock()
+	mock.calls.AppendTitleRevision = append(mock.calls.AppendTitleRevision, callInfo)
+	mock.lockAppendTitleRevision.Unlock()
+	return mock.AppendTitleRevisionFunc(ctx, beatID, title, summary)
+}
+
+// AppendTitleRevisionCalls gets all the calls that were made to AppendTitleRevision.
+// Check the length with:
+//
+//	len(mockedBeatStore.AppendTitleRevisionCalls())
+func (mock *BeatStoreMock) AppendTitleRevisionCalls() []struct {
+	Ctx     context.Context
+	BeatID  int64
+	Title   string
+	Summary string
+} {
+	var calls []struct {
+		Ctx     context.Context
+		BeatID  int64
+		Title   string
+		Summary string
+	}
+	mock.lockAppendTitleRevision.RLock()
+	calls = mock.calls.AppendTitleRevision
+	mock.lockAppendTitleRevision.RUnlock()
+	return calls
 }
 
 // AttachOrSeed calls AttachOrSeedFunc.

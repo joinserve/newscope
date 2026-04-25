@@ -360,6 +360,61 @@ func (r *BeatRepository) SaveCanonical(ctx context.Context, beatID int64, c doma
 	return nil
 }
 
+// AppendTitleRevision adds a new title/summary snapshot for a beat.
+// Idempotent on (beat_id, title, summary): if the most recent revision
+// matches exactly, no row is inserted.
+func (r *BeatRepository) AppendTitleRevision(ctx context.Context, beatID int64, title, summary string) error {
+	// check if the most recent revision is identical
+	var last struct {
+		Title   string `db:"title"`
+		Summary string `db:"summary"`
+	}
+	err := r.db.GetContext(ctx, &last,
+		`SELECT title, summary FROM beat_title_revisions
+		 WHERE beat_id = ? ORDER BY generated_at DESC LIMIT 1`, beatID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("check last revision: %w", err)
+	}
+	if err == nil && last.Title == title && last.Summary == summary {
+		return nil // identical — skip
+	}
+
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO beat_title_revisions (beat_id, title, summary) VALUES (?, ?, ?)`,
+		beatID, title, summary)
+	if err != nil {
+		return fmt.Errorf("append title revision: %w", err)
+	}
+	return nil
+}
+
+// ListTitleRevisions returns all title revisions for a beat, ordered by generated_at ASC.
+func (r *BeatRepository) ListTitleRevisions(ctx context.Context, beatID int64) ([]domain.TitleRevision, error) {
+	var rows []struct {
+		ID          int64     `db:"id"`
+		BeatID      int64     `db:"beat_id"`
+		Title       string    `db:"title"`
+		Summary     string    `db:"summary"`
+		GeneratedAt time.Time `db:"generated_at"`
+	}
+	if err := r.db.SelectContext(ctx, &rows,
+		`SELECT id, beat_id, title, summary, generated_at
+		 FROM beat_title_revisions WHERE beat_id = ? ORDER BY generated_at ASC`, beatID); err != nil {
+		return nil, fmt.Errorf("list title revisions: %w", err)
+	}
+	out := make([]domain.TitleRevision, len(rows))
+	for i, row := range rows {
+		out[i] = domain.TitleRevision{
+			ID:          row.ID,
+			BeatID:      row.BeatID,
+			Title:       row.Title,
+			Summary:     row.Summary,
+			GeneratedAt: row.GeneratedAt,
+		}
+	}
+	return out, nil
+}
+
 // SetFeedback records the user's per-beat signal. feedback must be "like",
 // "dislike", or "" (empty clears the signal and nulls feedback_at).
 // This signal is independent from per-item feedback and is never propagated

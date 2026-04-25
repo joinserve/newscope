@@ -25,6 +25,15 @@ type BeatCanonical struct {
 	Summary string
 }
 
+// TitleRevision is a snapshot of a beat's canonical title and summary at a point in time.
+type TitleRevision struct {
+	ID          int64
+	BeatID      int64
+	Title       string
+	Summary     string
+	GeneratedAt time.Time
+}
+
 // BeatView is the read-side representation of a beat, surfaced to HTTP handlers
 // that don't need member data (search JSON, programmatic callers).
 type BeatView struct {
