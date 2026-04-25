@@ -109,6 +109,8 @@ type Database interface {
 	GroupingCounts(ctx context.Context) (map[int64]int, error)
 	// tag autocomplete
 	SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error)
+	// timeline
+	ListTitleRevisions(ctx context.Context, beatID int64) ([]domain.TitleRevision, error)
 }
 
 // GroupingEngine reassigns beats to groupings based on tag matching.
@@ -292,6 +294,27 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			cache.mu.RLock()
 			defer cache.mu.RUnlock()
 			return b.PrimaryTopicWithCounts(cache.tags)
+		},
+		"formatRelativeDay": func(t time.Time) string {
+			now := time.Now()
+			loc := now.Location()
+			t = t.In(loc)
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+			yesterday := today.AddDate(0, 0, -1)
+			d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+			switch {
+			case !d.Before(today):
+				return "今天 " + t.Format("15:04")
+			case !d.Before(yesterday):
+				return "昨天 " + t.Format("15:04")
+			case now.Sub(t) < 7*24*time.Hour:
+				return t.Format("Mon 15:04")
+			default:
+				return t.Format("Jan 2 15:04")
+			}
+		},
+		"formatTime": func(t time.Time) string {
+			return t.In(time.Now().Location()).Format("15:04")
 		},
 	}
 

@@ -2532,3 +2532,101 @@ main.container {
 .grouping-form-section form h3 {
     margin-bottom: 1rem;
 }
+
+/* beat timeline */
+.beat-timeline {
+    padding: 1.5rem 0;
+}
+
+.timeline-heading {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary, #6b7280);
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.timeline-segment {
+    position: relative;
+    padding-left: 1.25rem;
+    padding-bottom: 1.5rem;
+    border-left: 2px solid var(--border, #e5e7eb);
+}
+
+.timeline-segment.current {
+    border-left-color: var(--accent, #6366f1);
+}
+
+.timeline-segment.current .revision-title {
+    font-weight: 700;
+}
+
+.timeline-node {
+    margin-bottom: 0.5rem;
+}
+
+.timeline-node time {
+    font-size: 0.78rem;
+    color: var(--text-secondary, #6b7280);
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+.revision-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text, #111827);
+}
+
+.badge-current {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 0.1rem 0.4rem;
+    border-radius: 9999px;
+    background: var(--accent, #6366f1);
+    color: #fff;
+    vertical-align: middle;
+    margin-left: 0.4rem;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.timeline-members {
+    padding-left: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.timeline-member {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.timeline-member time {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary, #6b7280);
+    min-width: 2.8rem;
+}
+
+.timeline-member .feed-name {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary, #6b7280);
+}
+
+.timeline-member a {
+    color: var(--text, #111827);
+    text-decoration: none;
+}
+
+.timeline-member a:hover {
+    text-decoration: underline;
+}

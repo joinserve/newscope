@@ -47,6 +47,18 @@ type BeatView struct {
 	MemberCount      int
 }
 
+// TimelineSegment groups a title revision with the members that arrived during its period.
+type TimelineSegment struct {
+	Revision  TitleRevision
+	Members   []ClassifiedItem
+	IsCurrent bool
+}
+
+// BeatTimeline holds the timeline segments for a beat's detail page.
+type BeatTimeline struct {
+	Segments []TimelineSegment // ordered newest first
+}
+
 // BeatWithMembers is the UI-side representation of a beat with its member
 // items eager-loaded, used by inbox cards and detail pages.
 type BeatWithMembers struct {

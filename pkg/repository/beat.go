@@ -800,6 +800,7 @@ func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []in
 	query, args, err := sqlx.In(`
 		SELECT
 			bm.beat_id AS bm_beat_id,
+			bm.added_at AS bm_added_at,
 			i.*,
 			f.title AS feed_title,
 			f.url AS feed_url,
@@ -815,7 +816,8 @@ func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []in
 	query = r.db.Rebind(query)
 
 	type memberRow struct {
-		BeatID int64 `db:"bm_beat_id"`
+		BeatID  int64     `db:"bm_beat_id"`
+		AddedAt time.Time `db:"bm_added_at"`
 		itemWithFeedSQL
 	}
 	var rows []memberRow
@@ -828,6 +830,7 @@ func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []in
 	out := make(map[int64][]domain.ClassifiedItem)
 	for _, row := range rows {
 		ci := cr.toDomainClassifiedItem(&row.itemWithFeedSQL)
+		ci.AddedAt = row.AddedAt
 		out[row.BeatID] = append(out[row.BeatID], *ci)
 	}
 	return out, nil

@@ -1600,6 +1600,12 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	revisions, err := s.db.ListTitleRevisions(ctx, id)
+	if err != nil {
+		log.Printf("[WARN] list title revisions beat=%d: %v", id, err)
+	}
+	timeline := buildBeatTimeline(revisions, beat.Members)
+
 	pageTitle := ""
 	if beat.CanonicalTitle != nil {
 		pageTitle = *beat.CanonicalTitle
@@ -1609,14 +1615,16 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		commonPageData
-		Beat *domain.BeatWithMembers
+		Beat     *domain.BeatWithMembers
+		Timeline domain.BeatTimeline
 	}{
 		commonPageData: commonPageData{
 			ActivePage: "beats",
 			BackURL:    "/beats",
 			PageTitle:  pageTitle,
 		},
-		Beat: &beat,
+		Beat:     &beat,
+		Timeline: timeline,
 	}
 
 	if r.Header.Get("HX-Request") == "true" {
@@ -1720,6 +1728,59 @@ func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
 		emptyMsg = "No beats found."
 	}
 	s.renderBeatsListHTMX(w, beats, emptyMsg, nil)
+}
+
+// buildBeatTimeline buckets members into timeline segments based on title revisions.
+// members earlier than the first revision are placed in the first segment.
+// segments are returned newest first.
+func buildBeatTimeline(revisions []domain.TitleRevision, members []domain.ClassifiedItem) domain.BeatTimeline {
+	if len(revisions) == 0 {
+		// no revisions yet — return a single empty segment with all members
+		if len(members) == 0 {
+			return domain.BeatTimeline{}
+		}
+		seg := domain.TitleRevision{GeneratedAt: time.Time{}}
+		return domain.BeatTimeline{Segments: []domain.TimelineSegment{{
+			Revision:  seg,
+			Members:   members,
+			IsCurrent: true,
+		}}}
+	}
+
+	segments := make([]domain.TimelineSegment, len(revisions))
+	for i, rev := range revisions {
+		var segMembers []domain.ClassifiedItem
+		var nextStart time.Time
+		if i+1 < len(revisions) {
+			nextStart = revisions[i+1].GeneratedAt
+		}
+		for _, m := range members {
+			addedAt := m.AddedAt
+			// members before first revision go into first segment
+			if i == 0 && addedAt.Before(rev.GeneratedAt) {
+				segMembers = append(segMembers, m)
+				continue
+			}
+			if addedAt.Before(rev.GeneratedAt) {
+				continue
+			}
+			if !nextStart.IsZero() && !addedAt.Before(nextStart) {
+				continue
+			}
+			segMembers = append(segMembers, m)
+		}
+		segments[i] = domain.TimelineSegment{
+			Revision:  rev,
+			Members:   segMembers,
+			IsCurrent: i == len(revisions)-1,
+		}
+	}
+
+	// reverse so newest is first
+	for i, j := 0, len(segments)-1; i < j; i, j = i+1, j-1 {
+		segments[i], segments[j] = segments[j], segments[i]
+	}
+	return domain.BeatTimeline{Segments: segments}
 }
 
 // beatFeedbackHandler handles feedback (like/dislike/clear) for a beat.

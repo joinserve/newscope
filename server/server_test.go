@@ -54,6 +54,11 @@ func stubBigTags(database Database) {
 			return domain.Grouping{}, fmt.Errorf("not found")
 		}
 	}
+	if m.ListTitleRevisionsFunc == nil {
+		m.ListTitleRevisionsFunc = func(ctx context.Context, beatID int64) ([]domain.TitleRevision, error) {
+			return nil, nil
+		}
+	}
 }
 
 func TestServer_New(t *testing.T) {
