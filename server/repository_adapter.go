@@ -100,7 +100,8 @@ func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 	}
 }
 
-// NewRepositoryAdapterWithInterfaces creates a new repository adapter with interface dependencies for testing
+// NewRepositoryAdapterWithInterfaces creates a new repository adapter with interface dependencies for testing.
+// groupingRepo may be nil; grouping methods will return an error if called on a nil repo.
 func NewRepositoryAdapterWithInterfaces(feedRepo FeedRepo, itemRepo ItemRepo, classificationRepo ClassificationRepo, settingRepo SettingRepo, beatRepo BeatRepo) *RepositoryAdapter {
 	return &RepositoryAdapter{
 		feedRepo:           feedRepo,
@@ -416,35 +417,56 @@ func (r *RepositoryAdapter) SearchBeatsWithMembers(ctx context.Context, query st
 
 // ListGroupings returns all user-defined groupings ordered by display_order.
 func (r *RepositoryAdapter) ListGroupings(ctx context.Context) ([]domain.Grouping, error) {
+	if r.groupingRepo == nil {
+		return nil, fmt.Errorf("grouping repository not configured")
+	}
 	return r.groupingRepo.ListGroupings(ctx)
 }
 
 // GetGrouping returns a grouping by its id.
 func (r *RepositoryAdapter) GetGrouping(ctx context.Context, id int64) (domain.Grouping, error) {
+	if r.groupingRepo == nil {
+		return domain.Grouping{}, fmt.Errorf("grouping repository not configured")
+	}
 	return r.groupingRepo.GetGrouping(ctx, id)
 }
 
 // GetGroupingBySlug returns a grouping by its URL slug.
 func (r *RepositoryAdapter) GetGroupingBySlug(ctx context.Context, slug string) (domain.Grouping, error) {
+	if r.groupingRepo == nil {
+		return domain.Grouping{}, fmt.Errorf("grouping repository not configured")
+	}
 	return r.groupingRepo.GetGroupingBySlug(ctx, slug)
 }
 
 // CreateGrouping inserts a new grouping and returns its id.
 func (r *RepositoryAdapter) CreateGrouping(ctx context.Context, g domain.Grouping) (int64, error) {
+	if r.groupingRepo == nil {
+		return 0, fmt.Errorf("grouping repository not configured")
+	}
 	return r.groupingRepo.CreateGrouping(ctx, g)
 }
 
 // UpdateGrouping updates name and tags of an existing grouping.
 func (r *RepositoryAdapter) UpdateGrouping(ctx context.Context, g domain.Grouping) error {
+	if r.groupingRepo == nil {
+		return fmt.Errorf("grouping repository not configured")
+	}
 	return r.groupingRepo.UpdateGrouping(ctx, g)
 }
 
 // DeleteGrouping removes a grouping.
 func (r *RepositoryAdapter) DeleteGrouping(ctx context.Context, id int64) error {
+	if r.groupingRepo == nil {
+		return fmt.Errorf("grouping repository not configured")
+	}
 	return r.groupingRepo.DeleteGrouping(ctx, id)
 }
 
 // ReorderGroupings sets display_order for the provided id list in order.
 func (r *RepositoryAdapter) ReorderGroupings(ctx context.Context, idsInOrder []int64) error {
+	if r.groupingRepo == nil {
+		return fmt.Errorf("grouping repository not configured")
+	}
 	return r.groupingRepo.ReorderGroupings(ctx, idsInOrder)
 }

@@ -68,9 +68,11 @@ func (s *Server) createGroupingHandler(w http.ResponseWriter, r *http.Request) {
 	groupings, err := s.db.ListGroupings(ctx)
 	if err != nil {
 		log.Printf("[ERROR] list groupings after create: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to reload groupings", err)
+		return
 	}
 
-	log.Printf("[INFO] created grouping id=%d name=%q", id, name) //nolint:gosec // %q already quotes/escapes the value
+	log.Printf("[INFO] created grouping id=%d name=%q", id, name) //nolint:gosec // %q quotes the value
 	s.renderGroupingsList(w, r, groupings)
 }
 
@@ -105,6 +107,8 @@ func (s *Server) updateGroupingHandler(w http.ResponseWriter, r *http.Request) {
 	groupings, err := s.db.ListGroupings(ctx)
 	if err != nil {
 		log.Printf("[ERROR] list groupings after update: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to reload groupings", err)
+		return
 	}
 
 	s.renderGroupingsList(w, r, groupings)
@@ -129,6 +133,8 @@ func (s *Server) deleteGroupingHandler(w http.ResponseWriter, r *http.Request) {
 	groupings, err := s.db.ListGroupings(ctx)
 	if err != nil {
 		log.Printf("[ERROR] list groupings after delete: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to reload groupings", err)
+		return
 	}
 
 	s.renderGroupingsList(w, r, groupings)
@@ -155,6 +161,8 @@ func (s *Server) reorderGroupingsHandler(w http.ResponseWriter, r *http.Request)
 	groupings, err := s.db.ListGroupings(ctx)
 	if err != nil {
 		log.Printf("[ERROR] list groupings after reorder: %v", err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to reload groupings", err)
+		return
 	}
 
 	s.renderGroupingsList(w, r, groupings)

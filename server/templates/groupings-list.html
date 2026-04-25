@@ -24,8 +24,7 @@
 {{end}}
 
 {{define "groupings-list.html"}}
-<div id="groupings-list" class="groupings-list"
-     hx-on:htmx:after-settle="initGroupingsDrag()">
+<div id="groupings-list" class="groupings-list">
     {{range .}}
     <div class="grouping-row" data-id="{{.ID}}" draggable="true">
         <div class="grouping-drag-handle" aria-label="drag to reorder">
@@ -41,7 +40,7 @@
 
         <div class="grouping-info">
             <span class="grouping-name">{{.Name}}</span>
-            <span class="grouping-slug text-muted">/beats?group={{.Slug}}</span>
+            <code class="grouping-slug">{{.Slug}}</code>
             <div class="grouping-tags">
                 {{range .Tags}}<span class="tag-chip">{{.}}</span>{{end}}
             </div>

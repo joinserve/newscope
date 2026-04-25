@@ -6,7 +6,6 @@
 <div class="groupings-page">
     <div class="groupings-header">
         <p class="text-muted">Define named beat streams. Beats whose members include all tags in a grouping are assigned to it.</p>
-        <a href="/settings" class="btn btn-secondary btn-sm">← Back to Settings</a>
     </div>
 
     <div class="groupings-body">
@@ -60,11 +59,14 @@ function sendReorder() {
     if (!list) return;
     const ids = Array.from(list.querySelectorAll('.grouping-row[data-id]'))
         .map(r => parseInt(r.dataset.id, 10));
-    htmx.ajax('POST', '/api/v1/groupings/reorder', {
-        target: '#groupings-list',
-        swap: 'outerHTML',
+    fetch('/api/v1/groupings/reorder', {
+        method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        values: JSON.stringify({ids})
+        body: JSON.stringify({ids})
+    }).then(r => r.text()).then(html => {
+        const current = document.getElementById('groupings-list');
+        if (current) current.outerHTML = html;
+        initGroupingsDrag();
     });
 }
 
@@ -78,7 +80,7 @@ document.addEventListener('htmx:afterSettle', initGroupingsDrag);
       hx-post="/api/v1/groupings"
       hx-target="#groupings-list"
       hx-swap="outerHTML"
-      hx-on:htmx:after-request="this.reset()">
+      hx-on::after-request="if(event.detail.successful) this.reset()">
     <h3>New Grouping</h3>
     <div class="form-group">
         <label for="grouping-name">Name</label>
@@ -88,6 +90,8 @@ document.addEventListener('htmx:afterSettle', initGroupingsDrag);
         <label for="grouping-tags">Tags <small class="text-muted">(comma-separated)</small></label>
         <input type="text" id="grouping-tags" name="tags" class="form-control" placeholder="e.g. ai, llm">
     </div>
-    <button type="submit" class="btn btn-primary">Create</button>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Create</button>
+    </div>
 </form>
 {{end}}
