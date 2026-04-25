@@ -241,6 +241,62 @@ func TestGroupingEditFormHandler(t *testing.T) {
 	})
 }
 
+func TestCreateGroupingHandler_TriggersReassign(t *testing.T) {
+	db := baseGroupingDB()
+	reassignCalled := make(chan struct{}, 1)
+
+	db.CreateGroupingFunc = func(ctx context.Context, g domain.Grouping) (int64, error) {
+		return 3, nil
+	}
+
+	srv := testGroupingServer(t, db)
+	// inject a mock engine
+	srv.groupingEngine = &mockGroupingEngine{
+		reassignAllFn: func(ctx context.Context, window time.Duration) error {
+			reassignCalled <- struct{}{}
+			return nil
+		},
+	}
+
+	form := url.Values{"name": {"New Group"}, "tags": {"ai"}}
+	req := httptest.NewRequest("POST", "/api/v1/groupings",
+		strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	srv.createGroupingHandler(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// wait for goroutine
+	select {
+	case <-reassignCalled:
+	case <-time.After(500 * time.Millisecond):
+		t.Error("ReassignAll was not called after CreateGrouping")
+	}
+}
+
+// mockGroupingEngine satisfies GroupingEngine for tests.
+type mockGroupingEngine struct {
+	reassignFn    func(ctx context.Context, beatID int64) error
+	reassignAllFn func(ctx context.Context, window time.Duration) error
+}
+
+func (m *mockGroupingEngine) Reassign(ctx context.Context, beatID int64) error {
+	if m.reassignFn != nil {
+		return m.reassignFn(ctx, beatID)
+	}
+	return nil
+}
+
+func (m *mockGroupingEngine) ReassignAll(ctx context.Context, window time.Duration) error {
+	if m.reassignAllFn != nil {
+		return m.reassignAllFn(ctx, window)
+	}
+	return nil
+}
+
+func (m *mockGroupingEngine) InvalidateCache() {}
+
 func TestParseTags(t *testing.T) {
 	tests := []struct {
 		name     string

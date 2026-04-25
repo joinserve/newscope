@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -183,4 +184,171 @@ func TestSlugify(t *testing.T) {
 			assert.Equal(t, tc.expected, Slugify(tc.input))
 		})
 	}
+}
+
+func TestGroupingRepository_BeatTagSet(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	// create a beat with two members, each having different topics
+	idA := mkItem(pub, "a", []float32{1, 0, 0})
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idA, &domain.Classification{Score: 5, Topics: []string{"ai", "tech"}}))
+	idB := mkItem(pub.Add(time.Second), "b", []float32{1, 0, 0})
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idB, &domain.Classification{Score: 5, Topics: []string{"ai", "china"}}))
+
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Second)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	tags, err := repos.Grouping.BeatTagSet(ctx, beatID)
+	require.NoError(t, err)
+
+	// union of both members: ai, tech, china (ai deduplicated by DISTINCT)
+	assert.ElementsMatch(t, []string{"ai", "tech", "china"}, tags)
+}
+
+func TestGroupingRepository_UpsertAssignment(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+	itemID := mkItem(pub, "x", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: itemID, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	gid, err := repos.Grouping.CreateGrouping(ctx, domain.Grouping{Name: "G1", Tags: []string{"ai"}})
+	require.NoError(t, err)
+
+	// assign
+	require.NoError(t, repos.Grouping.UpsertAssignment(ctx, beatID, &gid))
+
+	var got *int64
+	require.NoError(t, repos.DB.GetContext(ctx, &got,
+		`SELECT grouping_id FROM beat_grouping_assignments WHERE beat_id = ?`, beatID))
+	require.NotNil(t, got)
+	assert.Equal(t, gid, *got)
+
+	// reassign to nil (matched nothing)
+	require.NoError(t, repos.Grouping.UpsertAssignment(ctx, beatID, nil))
+	require.NoError(t, repos.DB.GetContext(ctx, &got,
+		`SELECT grouping_id FROM beat_grouping_assignments WHERE beat_id = ?`, beatID))
+	assert.Nil(t, got)
+}
+
+func TestGroupingRepository_ActiveBeatIDs(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+
+	// beat within window
+	idA := mkItem(now, "a", []float32{1, 0, 0})
+	bA, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: now}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	ids, err := repos.Grouping.ActiveBeatIDs(ctx, now.Add(-24*time.Hour))
+	require.NoError(t, err)
+	assert.Contains(t, ids, bA)
+
+	// query with future cutoff → beat is older, excluded
+	ids, err = repos.Grouping.ActiveBeatIDs(ctx, now.Add(time.Minute))
+	require.NoError(t, err)
+	assert.NotContains(t, ids, bA)
+}
+
+func TestGroupingRepository_GroupingCounts(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	// grouping G1
+	gid1, err := repos.Grouping.CreateGrouping(ctx, domain.Grouping{Name: "G1", Tags: []string{"ai"}})
+	require.NoError(t, err)
+
+	// beat assigned to G1
+	idA := mkItem(pub, "a", []float32{1, 0, 0})
+	bA, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Grouping.UpsertAssignment(ctx, bA, &gid1))
+
+	// unassigned beat (goes to main inbox)
+	idB := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0})
+	bB, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_ = bB
+
+	counts, err := repos.Grouping.GroupingCounts(ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, counts[gid1], "G1 should have 1 unread beat")
+	assert.Equal(t, 1, counts[0], "main inbox (key 0) should have 1 unassigned unread beat")
+}
+
+func TestBeatRepository_ListBeats_GroupingFilter(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	gid1, err := repos.Grouping.CreateGrouping(ctx, domain.Grouping{Name: "G1", Tags: []string{"ai"}})
+	require.NoError(t, err)
+	gid2, err := repos.Grouping.CreateGrouping(ctx, domain.Grouping{Name: "G2", Tags: []string{"china"}})
+	require.NoError(t, err)
+
+	// beat A → assigned to G1
+	idA := mkItem(pub, "a", []float32{1, 0, 0})
+	bA, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Grouping.UpsertAssignment(ctx, bA, &gid1))
+
+	// beat B → assigned to G2
+	idB := mkItem(pub.Add(time.Hour), "b", []float32{0, 1, 0})
+	bB, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Grouping.UpsertAssignment(ctx, bB, &gid2))
+
+	// beat C → unassigned (main inbox)
+	idC := mkItem(pub.Add(2*time.Hour), "c", []float32{0, 0, 1})
+	bC, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idC, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NoError(t, repos.Grouping.UpsertAssignment(ctx, bC, nil))
+
+	// beat D → no assignment row at all (also appears in main inbox)
+	idD := mkItem(pub.Add(3*time.Hour), "d", []float32{0.5, 0, 0.5})
+	bD, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idD, Vector: []float32{0.5, 0, 0.5}, PublishedAt: pub.Add(3 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	t.Run("main inbox: nil groupingID returns unassigned beats", func(t *testing.T) {
+		beats, err := repos.Beat.ListBeats(ctx, nil, "", 10, 0)
+		require.NoError(t, err)
+		var ids []int64
+		for _, b := range beats {
+			ids = append(ids, b.ID)
+		}
+		assert.NotContains(t, ids, bA, "G1-assigned beat must not appear in main inbox")
+		assert.NotContains(t, ids, bB, "G2-assigned beat must not appear in main inbox")
+		assert.Contains(t, ids, bC, "nil-assignment beat must appear in main inbox")
+		assert.Contains(t, ids, bD, "no-row beat must appear in main inbox")
+	})
+
+	t.Run("grouping filter returns only assigned beats", func(t *testing.T) {
+		beats, err := repos.Beat.ListBeats(ctx, &gid1, "", 10, 0)
+		require.NoError(t, err)
+		require.Len(t, beats, 1)
+		assert.Equal(t, bA, beats[0].ID)
+
+		beats, err = repos.Beat.ListBeats(ctx, &gid2, "", 10, 0)
+		require.NoError(t, err)
+		require.Len(t, beats, 1)
+		assert.Equal(t, bB, beats[0].ID)
+	})
 }

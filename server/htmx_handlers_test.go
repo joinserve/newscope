@@ -1991,7 +1991,7 @@ func TestBeatsHandler_RendersInbox(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+		ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 			title := "Merged Beat Title"
 			return []domain.BeatWithMembers{
 				{
@@ -2198,7 +2198,7 @@ func TestBeatsHandler_TopicFilter(t *testing.T) {
 	var capturedTopic string
 	aiTitle := "AI Beat"
 	database := &mocks.DatabaseMock{
-		ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+		ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 			capturedTopic = topic
 			if topic == "ai" {
 				return []domain.BeatWithMembers{{

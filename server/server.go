@@ -57,15 +57,16 @@ type bigTagsCache struct {
 
 // Server represents HTTP server instance
 type Server struct {
-	config        ConfigProvider
-	db            Database
-	scheduler     Scheduler
-	version       string
-	debug         bool
-	templates     *template.Template
-	pageTemplates map[string]*template.Template
-	router        *routegroup.Bundle
-	bigTags       *bigTagsCache
+	config          ConfigProvider
+	db              Database
+	scheduler       Scheduler
+	groupingEngine  GroupingEngine // may be nil when beats feature is disabled
+	version         string
+	debug           bool
+	templates       *template.Template
+	pageTemplates   map[string]*template.Template
+	router          *routegroup.Bundle
+	bigTags         *bigTagsCache
 }
 
 // Database interface for server operations
@@ -90,7 +91,7 @@ type Database interface {
 	SetSetting(ctx context.Context, key, value string) error
 	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
-	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
@@ -104,6 +105,15 @@ type Database interface {
 	UpdateGrouping(ctx context.Context, g domain.Grouping) error
 	DeleteGrouping(ctx context.Context, id int64) error
 	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
+	// grouping counts for dropdown
+	GroupingCounts(ctx context.Context) (map[int64]int, error)
+}
+
+// GroupingEngine reassigns beats to groupings based on tag matching.
+type GroupingEngine interface {
+	Reassign(ctx context.Context, beatID int64) error
+	ReassignAll(ctx context.Context, window time.Duration) error
+	InvalidateCache()
 }
 
 // Scheduler interface for on-demand operations
@@ -119,6 +129,13 @@ type Scheduler interface {
 type ConfigProvider interface {
 	GetServerConfig() (listen string, timeout time.Duration)
 	GetFullConfig() *config.Config // returns the full config struct for display
+}
+
+// SetGroupingEngine wires the assignment engine so grouping CRUD handlers can
+// trigger ReassignAll and the beats handler can filter by group. May be called
+// after New(); a nil engine means the grouping assignment feature is disabled.
+func (s *Server) SetGroupingEngine(e GroupingEngine) {
+	s.groupingEngine = e
 }
 
 // GetPageSize returns the configured page size for pagination

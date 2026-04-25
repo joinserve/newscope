@@ -153,6 +153,8 @@ type Params struct {
 	EmbedStore EmbedStore
 	BeatStore  BeatStore
 	Merger     Merger
+	// grouping assignment engine (nil = feature disabled)
+	GroupingEngine GroupingAssigner
 
 	// configuration
 	UpdateInterval             time.Duration
@@ -254,6 +256,7 @@ func NewScheduler(params Params) *Scheduler {
 			MaxMembers: params.BeatMaxMembers,
 			Interval:   interval,
 			BatchSize:  params.BeatBatchSize,
+			Grouping:   params.GroupingEngine,
 		})
 	}
 

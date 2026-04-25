@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/jmoiron/sqlx"
@@ -171,6 +172,79 @@ func (r *GroupingRepository) ReorderGroupings(ctx context.Context, idsInOrder []
 		}
 	}
 	return tx.Commit()
+}
+
+// BeatTagSet returns the union of topics across all items in the given beat.
+// PR 3 will union items.entities here too.
+func (r *GroupingRepository) BeatTagSet(ctx context.Context, beatID int64) ([]string, error) {
+	var tags []string
+	err := r.db.SelectContext(ctx, &tags, `
+		SELECT DISTINCT json_each.value
+		FROM beat_members bm
+		JOIN items i ON i.id = bm.item_id, json_each(i.topics)
+		WHERE bm.beat_id = ?`, beatID)
+	if err != nil {
+		return nil, fmt.Errorf("beat tag set: %w", err)
+	}
+	return tags, nil
+}
+
+// UpsertAssignment inserts or updates the grouping assignment for a beat.
+// groupingID may be nil, recording "computed but matched no grouping".
+func (r *GroupingRepository) UpsertAssignment(ctx context.Context, beatID int64, groupingID *int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO beat_grouping_assignments (beat_id, grouping_id, computed_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(beat_id) DO UPDATE SET
+			grouping_id = excluded.grouping_id,
+			computed_at = excluded.computed_at`,
+		beatID, groupingID)
+	if err != nil {
+		return fmt.Errorf("upsert assignment: %w", err)
+	}
+	return nil
+}
+
+// ActiveBeatIDs returns the IDs of beats whose first_seen_at is after since.
+func (r *GroupingRepository) ActiveBeatIDs(ctx context.Context, since time.Time) ([]int64, error) {
+	var ids []int64
+	if err := r.db.SelectContext(ctx, &ids,
+		`SELECT id FROM beats WHERE first_seen_at > ?`, since); err != nil {
+		return nil, fmt.Errorf("active beat ids: %w", err)
+	}
+	return ids, nil
+}
+
+// GroupingCounts returns a map of grouping_id → unread beat count for the dropdown.
+// Key 0 represents the main inbox (beats with no assignment or assignment.grouping_id IS NULL).
+func (r *GroupingRepository) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+	type row struct {
+		GID   int64 `db:"gid"`
+		Count int   `db:"cnt"`
+	}
+	var rows []row
+	err := r.db.SelectContext(ctx, &rows, `
+		WITH unread AS (
+			SELECT b.id AS beat_id
+			FROM beats b
+			JOIN beat_members bm ON bm.beat_id = b.id
+			JOIN items i ON i.id = bm.item_id
+			GROUP BY b.id
+			HAVING (COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL)
+			   AND SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) > 0
+		)
+		SELECT COALESCE(a.grouping_id, 0) AS gid, COUNT(*) AS cnt
+		FROM unread u
+		LEFT JOIN beat_grouping_assignments a ON a.beat_id = u.beat_id
+		GROUP BY gid`)
+	if err != nil {
+		return nil, fmt.Errorf("grouping counts: %w", err)
+	}
+	out := make(map[int64]int, len(rows))
+	for _, r := range rows {
+		out[r.GID] = r.Count
+	}
+	return out, nil
 }
 
 // uniqueSlug returns a slug that does not conflict with any existing row

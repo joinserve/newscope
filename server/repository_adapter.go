@@ -70,7 +70,7 @@ type SettingRepo interface {
 // The UI implementer decides the final shape — either a SearchWithMembers
 // method on the repo, or enrichment in the handler.
 type BeatRepo interface {
-	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
@@ -86,6 +86,7 @@ type GroupingRepo interface {
 	UpdateGrouping(ctx context.Context, g domain.Grouping) error
 	DeleteGrouping(ctx context.Context, id int64) error
 	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
+	GroupingCounts(ctx context.Context) (map[int64]int, error)
 }
 
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
@@ -375,12 +376,12 @@ func getFeedDisplayName(title, feedURL string) string {
 	return feedURL
 }
 
-// ListBeats lists beat aggregation summaries, optionally filtered by topic.
-func (r *RepositoryAdapter) ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
+// ListBeats lists beat aggregation summaries, optionally filtered by groupingID and topic.
+func (r *RepositoryAdapter) ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
 	if r.beatRepo == nil {
 		return nil, nil // graceful degradation
 	}
-	return r.beatRepo.ListBeats(ctx, topic, limit, offset)
+	return r.beatRepo.ListBeats(ctx, groupingID, topic, limit, offset)
 }
 
 // SetFeedback updates the user feedback for a beat.
@@ -469,4 +470,13 @@ func (r *RepositoryAdapter) ReorderGroupings(ctx context.Context, idsInOrder []i
 		return fmt.Errorf("grouping repository not configured")
 	}
 	return r.groupingRepo.ReorderGroupings(ctx, idsInOrder)
+}
+
+// GroupingCounts returns a map of grouping_id → unread beat count for the header dropdown.
+// Key 0 represents the main inbox (unassigned beats).
+func (r *RepositoryAdapter) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+	if r.groupingRepo == nil {
+		return map[int64]int{}, nil // graceful degradation
+	}
+	return r.groupingRepo.GroupingCounts(ctx)
 }

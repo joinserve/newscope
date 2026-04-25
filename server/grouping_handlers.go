@@ -1,11 +1,13 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umputun/newscope/pkg/domain"
 )
@@ -73,6 +75,7 @@ func (s *Server) createGroupingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[INFO] created grouping id=%d name=%q", id, name) //nolint:gosec // %q quotes the value
+	s.triggerReassignAll()
 	s.renderGroupingsList(w, r, groupings)
 }
 
@@ -111,6 +114,7 @@ func (s *Server) updateGroupingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.triggerReassignAll()
 	s.renderGroupingsList(w, r, groupings)
 }
 
@@ -137,6 +141,7 @@ func (s *Server) deleteGroupingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.triggerReassignAll()
 	s.renderGroupingsList(w, r, groupings)
 }
 
@@ -165,6 +170,7 @@ func (s *Server) reorderGroupingsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	s.triggerReassignAll()
 	s.renderGroupingsList(w, r, groupings)
 }
 
@@ -196,6 +202,19 @@ func (s *Server) renderGroupingsList(w http.ResponseWriter, _ *http.Request, gro
 	if err := s.templates.ExecuteTemplate(w, "groupings-list.html", groupings); err != nil {
 		log.Printf("[WARN] failed to render groupings list: %v", err)
 	}
+}
+
+// triggerReassignAll fires a full reassignment in the background so CRUD responses
+// are not delayed. Uses a detached context so the goroutine outlives the HTTP request.
+func (s *Server) triggerReassignAll() {
+	if s.groupingEngine == nil {
+		return
+	}
+	go func() {
+		if err := s.groupingEngine.ReassignAll(context.Background(), 48*time.Hour); err != nil {
+			log.Printf("[WARN] grouping reassign all: %v", err)
+		}
+	}()
 }
 
 // parseTags splits a comma-separated tag string into a slice; ignores blank entries.

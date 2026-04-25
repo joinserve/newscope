@@ -600,17 +600,29 @@ func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
 // Filters out half-baked multi-member beats (canonical_title still NULL, i.e. merge_worker hasn't
 // run yet): only singleton beats and already-canonicalised multi-member beats make it into the list.
 // When topic is non-empty, only beats containing at least one member with that topic are returned.
-func (r *BeatRepository) ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
+// groupingID controls inbox vs. stream: nil = main inbox (unassigned), non-nil = that grouping only.
+func (r *BeatRepository) ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
 	topicFilter := ""
-	args := []interface{}{limit, offset}
+	var args []interface{}
+
 	if topic != "" {
 		topicFilter = `AND EXISTS (
 			SELECT 1 FROM beat_members bm2
 			JOIN items i2 ON i2.id = bm2.item_id, json_each(i2.topics)
 			WHERE bm2.beat_id = b.id AND json_each.value = ?
 		)`
-		args = []interface{}{topic, limit, offset}
+		args = append(args, topic)
 	}
+
+	var groupFilter string
+	if groupingID == nil {
+		groupFilter = `AND a.grouping_id IS NULL`
+	} else {
+		groupFilter = `AND a.grouping_id = ?`
+		args = append(args, *groupingID)
+	}
+
+	args = append(args, limit, offset)
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -622,12 +634,14 @@ func (r *BeatRepository) ListBeats(ctx context.Context, topic string, limit, off
 		FROM beats b
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
+		LEFT JOIN beat_grouping_assignments a ON a.beat_id = b.id
 		WHERE 1=1 %s
 		GROUP BY b.id
 		HAVING (COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL)
 		   AND unread_count > 0
+		   %s
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
-		LIMIT ? OFFSET ?`, topicFilter)
+		LIMIT ? OFFSET ?`, topicFilter, groupFilter)
 
 	var rows []beatRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {

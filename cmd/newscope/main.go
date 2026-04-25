@@ -21,6 +21,7 @@ import (
 	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/features"
 	"github.com/umputun/newscope/pkg/feed"
+	"github.com/umputun/newscope/pkg/grouping"
 	"github.com/umputun/newscope/pkg/llm"
 	"github.com/umputun/newscope/pkg/repository"
 	"github.com/umputun/newscope/pkg/scheduler"
@@ -155,6 +156,8 @@ func run(ctx context.Context, opts Opts) error {
 		RetryJitter:                cfg.Schedule.RetryJitter,
 	}
 
+	// create grouping engine (always wired when beats are enabled)
+	var groupingEngine *grouping.Engine
 	if features.BeatsEnabled(*cfg) {
 		embedder := scheduler.NewOpenAIEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Endpoint, cfg.Embedding.Model)
 		params.Embedder = embedder
@@ -165,6 +168,9 @@ func run(ctx context.Context, opts Opts) error {
 		params.BeatWindow = cfg.Beats.Window
 		params.BeatMaxMembers = cfg.Beats.MaxMembers
 		params.Merger = llm.NewMerger(cfg.LLM)
+
+		groupingEngine = grouping.NewEngine(repos.Grouping)
+		params.GroupingEngine = groupingEngine
 	}
 	sched := scheduler.NewScheduler(params)
 	sched.Start(ctx)
@@ -173,6 +179,9 @@ func run(ctx context.Context, opts Opts) error {
 	// setup and run server with repository adapter
 	repoAdapter := server.NewRepositoryAdapter(repos)
 	srv := server.New(cfg, repoAdapter, sched, revision, opts.Debug)
+	if groupingEngine != nil {
+		srv.SetGroupingEngine(groupingEngine)
+	}
 	if err := srv.Run(ctx); err != nil {
 		return fmt.Errorf("server failed: %w", err)
 	}

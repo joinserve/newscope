@@ -19,7 +19,7 @@ import (
 //			GetBeatFunc: func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
 //				panic("mock out the GetBeat method")
 //			},
-//			ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+//			ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the ListBeats method")
 //			},
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
@@ -42,7 +42,7 @@ type BeatRepoMock struct {
 	GetBeatFunc func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 
 	// ListBeatsFunc mocks the ListBeats method.
-	ListBeatsFunc func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
+	ListBeatsFunc func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
@@ -66,6 +66,8 @@ type BeatRepoMock struct {
 		ListBeats []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// GroupingID is the groupingID argument value.
+			GroupingID *int64
 			// Topic is the topic argument value.
 			Topic string
 			// Limit is the limit argument value.
@@ -143,25 +145,27 @@ func (mock *BeatRepoMock) GetBeatCalls() []struct {
 }
 
 // ListBeats calls ListBeatsFunc.
-func (mock *BeatRepoMock) ListBeats(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+func (mock *BeatRepoMock) ListBeats(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 	if mock.ListBeatsFunc == nil {
 		panic("BeatRepoMock.ListBeatsFunc: method is nil but BeatRepo.ListBeats was just called")
 	}
 	callInfo := struct {
-		Ctx    context.Context
-		Topic  string
-		Limit  int
-		Offset int
+		Ctx        context.Context
+		GroupingID *int64
+		Topic      string
+		Limit      int
+		Offset     int
 	}{
-		Ctx:    ctx,
-		Topic:  topic,
-		Limit:  limit,
-		Offset: offset,
+		Ctx:        ctx,
+		GroupingID: groupingID,
+		Topic:      topic,
+		Limit:      limit,
+		Offset:     offset,
 	}
 	mock.lockListBeats.Lock()
 	mock.calls.ListBeats = append(mock.calls.ListBeats, callInfo)
 	mock.lockListBeats.Unlock()
-	return mock.ListBeatsFunc(ctx, topic, limit, offset)
+	return mock.ListBeatsFunc(ctx, groupingID, topic, limit, offset)
 }
 
 // ListBeatsCalls gets all the calls that were made to ListBeats.
@@ -169,16 +173,18 @@ func (mock *BeatRepoMock) ListBeats(ctx context.Context, topic string, limit int
 //
 //	len(mockedBeatRepo.ListBeatsCalls())
 func (mock *BeatRepoMock) ListBeatsCalls() []struct {
-	Ctx    context.Context
-	Topic  string
-	Limit  int
-	Offset int
+	Ctx        context.Context
+	GroupingID *int64
+	Topic      string
+	Limit      int
+	Offset     int
 } {
 	var calls []struct {
-		Ctx    context.Context
-		Topic  string
-		Limit  int
-		Offset int
+		Ctx        context.Context
+		GroupingID *int64
+		Topic      string
+		Limit      int
+		Offset     int
 	}
 	mock.lockListBeats.RLock()
 	calls = mock.calls.ListBeats

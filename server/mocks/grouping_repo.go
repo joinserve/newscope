@@ -28,6 +28,9 @@ import (
 //			GetGroupingBySlugFunc: func(ctx context.Context, slug string) (domain.Grouping, error) {
 //				panic("mock out the GetGroupingBySlug method")
 //			},
+//			GroupingCountsFunc: func(ctx context.Context) (map[int64]int, error) {
+//				panic("mock out the GroupingCounts method")
+//			},
 //			ListGroupingsFunc: func(ctx context.Context) ([]domain.Grouping, error) {
 //				panic("mock out the ListGroupings method")
 //			},
@@ -55,6 +58,9 @@ type GroupingRepoMock struct {
 
 	// GetGroupingBySlugFunc mocks the GetGroupingBySlug method.
 	GetGroupingBySlugFunc func(ctx context.Context, slug string) (domain.Grouping, error)
+
+	// GroupingCountsFunc mocks the GroupingCounts method.
+	GroupingCountsFunc func(ctx context.Context) (map[int64]int, error)
 
 	// ListGroupingsFunc mocks the ListGroupings method.
 	ListGroupingsFunc func(ctx context.Context) ([]domain.Grouping, error)
@@ -95,6 +101,11 @@ type GroupingRepoMock struct {
 			// Slug is the slug argument value.
 			Slug string
 		}
+		// GroupingCounts holds details about calls to the GroupingCounts method.
+		GroupingCounts []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 		// ListGroupings holds details about calls to the ListGroupings method.
 		ListGroupings []struct {
 			// Ctx is the ctx argument value.
@@ -119,6 +130,7 @@ type GroupingRepoMock struct {
 	lockDeleteGrouping    sync.RWMutex
 	lockGetGrouping       sync.RWMutex
 	lockGetGroupingBySlug sync.RWMutex
+	lockGroupingCounts    sync.RWMutex
 	lockListGroupings     sync.RWMutex
 	lockReorderGroupings  sync.RWMutex
 	lockUpdateGrouping    sync.RWMutex
@@ -265,6 +277,38 @@ func (mock *GroupingRepoMock) GetGroupingBySlugCalls() []struct {
 	mock.lockGetGroupingBySlug.RLock()
 	calls = mock.calls.GetGroupingBySlug
 	mock.lockGetGroupingBySlug.RUnlock()
+	return calls
+}
+
+// GroupingCounts calls GroupingCountsFunc.
+func (mock *GroupingRepoMock) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+	if mock.GroupingCountsFunc == nil {
+		panic("GroupingRepoMock.GroupingCountsFunc: method is nil but GroupingRepo.GroupingCounts was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGroupingCounts.Lock()
+	mock.calls.GroupingCounts = append(mock.calls.GroupingCounts, callInfo)
+	mock.lockGroupingCounts.Unlock()
+	return mock.GroupingCountsFunc(ctx)
+}
+
+// GroupingCountsCalls gets all the calls that were made to GroupingCounts.
+// Check the length with:
+//
+//	len(mockedGroupingRepo.GroupingCountsCalls())
+func (mock *GroupingRepoMock) GroupingCountsCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGroupingCounts.RLock()
+	calls = mock.calls.GroupingCounts
+	mock.lockGroupingCounts.RUnlock()
 	return calls
 }
 
