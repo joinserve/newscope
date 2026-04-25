@@ -2630,3 +2630,68 @@ main.container {
 .timeline-member a:hover {
     text-decoration: underline;
 }
+
+/* timeline member expand/collapse via <details> */
+.timeline-member-details {
+    border-radius: 4px;
+}
+
+.timeline-member-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    cursor: pointer;
+    list-style: none;
+    padding: 0.15rem 0;
+}
+
+.timeline-member-summary::-webkit-details-marker {
+    display: none;
+}
+
+.timeline-member-summary time {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary, #6b7280);
+    min-width: 2.8rem;
+}
+
+.timeline-member-summary .feed-name {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary, #6b7280);
+}
+
+.timeline-member-summary .member-title {
+    color: var(--text, #111827);
+    text-decoration: none;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.timeline-member-summary .member-title:hover {
+    text-decoration: underline;
+}
+
+.expand-chevron {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    color: var(--text-secondary, #6b7280);
+    transition: transform 0.15s ease;
+    margin-left: auto;
+}
+
+details[open] .expand-chevron {
+    transform: rotate(180deg);
+}
+
+.timeline-member-expanded {
+    padding: 0.5rem 0 0.25rem 0.25rem;
+    border-top: 1px solid var(--border, #e5e7eb);
+    margin-top: 0.25rem;
+}

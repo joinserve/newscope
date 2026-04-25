@@ -168,4 +168,12 @@ func TestBeatDetailHandler_TimelineRender(t *testing.T) {
 	assert.Contains(t, body, "How this story developed", "timeline heading must be present")
 	assert.Contains(t, body, "current", "current badge or class must appear for the single revision segment")
 	assert.Contains(t, body, "Article 1", "member articles must appear in the timeline")
+	// expandable details/summary structure
+	assert.Contains(t, body, "<details", "each member must be wrapped in a details element")
+	assert.Contains(t, body, "<summary", "each member must have a summary row")
+	assert.Contains(t, body, "expand-chevron", "chevron toggle must be present")
+	// full article-card actions in the expanded area
+	assert.Contains(t, body, "action-like", "like button must be in expanded card")
+	assert.Contains(t, body, "action-dislike", "dislike button must be in expanded card")
+	assert.Contains(t, body, "action-share", "share button must be in expanded card")
 }
