@@ -1603,6 +1603,25 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// beatViewHandler marks a beat as viewed without rendering the detail.
+// Called by the inbox client when a beat-card has been visible for long enough
+// to count as "read"; the beat keeps showing in the current page and is
+// filtered out on the next /beats reload by the unread_count gate.
+func (s *Server) beatViewHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		s.respondWithError(w, http.StatusBadRequest, "Invalid beat ID", err)
+		return
+	}
+	if err := s.db.MarkViewed(r.Context(), id); err != nil {
+		log.Printf("[WARN] failed to mark beat %d as viewed: %v", id, err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to mark viewed", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // beatSearchHandler handles search requests for beats
 func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

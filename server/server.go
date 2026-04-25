@@ -442,6 +442,7 @@ func (s *Server) setupRoutes() {
 		// beats
 		r.HandleFunc("GET /beats/search", s.beatSearchHandler)
 		r.HandleFunc("POST /beats/{id}/feedback", s.beatFeedbackHandler)
+		r.HandleFunc("POST /beats/{id}/view", s.beatViewHandler)
 
 		// feed management
 		r.HandleFunc("POST /feeds", s.createFeedHandler)

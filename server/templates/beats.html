@@ -42,6 +42,42 @@
 </div>
 
 <script>
+// auto mark-as-read: a beat-card visible >= 1.5s posts to /api/v1/beats/{id}/view.
+// the card stays in the current page; it disappears on the next /beats reload
+// because the unread_count gate filters it out server-side.
+(function() {
+    const VISIBLE_MS = 1500;
+    const sent = new Set();
+    const timers = new Map();
+    function arm() {
+        if (!('IntersectionObserver' in window)) return;
+        const cards = document.querySelectorAll('.beat-card[data-beat-id]');
+        if (!cards.length) return;
+        const obs = new IntersectionObserver(function(entries) {
+            for (const entry of entries) {
+                const id = entry.target.getAttribute('data-beat-id');
+                if (!id || sent.has(id)) continue;
+                if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+                    if (timers.has(id)) continue;
+                    timers.set(id, setTimeout(function() {
+                        timers.delete(id);
+                        if (sent.has(id)) return;
+                        sent.add(id);
+                        fetch('/api/v1/beats/' + id + '/view', { method: 'POST', credentials: 'same-origin' })
+                            .catch(function() { sent.delete(id); });
+                    }, VISIBLE_MS));
+                } else {
+                    const t = timers.get(id);
+                    if (t) { clearTimeout(t); timers.delete(id); }
+                }
+            }
+        }, { threshold: [0, 0.5, 1] });
+        cards.forEach(function(c) { obs.observe(c); });
+    }
+    document.addEventListener('DOMContentLoaded', arm);
+    document.addEventListener('htmx:afterSettle', arm);
+})();
+
 (function() {
     const THRESHOLD = 80;
     const indicator = document.getElementById('ptr-indicator');
