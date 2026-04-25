@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS items (
     user_feedback TEXT DEFAULT '',      -- 'like', 'dislike', 'done', 'spam', empty
     feedback_at DATETIME,
 
+    -- Entity extraction results
+    entities JSON DEFAULT '[]',          -- Extracted named entities (companies, people, places)
+    entities_extracted_at DATETIME,      -- NULL = pending extraction
+
     -- Processing state: when the user dismissed the article from the main board
     -- (any of like / dislike / done sets this). Null = still in inbox.
     processed_at DATETIME,
@@ -77,6 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_items_extraction ON items(extracted_at);
 CREATE INDEX IF NOT EXISTS idx_items_score_feedback ON items(relevance_score DESC) WHERE user_feedback = '';
 CREATE INDEX IF NOT EXISTS idx_items_processed ON items(processed_at);
 CREATE INDEX IF NOT EXISTS idx_items_inbox_score ON items(relevance_score DESC) WHERE processed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_items_entities_pending ON items(entities_extracted_at) WHERE entities_extracted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_feeds_enabled_next ON feeds(enabled, next_fetch) WHERE enabled = 1;
 
 -- Topic-related indexes for JSON column
@@ -184,3 +189,28 @@ CREATE TRIGGER IF NOT EXISTS beats_fts_update AFTER UPDATE ON beats BEGIN
     INSERT OR REPLACE INTO beats_fts(rowid, canonical_title, canonical_summary)
     VALUES (new.id, COALESCE(new.canonical_title, ''), COALESCE(new.canonical_summary, ''));
 END;
+
+-- User-defined beat groupings (bookmark-style named streams)
+CREATE TABLE IF NOT EXISTS groupings (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT    NOT NULL,
+    slug          TEXT    NOT NULL UNIQUE,
+    tags          JSON    NOT NULL DEFAULT '[]',
+    display_order INTEGER NOT NULL DEFAULT 0,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_groupings_order ON groupings(display_order);
+
+CREATE TRIGGER IF NOT EXISTS groupings_updated_at AFTER UPDATE ON groupings BEGIN
+    UPDATE groupings SET updated_at = CURRENT_TIMESTAMP WHERE id = new.id;
+END;
+
+-- Materialized first-match-wins assignment: beat_id → grouping_id (NULL = no match)
+CREATE TABLE IF NOT EXISTS beat_grouping_assignments (
+    beat_id      INTEGER PRIMARY KEY REFERENCES beats(id) ON DELETE CASCADE,
+    grouping_id  INTEGER REFERENCES groupings(id) ON DELETE SET NULL,
+    computed_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_assignments_grouping
+    ON beat_grouping_assignments(grouping_id);

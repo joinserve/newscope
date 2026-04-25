@@ -20,8 +20,14 @@ import (
 //			CreateFeedFunc: func(ctx context.Context, feed *domain.Feed) error {
 //				panic("mock out the CreateFeed method")
 //			},
+//			CreateGroupingFunc: func(ctx context.Context, g domain.Grouping) (int64, error) {
+//				panic("mock out the CreateGrouping method")
+//			},
 //			DeleteFeedFunc: func(ctx context.Context, feedID int64) error {
 //				panic("mock out the DeleteFeed method")
+//			},
+//			DeleteGroupingFunc: func(ctx context.Context, id int64) error {
+//				panic("mock out the DeleteGrouping method")
 //			},
 //			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetActiveFeedNames method")
@@ -50,6 +56,12 @@ import (
 //			GetFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 //				panic("mock out the GetFeeds method")
 //			},
+//			GetGroupingFunc: func(ctx context.Context, id int64) (domain.Grouping, error) {
+//				panic("mock out the GetGrouping method")
+//			},
+//			GetGroupingBySlugFunc: func(ctx context.Context, slug string) (domain.Grouping, error) {
+//				panic("mock out the GetGroupingBySlug method")
+//			},
 //			GetItemsFunc: func(ctx context.Context, limit int, offset int) ([]domain.Item, error) {
 //				panic("mock out the GetItems method")
 //			},
@@ -68,11 +80,20 @@ import (
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
 //			},
-//			ListBeatsFunc: func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+//			GroupingCountsFunc: func(ctx context.Context) (map[int64]int, error) {
+//				panic("mock out the GroupingCounts method")
+//			},
+//			ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the ListBeats method")
+//			},
+//			ListGroupingsFunc: func(ctx context.Context) ([]domain.Grouping, error) {
+//				panic("mock out the ListGroupings method")
 //			},
 //			MarkViewedFunc: func(ctx context.Context, beatID int64) error {
 //				panic("mock out the MarkViewed method")
+//			},
+//			ReorderGroupingsFunc: func(ctx context.Context, idsInOrder []int64) error {
+//				panic("mock out the ReorderGroupings method")
 //			},
 //			SearchBeatsWithMembersFunc: func(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the SearchBeatsWithMembers method")
@@ -86,11 +107,17 @@ import (
 //			SetSettingFunc: func(ctx context.Context, key string, value string) error {
 //				panic("mock out the SetSetting method")
 //			},
+//			SuggestTagsFunc: func(ctx context.Context, prefix string, limit int) ([]string, error) {
+//				panic("mock out the SuggestTags method")
+//			},
 //			UpdateFeedFunc: func(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error {
 //				panic("mock out the UpdateFeed method")
 //			},
 //			UpdateFeedStatusFunc: func(ctx context.Context, feedID int64, enabled bool) error {
 //				panic("mock out the UpdateFeedStatus method")
+//			},
+//			UpdateGroupingFunc: func(ctx context.Context, g domain.Grouping) error {
+//				panic("mock out the UpdateGrouping method")
 //			},
 //			UpdateItemFeedbackFunc: func(ctx context.Context, itemID int64, feedback string) error {
 //				panic("mock out the UpdateItemFeedback method")
@@ -105,8 +132,14 @@ type DatabaseMock struct {
 	// CreateFeedFunc mocks the CreateFeed method.
 	CreateFeedFunc func(ctx context.Context, feed *domain.Feed) error
 
+	// CreateGroupingFunc mocks the CreateGrouping method.
+	CreateGroupingFunc func(ctx context.Context, g domain.Grouping) (int64, error)
+
 	// DeleteFeedFunc mocks the DeleteFeed method.
 	DeleteFeedFunc func(ctx context.Context, feedID int64) error
+
+	// DeleteGroupingFunc mocks the DeleteGrouping method.
+	DeleteGroupingFunc func(ctx context.Context, id int64) error
 
 	// GetActiveFeedNamesFunc mocks the GetActiveFeedNames method.
 	GetActiveFeedNamesFunc func(ctx context.Context, minScore float64) ([]string, error)
@@ -135,6 +168,12 @@ type DatabaseMock struct {
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context) ([]domain.Feed, error)
 
+	// GetGroupingFunc mocks the GetGrouping method.
+	GetGroupingFunc func(ctx context.Context, id int64) (domain.Grouping, error)
+
+	// GetGroupingBySlugFunc mocks the GetGroupingBySlug method.
+	GetGroupingBySlugFunc func(ctx context.Context, slug string) (domain.Grouping, error)
+
 	// GetItemsFunc mocks the GetItems method.
 	GetItemsFunc func(ctx context.Context, limit int, offset int) ([]domain.Item, error)
 
@@ -153,11 +192,20 @@ type DatabaseMock struct {
 	// GetTopicsFilteredFunc mocks the GetTopicsFiltered method.
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
 
+	// GroupingCountsFunc mocks the GroupingCounts method.
+	GroupingCountsFunc func(ctx context.Context) (map[int64]int, error)
+
 	// ListBeatsFunc mocks the ListBeats method.
-	ListBeatsFunc func(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
+	ListBeatsFunc func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
+
+	// ListGroupingsFunc mocks the ListGroupings method.
+	ListGroupingsFunc func(ctx context.Context) ([]domain.Grouping, error)
 
 	// MarkViewedFunc mocks the MarkViewed method.
 	MarkViewedFunc func(ctx context.Context, beatID int64) error
+
+	// ReorderGroupingsFunc mocks the ReorderGroupings method.
+	ReorderGroupingsFunc func(ctx context.Context, idsInOrder []int64) error
 
 	// SearchBeatsWithMembersFunc mocks the SearchBeatsWithMembers method.
 	SearchBeatsWithMembersFunc func(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
@@ -171,11 +219,17 @@ type DatabaseMock struct {
 	// SetSettingFunc mocks the SetSetting method.
 	SetSettingFunc func(ctx context.Context, key string, value string) error
 
+	// SuggestTagsFunc mocks the SuggestTags method.
+	SuggestTagsFunc func(ctx context.Context, prefix string, limit int) ([]string, error)
+
 	// UpdateFeedFunc mocks the UpdateFeed method.
 	UpdateFeedFunc func(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error
 
 	// UpdateFeedStatusFunc mocks the UpdateFeedStatus method.
 	UpdateFeedStatusFunc func(ctx context.Context, feedID int64, enabled bool) error
+
+	// UpdateGroupingFunc mocks the UpdateGrouping method.
+	UpdateGroupingFunc func(ctx context.Context, g domain.Grouping) error
 
 	// UpdateItemFeedbackFunc mocks the UpdateItemFeedback method.
 	UpdateItemFeedbackFunc func(ctx context.Context, itemID int64, feedback string) error
@@ -189,12 +243,26 @@ type DatabaseMock struct {
 			// Feed is the feed argument value.
 			Feed *domain.Feed
 		}
+		// CreateGrouping holds details about calls to the CreateGrouping method.
+		CreateGrouping []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// G is the g argument value.
+			G domain.Grouping
+		}
 		// DeleteFeed holds details about calls to the DeleteFeed method.
 		DeleteFeed []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// FeedID is the feedID argument value.
 			FeedID int64
+		}
+		// DeleteGrouping holds details about calls to the DeleteGrouping method.
+		DeleteGrouping []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ID is the id argument value.
+			ID int64
 		}
 		// GetActiveFeedNames holds details about calls to the GetActiveFeedNames method.
 		GetActiveFeedNames []struct {
@@ -259,6 +327,20 @@ type DatabaseMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 		}
+		// GetGrouping holds details about calls to the GetGrouping method.
+		GetGrouping []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// ID is the id argument value.
+			ID int64
+		}
+		// GetGroupingBySlug holds details about calls to the GetGroupingBySlug method.
+		GetGroupingBySlug []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Slug is the slug argument value.
+			Slug string
+		}
 		// GetItems holds details about calls to the GetItems method.
 		GetItems []struct {
 			// Ctx is the ctx argument value.
@@ -305,10 +387,17 @@ type DatabaseMock struct {
 			// MinScore is the minScore argument value.
 			MinScore float64
 		}
+		// GroupingCounts holds details about calls to the GroupingCounts method.
+		GroupingCounts []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 		// ListBeats holds details about calls to the ListBeats method.
 		ListBeats []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// GroupingID is the groupingID argument value.
+			GroupingID *int64
 			// Topic is the topic argument value.
 			Topic string
 			// Limit is the limit argument value.
@@ -316,12 +405,24 @@ type DatabaseMock struct {
 			// Offset is the offset argument value.
 			Offset int
 		}
+		// ListGroupings holds details about calls to the ListGroupings method.
+		ListGroupings []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 		// MarkViewed holds details about calls to the MarkViewed method.
 		MarkViewed []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// BeatID is the beatID argument value.
 			BeatID int64
+		}
+		// ReorderGroupings holds details about calls to the ReorderGroupings method.
+		ReorderGroupings []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// IdsInOrder is the idsInOrder argument value.
+			IdsInOrder []int64
 		}
 		// SearchBeatsWithMembers holds details about calls to the SearchBeatsWithMembers method.
 		SearchBeatsWithMembers []struct {
@@ -359,6 +460,15 @@ type DatabaseMock struct {
 			// Value is the value argument value.
 			Value string
 		}
+		// SuggestTags holds details about calls to the SuggestTags method.
+		SuggestTags []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Prefix is the prefix argument value.
+			Prefix string
+			// Limit is the limit argument value.
+			Limit int
+		}
 		// UpdateFeed holds details about calls to the UpdateFeed method.
 		UpdateFeed []struct {
 			// Ctx is the ctx argument value.
@@ -383,6 +493,13 @@ type DatabaseMock struct {
 			// Enabled is the enabled argument value.
 			Enabled bool
 		}
+		// UpdateGrouping holds details about calls to the UpdateGrouping method.
+		UpdateGrouping []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// G is the g argument value.
+			G domain.Grouping
+		}
 		// UpdateItemFeedback holds details about calls to the UpdateItemFeedback method.
 		UpdateItemFeedback []struct {
 			// Ctx is the ctx argument value.
@@ -394,7 +511,9 @@ type DatabaseMock struct {
 		}
 	}
 	lockCreateFeed                    sync.RWMutex
+	lockCreateGrouping                sync.RWMutex
 	lockDeleteFeed                    sync.RWMutex
+	lockDeleteGrouping                sync.RWMutex
 	lockGetActiveFeedNames            sync.RWMutex
 	lockGetAllFeeds                   sync.RWMutex
 	lockGetBeat                       sync.RWMutex
@@ -404,20 +523,27 @@ type DatabaseMock struct {
 	lockGetClassifiedItemsCount       sync.RWMutex
 	lockGetClassifiedItemsWithFilters sync.RWMutex
 	lockGetFeeds                      sync.RWMutex
+	lockGetGrouping                   sync.RWMutex
+	lockGetGroupingBySlug             sync.RWMutex
 	lockGetItems                      sync.RWMutex
 	lockGetSearchItemsCount           sync.RWMutex
 	lockGetSetting                    sync.RWMutex
 	lockGetTopTopicsByScore           sync.RWMutex
 	lockGetTopics                     sync.RWMutex
 	lockGetTopicsFiltered             sync.RWMutex
+	lockGroupingCounts                sync.RWMutex
 	lockListBeats                     sync.RWMutex
+	lockListGroupings                 sync.RWMutex
 	lockMarkViewed                    sync.RWMutex
+	lockReorderGroupings              sync.RWMutex
 	lockSearchBeatsWithMembers        sync.RWMutex
 	lockSearchItems                   sync.RWMutex
 	lockSetFeedback                   sync.RWMutex
 	lockSetSetting                    sync.RWMutex
+	lockSuggestTags                   sync.RWMutex
 	lockUpdateFeed                    sync.RWMutex
 	lockUpdateFeedStatus              sync.RWMutex
+	lockUpdateGrouping                sync.RWMutex
 	lockUpdateItemFeedback            sync.RWMutex
 }
 
@@ -457,6 +583,42 @@ func (mock *DatabaseMock) CreateFeedCalls() []struct {
 	return calls
 }
 
+// CreateGrouping calls CreateGroupingFunc.
+func (mock *DatabaseMock) CreateGrouping(ctx context.Context, g domain.Grouping) (int64, error) {
+	if mock.CreateGroupingFunc == nil {
+		panic("DatabaseMock.CreateGroupingFunc: method is nil but Database.CreateGrouping was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		G   domain.Grouping
+	}{
+		Ctx: ctx,
+		G:   g,
+	}
+	mock.lockCreateGrouping.Lock()
+	mock.calls.CreateGrouping = append(mock.calls.CreateGrouping, callInfo)
+	mock.lockCreateGrouping.Unlock()
+	return mock.CreateGroupingFunc(ctx, g)
+}
+
+// CreateGroupingCalls gets all the calls that were made to CreateGrouping.
+// Check the length with:
+//
+//	len(mockedDatabase.CreateGroupingCalls())
+func (mock *DatabaseMock) CreateGroupingCalls() []struct {
+	Ctx context.Context
+	G   domain.Grouping
+} {
+	var calls []struct {
+		Ctx context.Context
+		G   domain.Grouping
+	}
+	mock.lockCreateGrouping.RLock()
+	calls = mock.calls.CreateGrouping
+	mock.lockCreateGrouping.RUnlock()
+	return calls
+}
+
 // DeleteFeed calls DeleteFeedFunc.
 func (mock *DatabaseMock) DeleteFeed(ctx context.Context, feedID int64) error {
 	if mock.DeleteFeedFunc == nil {
@@ -490,6 +652,42 @@ func (mock *DatabaseMock) DeleteFeedCalls() []struct {
 	mock.lockDeleteFeed.RLock()
 	calls = mock.calls.DeleteFeed
 	mock.lockDeleteFeed.RUnlock()
+	return calls
+}
+
+// DeleteGrouping calls DeleteGroupingFunc.
+func (mock *DatabaseMock) DeleteGrouping(ctx context.Context, id int64) error {
+	if mock.DeleteGroupingFunc == nil {
+		panic("DatabaseMock.DeleteGroupingFunc: method is nil but Database.DeleteGrouping was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		ID  int64
+	}{
+		Ctx: ctx,
+		ID:  id,
+	}
+	mock.lockDeleteGrouping.Lock()
+	mock.calls.DeleteGrouping = append(mock.calls.DeleteGrouping, callInfo)
+	mock.lockDeleteGrouping.Unlock()
+	return mock.DeleteGroupingFunc(ctx, id)
+}
+
+// DeleteGroupingCalls gets all the calls that were made to DeleteGrouping.
+// Check the length with:
+//
+//	len(mockedDatabase.DeleteGroupingCalls())
+func (mock *DatabaseMock) DeleteGroupingCalls() []struct {
+	Ctx context.Context
+	ID  int64
+} {
+	var calls []struct {
+		Ctx context.Context
+		ID  int64
+	}
+	mock.lockDeleteGrouping.RLock()
+	calls = mock.calls.DeleteGrouping
+	mock.lockDeleteGrouping.RUnlock()
 	return calls
 }
 
@@ -817,6 +1015,78 @@ func (mock *DatabaseMock) GetFeedsCalls() []struct {
 	return calls
 }
 
+// GetGrouping calls GetGroupingFunc.
+func (mock *DatabaseMock) GetGrouping(ctx context.Context, id int64) (domain.Grouping, error) {
+	if mock.GetGroupingFunc == nil {
+		panic("DatabaseMock.GetGroupingFunc: method is nil but Database.GetGrouping was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		ID  int64
+	}{
+		Ctx: ctx,
+		ID:  id,
+	}
+	mock.lockGetGrouping.Lock()
+	mock.calls.GetGrouping = append(mock.calls.GetGrouping, callInfo)
+	mock.lockGetGrouping.Unlock()
+	return mock.GetGroupingFunc(ctx, id)
+}
+
+// GetGroupingCalls gets all the calls that were made to GetGrouping.
+// Check the length with:
+//
+//	len(mockedDatabase.GetGroupingCalls())
+func (mock *DatabaseMock) GetGroupingCalls() []struct {
+	Ctx context.Context
+	ID  int64
+} {
+	var calls []struct {
+		Ctx context.Context
+		ID  int64
+	}
+	mock.lockGetGrouping.RLock()
+	calls = mock.calls.GetGrouping
+	mock.lockGetGrouping.RUnlock()
+	return calls
+}
+
+// GetGroupingBySlug calls GetGroupingBySlugFunc.
+func (mock *DatabaseMock) GetGroupingBySlug(ctx context.Context, slug string) (domain.Grouping, error) {
+	if mock.GetGroupingBySlugFunc == nil {
+		panic("DatabaseMock.GetGroupingBySlugFunc: method is nil but Database.GetGroupingBySlug was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Slug string
+	}{
+		Ctx:  ctx,
+		Slug: slug,
+	}
+	mock.lockGetGroupingBySlug.Lock()
+	mock.calls.GetGroupingBySlug = append(mock.calls.GetGroupingBySlug, callInfo)
+	mock.lockGetGroupingBySlug.Unlock()
+	return mock.GetGroupingBySlugFunc(ctx, slug)
+}
+
+// GetGroupingBySlugCalls gets all the calls that were made to GetGroupingBySlug.
+// Check the length with:
+//
+//	len(mockedDatabase.GetGroupingBySlugCalls())
+func (mock *DatabaseMock) GetGroupingBySlugCalls() []struct {
+	Ctx  context.Context
+	Slug string
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Slug string
+	}
+	mock.lockGetGroupingBySlug.RLock()
+	calls = mock.calls.GetGroupingBySlug
+	mock.lockGetGroupingBySlug.RUnlock()
+	return calls
+}
+
 // GetItems calls GetItemsFunc.
 func (mock *DatabaseMock) GetItems(ctx context.Context, limit int, offset int) ([]domain.Item, error) {
 	if mock.GetItemsFunc == nil {
@@ -1041,26 +1311,60 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 	return calls
 }
 
+// GroupingCounts calls GroupingCountsFunc.
+func (mock *DatabaseMock) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+	if mock.GroupingCountsFunc == nil {
+		panic("DatabaseMock.GroupingCountsFunc: method is nil but Database.GroupingCounts was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockGroupingCounts.Lock()
+	mock.calls.GroupingCounts = append(mock.calls.GroupingCounts, callInfo)
+	mock.lockGroupingCounts.Unlock()
+	return mock.GroupingCountsFunc(ctx)
+}
+
+// GroupingCountsCalls gets all the calls that were made to GroupingCounts.
+// Check the length with:
+//
+//	len(mockedDatabase.GroupingCountsCalls())
+func (mock *DatabaseMock) GroupingCountsCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockGroupingCounts.RLock()
+	calls = mock.calls.GroupingCounts
+	mock.lockGroupingCounts.RUnlock()
+	return calls
+}
+
 // ListBeats calls ListBeatsFunc.
-func (mock *DatabaseMock) ListBeats(ctx context.Context, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+func (mock *DatabaseMock) ListBeats(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
 	if mock.ListBeatsFunc == nil {
 		panic("DatabaseMock.ListBeatsFunc: method is nil but Database.ListBeats was just called")
 	}
 	callInfo := struct {
-		Ctx    context.Context
-		Topic  string
-		Limit  int
-		Offset int
+		Ctx        context.Context
+		GroupingID *int64
+		Topic      string
+		Limit      int
+		Offset     int
 	}{
-		Ctx:    ctx,
-		Topic:  topic,
-		Limit:  limit,
-		Offset: offset,
+		Ctx:        ctx,
+		GroupingID: groupingID,
+		Topic:      topic,
+		Limit:      limit,
+		Offset:     offset,
 	}
 	mock.lockListBeats.Lock()
 	mock.calls.ListBeats = append(mock.calls.ListBeats, callInfo)
 	mock.lockListBeats.Unlock()
-	return mock.ListBeatsFunc(ctx, topic, limit, offset)
+	return mock.ListBeatsFunc(ctx, groupingID, topic, limit, offset)
 }
 
 // ListBeatsCalls gets all the calls that were made to ListBeats.
@@ -1068,20 +1372,54 @@ func (mock *DatabaseMock) ListBeats(ctx context.Context, topic string, limit int
 //
 //	len(mockedDatabase.ListBeatsCalls())
 func (mock *DatabaseMock) ListBeatsCalls() []struct {
-	Ctx    context.Context
-	Topic  string
-	Limit  int
-	Offset int
+	Ctx        context.Context
+	GroupingID *int64
+	Topic      string
+	Limit      int
+	Offset     int
 } {
 	var calls []struct {
-		Ctx    context.Context
-		Topic  string
-		Limit  int
-		Offset int
+		Ctx        context.Context
+		GroupingID *int64
+		Topic      string
+		Limit      int
+		Offset     int
 	}
 	mock.lockListBeats.RLock()
 	calls = mock.calls.ListBeats
 	mock.lockListBeats.RUnlock()
+	return calls
+}
+
+// ListGroupings calls ListGroupingsFunc.
+func (mock *DatabaseMock) ListGroupings(ctx context.Context) ([]domain.Grouping, error) {
+	if mock.ListGroupingsFunc == nil {
+		panic("DatabaseMock.ListGroupingsFunc: method is nil but Database.ListGroupings was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockListGroupings.Lock()
+	mock.calls.ListGroupings = append(mock.calls.ListGroupings, callInfo)
+	mock.lockListGroupings.Unlock()
+	return mock.ListGroupingsFunc(ctx)
+}
+
+// ListGroupingsCalls gets all the calls that were made to ListGroupings.
+// Check the length with:
+//
+//	len(mockedDatabase.ListGroupingsCalls())
+func (mock *DatabaseMock) ListGroupingsCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockListGroupings.RLock()
+	calls = mock.calls.ListGroupings
+	mock.lockListGroupings.RUnlock()
 	return calls
 }
 
@@ -1118,6 +1456,42 @@ func (mock *DatabaseMock) MarkViewedCalls() []struct {
 	mock.lockMarkViewed.RLock()
 	calls = mock.calls.MarkViewed
 	mock.lockMarkViewed.RUnlock()
+	return calls
+}
+
+// ReorderGroupings calls ReorderGroupingsFunc.
+func (mock *DatabaseMock) ReorderGroupings(ctx context.Context, idsInOrder []int64) error {
+	if mock.ReorderGroupingsFunc == nil {
+		panic("DatabaseMock.ReorderGroupingsFunc: method is nil but Database.ReorderGroupings was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		IdsInOrder []int64
+	}{
+		Ctx:        ctx,
+		IdsInOrder: idsInOrder,
+	}
+	mock.lockReorderGroupings.Lock()
+	mock.calls.ReorderGroupings = append(mock.calls.ReorderGroupings, callInfo)
+	mock.lockReorderGroupings.Unlock()
+	return mock.ReorderGroupingsFunc(ctx, idsInOrder)
+}
+
+// ReorderGroupingsCalls gets all the calls that were made to ReorderGroupings.
+// Check the length with:
+//
+//	len(mockedDatabase.ReorderGroupingsCalls())
+func (mock *DatabaseMock) ReorderGroupingsCalls() []struct {
+	Ctx        context.Context
+	IdsInOrder []int64
+} {
+	var calls []struct {
+		Ctx        context.Context
+		IdsInOrder []int64
+	}
+	mock.lockReorderGroupings.RLock()
+	calls = mock.calls.ReorderGroupings
+	mock.lockReorderGroupings.RUnlock()
 	return calls
 }
 
@@ -1281,6 +1655,46 @@ func (mock *DatabaseMock) SetSettingCalls() []struct {
 	return calls
 }
 
+// SuggestTags calls SuggestTagsFunc.
+func (mock *DatabaseMock) SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if mock.SuggestTagsFunc == nil {
+		panic("DatabaseMock.SuggestTagsFunc: method is nil but Database.SuggestTags was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Prefix string
+		Limit  int
+	}{
+		Ctx:    ctx,
+		Prefix: prefix,
+		Limit:  limit,
+	}
+	mock.lockSuggestTags.Lock()
+	mock.calls.SuggestTags = append(mock.calls.SuggestTags, callInfo)
+	mock.lockSuggestTags.Unlock()
+	return mock.SuggestTagsFunc(ctx, prefix, limit)
+}
+
+// SuggestTagsCalls gets all the calls that were made to SuggestTags.
+// Check the length with:
+//
+//	len(mockedDatabase.SuggestTagsCalls())
+func (mock *DatabaseMock) SuggestTagsCalls() []struct {
+	Ctx    context.Context
+	Prefix string
+	Limit  int
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Prefix string
+		Limit  int
+	}
+	mock.lockSuggestTags.RLock()
+	calls = mock.calls.SuggestTags
+	mock.lockSuggestTags.RUnlock()
+	return calls
+}
+
 // UpdateFeed calls UpdateFeedFunc.
 func (mock *DatabaseMock) UpdateFeed(ctx context.Context, feedID int64, title string, feedURL string, iconURL string, fetchInterval time.Duration) error {
 	if mock.UpdateFeedFunc == nil {
@@ -1370,6 +1784,42 @@ func (mock *DatabaseMock) UpdateFeedStatusCalls() []struct {
 	mock.lockUpdateFeedStatus.RLock()
 	calls = mock.calls.UpdateFeedStatus
 	mock.lockUpdateFeedStatus.RUnlock()
+	return calls
+}
+
+// UpdateGrouping calls UpdateGroupingFunc.
+func (mock *DatabaseMock) UpdateGrouping(ctx context.Context, g domain.Grouping) error {
+	if mock.UpdateGroupingFunc == nil {
+		panic("DatabaseMock.UpdateGroupingFunc: method is nil but Database.UpdateGrouping was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		G   domain.Grouping
+	}{
+		Ctx: ctx,
+		G:   g,
+	}
+	mock.lockUpdateGrouping.Lock()
+	mock.calls.UpdateGrouping = append(mock.calls.UpdateGrouping, callInfo)
+	mock.lockUpdateGrouping.Unlock()
+	return mock.UpdateGroupingFunc(ctx, g)
+}
+
+// UpdateGroupingCalls gets all the calls that were made to UpdateGrouping.
+// Check the length with:
+//
+//	len(mockedDatabase.UpdateGroupingCalls())
+func (mock *DatabaseMock) UpdateGroupingCalls() []struct {
+	Ctx context.Context
+	G   domain.Grouping
+} {
+	var calls []struct {
+		Ctx context.Context
+		G   domain.Grouping
+	}
+	mock.lockUpdateGrouping.RLock()
+	calls = mock.calls.UpdateGrouping
+	mock.lockUpdateGrouping.RUnlock()
 	return calls
 }
 

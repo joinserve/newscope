@@ -57,15 +57,16 @@ type bigTagsCache struct {
 
 // Server represents HTTP server instance
 type Server struct {
-	config        ConfigProvider
-	db            Database
-	scheduler     Scheduler
-	version       string
-	debug         bool
-	templates     *template.Template
-	pageTemplates map[string]*template.Template
-	router        *routegroup.Bundle
-	bigTags       *bigTagsCache
+	config          ConfigProvider
+	db              Database
+	scheduler       Scheduler
+	groupingEngine  GroupingEngine // may be nil when beats feature is disabled
+	version         string
+	debug           bool
+	templates       *template.Template
+	pageTemplates   map[string]*template.Template
+	router          *routegroup.Bundle
+	bigTags         *bigTagsCache
 }
 
 // Database interface for server operations
@@ -90,12 +91,31 @@ type Database interface {
 	SetSetting(ctx context.Context, key, value string) error
 	SearchItems(ctx context.Context, searchQuery string, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 	GetSearchItemsCount(ctx context.Context, searchQuery string, req domain.ArticlesRequest) (int, error)
-	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SearchBeatsWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
 	GetBigTags(ctx context.Context, threshold int) (map[string]int, error)
+	// grouping CRUD
+	ListGroupings(ctx context.Context) ([]domain.Grouping, error)
+	GetGrouping(ctx context.Context, id int64) (domain.Grouping, error)
+	GetGroupingBySlug(ctx context.Context, slug string) (domain.Grouping, error)
+	CreateGrouping(ctx context.Context, g domain.Grouping) (int64, error)
+	UpdateGrouping(ctx context.Context, g domain.Grouping) error
+	DeleteGrouping(ctx context.Context, id int64) error
+	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
+	// grouping counts for dropdown
+	GroupingCounts(ctx context.Context) (map[int64]int, error)
+	// tag autocomplete
+	SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error)
+}
+
+// GroupingEngine reassigns beats to groupings based on tag matching.
+type GroupingEngine interface {
+	Reassign(ctx context.Context, beatID int64) error
+	ReassignAll(ctx context.Context, window time.Duration) error
+	InvalidateCache()
 }
 
 // Scheduler interface for on-demand operations
@@ -111,6 +131,13 @@ type Scheduler interface {
 type ConfigProvider interface {
 	GetServerConfig() (listen string, timeout time.Duration)
 	GetFullConfig() *config.Config // returns the full config struct for display
+}
+
+// SetGroupingEngine wires the assignment engine so grouping CRUD handlers can
+// trigger ReassignAll and the beats handler can filter by group. May be called
+// after New(); a nil engine means the grouping assignment feature is disabled.
+func (s *Server) SetGroupingEngine(e GroupingEngine) {
+	s.groupingEngine = e
 }
 
 // GetPageSize returns the configured page size for pagination
@@ -282,14 +309,15 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"templates/topic-dropdowns.html",
 		"templates/controls.html",
 		"templates/preference-summary.html",
-		"templates/feed-preview.html")
+		"templates/feed-preview.html",
+		"templates/groupings-list.html")
 	if err != nil {
 		log.Printf("[WARN] failed to parse templates: %v", err)
 	}
 
 	// parse page templates
 	pageTemplates := make(map[string]*template.Template)
-	pageNames := []string{"articles.html", "feeds.html", "settings.html", "rss-help.html", "source.html", "rsshub-explorer.html", "beats.html", "beat-detail.html"}
+	pageNames := []string{"articles.html", "feeds.html", "settings.html", "rss-help.html", "source.html", "rsshub-explorer.html", "beats.html", "beat-detail.html", "groupings.html"}
 
 	for _, pageName := range pageNames {
 		tmpl := template.New("").Funcs(funcMap)
@@ -299,7 +327,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			"templates/article-card.html",
 			"templates/beat-card.html",
 			"templates/feed-card.html",
-			"templates/pagination.html")
+			"templates/pagination.html",
+			"templates/groupings-list.html")
 		if err != nil {
 			log.Printf("[WARN] failed to parse %s: %v", pageName, err)
 			continue
@@ -428,6 +457,8 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("GET /feeds", s.feedsHandler)
 	s.router.HandleFunc("GET /feeds/rsshub", s.rsshubExplorerHandler)
 	s.router.HandleFunc("GET /settings", s.settingsHandler)
+	s.router.HandleFunc("GET /settings/groupings", s.groupingsSettingsHandler)
+	s.router.HandleFunc("GET /settings/groupings/{id}/edit", s.groupingEditFormHandler)
 	s.router.HandleFunc("GET /rss-help", s.rssHelpHandler)
 	s.router.HandleFunc("GET /api/v1/rss-builder", s.rssBuilderHandler)
 
@@ -438,6 +469,13 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("POST /extract/{id}", s.extractHandler)
 		r.HandleFunc("GET /articles/{id}/content", s.articleContentHandler)
 		r.HandleFunc("GET /articles/{id}/hide", s.hideContentHandler)
+
+		// groupings
+		r.HandleFunc("POST /groupings", s.createGroupingHandler)
+		r.HandleFunc("PUT /groupings/{id}", s.updateGroupingHandler)
+		r.HandleFunc("DELETE /groupings/{id}", s.deleteGroupingHandler)
+		r.HandleFunc("POST /groupings/reorder", s.reorderGroupingsHandler)
+		r.HandleFunc("GET /tags/suggest", s.suggestTagsHandler)
 
 		// beats
 		r.HandleFunc("GET /beats/search", s.beatSearchHandler)

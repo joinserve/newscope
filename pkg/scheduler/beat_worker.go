@@ -9,6 +9,11 @@ import (
 
 const defaultBeatBatchSize = 50
 
+// GroupingAssigner reassigns a beat to its best-matching grouping.
+type GroupingAssigner interface {
+	Reassign(ctx context.Context, beatID int64) error
+}
+
 // BeatWorkerConfig holds configuration for BeatWorker.
 type BeatWorkerConfig struct {
 	Store      BeatStore
@@ -17,6 +22,7 @@ type BeatWorkerConfig struct {
 	MaxMembers int
 	Interval   time.Duration
 	BatchSize  int
+	Grouping   GroupingAssigner // optional; nil disables assignment
 }
 
 // BeatWorker periodically assigns embedded items to beats using AttachOrSeed.
@@ -27,6 +33,7 @@ type BeatWorker struct {
 	maxMembers int
 	interval   time.Duration
 	batchSize  int
+	grouping   GroupingAssigner // may be nil
 }
 
 // NewBeatWorker creates a new beat worker.
@@ -42,6 +49,7 @@ func NewBeatWorker(cfg BeatWorkerConfig) *BeatWorker {
 		maxMembers: cfg.MaxMembers,
 		interval:   cfg.Interval,
 		batchSize:  batchSize,
+		grouping:   cfg.Grouping,
 	}
 }
 
@@ -79,7 +87,7 @@ func (w *BeatWorker) processBatch(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		_, isSeeded, err := w.store.AttachOrSeed(ctx, item, w.threshold, w.window, w.maxMembers)
+		beatID, isSeeded, err := w.store.AttachOrSeed(ctx, item, w.threshold, w.window, w.maxMembers)
 		if err != nil {
 			lgr.Printf("[WARN] beat_worker: attach item %d: %v", item.ItemID, err)
 			failed++
@@ -89,6 +97,12 @@ func (w *BeatWorker) processBatch(ctx context.Context) {
 			seeded++
 		} else {
 			attached++
+		}
+		if w.grouping != nil {
+			if err := w.grouping.Reassign(ctx, beatID); err != nil {
+				lgr.Printf("[WARN] beat_worker: grouping reassign beat=%d: %v", beatID, err)
+				// non-fatal: grouping assignment failure does not block beat processing
+			}
 		}
 	}
 	lgr.Printf("[INFO] beat_worker: processed %d items (%d new beats, %d attached, %d failed)",

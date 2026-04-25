@@ -196,7 +196,7 @@ function updatePageHeader(title, backType, backTarget) {
     if (!backType) {
         headerBack.innerHTML = '';
     } else if (backType === 'url') {
-        headerBack.innerHTML = '<a href="' + backTarget + '" class="back-button" hx-get="' + backTarget + '" hx-target="main.container" hx-push-url="true" hx-swap="innerHTML" title="返回">' + svgArrow + '</a>';
+        headerBack.innerHTML = '<a href="' + backTarget + '" class="back-button" title="返回">' + svgArrow + '</a>';
         if (window.htmx) htmx.process(headerBack);
     } else if (backType === 'view') {
         headerBack.innerHTML = '<button class="back-button" onclick="' + backTarget + '" title="返回">' + svgArrow + '</button>';

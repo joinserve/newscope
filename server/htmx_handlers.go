@@ -1433,7 +1433,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// beatsHandler displays the beats inbox
+// beatsHandler displays the beats inbox, optionally filtered by grouping slug.
 func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -1449,8 +1449,22 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * pageSize
 
 	topic := strings.TrimSpace(r.URL.Query().Get("topic"))
+	groupSlug := strings.TrimSpace(r.URL.Query().Get("group"))
 
-	beats, err := s.db.ListBeats(ctx, topic, pageSize, offset)
+	// resolve optional group slug → groupingID
+	var currentGrouping *domain.Grouping
+	var groupingID *int64
+	if groupSlug != "" {
+		g, err := s.db.GetGroupingBySlug(ctx, groupSlug)
+		if err != nil {
+			s.respondWithError(w, http.StatusNotFound, "Group not found", nil)
+			return
+		}
+		currentGrouping = &g
+		groupingID = &g.ID
+	}
+
+	beats, err := s.db.ListBeats(ctx, groupingID, topic, pageSize, offset)
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to load beats", err)
 		return
@@ -1461,21 +1475,38 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	s.refreshBigTags(ctx)
 
+	// load groupings and counts for the dropdown
+	groupings, _ := s.db.ListGroupings(ctx)
+	groupingCounts, _ := s.db.GroupingCounts(ctx)
+
 	pageTitle := ""
 	backURL := ""
-	if topic != "" {
+	if currentGrouping != nil {
+		pageTitle = currentGrouping.Name
+		backURL = "/beats"
+	} else if topic != "" {
 		pageTitle = "#" + topic
 		backURL = "/beats"
 	}
 
+	currentCount := groupingCounts[0] // main inbox count (key 0)
+	if currentGrouping != nil {
+		currentCount = groupingCounts[currentGrouping.ID]
+	}
+
 	data := struct {
 		commonPageData
-		Beats       []domain.BeatWithMembers
-		CurrentPage int
-		TotalCount  int
-		HasNext     bool
-		HasPrev     bool
-		IsHTMX      bool
+		Beats          []domain.BeatWithMembers
+		CurrentPage    int
+		TotalCount     int
+		HasNext        bool
+		HasPrev        bool
+		IsHTMX         bool
+		CurrentGrouping *domain.Grouping
+		Groupings       []domain.Grouping
+		GroupingCounts  map[int64]int
+		AllCount        int
+		CurrentCount    int
 	}{
 		commonPageData: commonPageData{
 			ActivePage:    "beats",
@@ -1483,12 +1514,17 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 			PageTitle:     pageTitle,
 			SelectedTopic: topic,
 		},
-		Beats:       beats,
-		CurrentPage: page,
-		TotalCount:  0, // avoid GetBeatsCount query as it's not strictly required in PR scope
-		HasNext:     hasNext,
-		HasPrev:     hasPrev,
-		IsHTMX:      r.Header.Get("HX-Request") == "true",
+		Beats:           beats,
+		CurrentPage:     page,
+		TotalCount:      0,
+		HasNext:         hasNext,
+		HasPrev:         hasPrev,
+		IsHTMX:          r.Header.Get("HX-Request") == "true",
+		CurrentGrouping: currentGrouping,
+		Groupings:       groupings,
+		GroupingCounts:  groupingCounts,
+		AllCount:        groupingCounts[0],
+		CurrentCount:    currentCount,
 	}
 
 	if !data.IsHTMX {
@@ -1499,9 +1535,12 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderBeatsListHTMX(w, beats, "Nothing here yet.", data)
-	if topic != "" {
+	if currentGrouping != nil {
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' hx-get='/beats' hx-target='main.container' hx-push-url='true' hx-swap='innerHTML' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+	} else if topic != "" {
+		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
 	} else {
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'>Beats</h2>")
 		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'></div>")
@@ -1593,7 +1632,7 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 		// OOB updates
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' hx-get='/beats' hx-target='main.container' hx-push-url='true' hx-swap='innerHTML' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
 		return
 	}
 

@@ -30,6 +30,7 @@ type Repositories struct {
 	Setting        *SettingRepository
 	Embedding      *EmbeddingRepository
 	Beat           *BeatRepository
+	Grouping       *GroupingRepository
 	DB             *sqlx.DB
 }
 
@@ -88,6 +89,7 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 		Setting:        NewSettingRepository(db),
 		Embedding:      NewEmbeddingRepository(db),
 		Beat:           NewBeatRepository(db),
+		Grouping:       NewGroupingRepository(db),
 		DB:             db,
 	}
 
@@ -119,6 +121,9 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 	}
 	if err := migrateAddCanonicalMergedAt(ctx, db); err != nil {
 		return fmt.Errorf("migrate canonical_merged_at: %w", err)
+	}
+	if err := migrateAddItemEntities(ctx, db); err != nil {
+		return fmt.Errorf("migrate item entities: %w", err)
 	}
 
 	schema, err := schemaFS.ReadFile("schema.sql")
@@ -158,32 +163,38 @@ func migrateBackfillBeatsFTS(ctx context.Context, db *sqlx.DB) error {
 	return nil
 }
 
+// tableColumns returns the column names of the given table, or nil if the table does not exist.
+func tableColumns(ctx context.Context, db *sqlx.DB, table string) (map[string]bool, error) {
+	var tableCount int
+	if err := db.GetContext(ctx, &tableCount,
+		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, table); err != nil {
+		return nil, fmt.Errorf("check table %s: %w", table, err)
+	}
+	if tableCount == 0 {
+		return nil, nil
+	}
+	var cols []string
+	if err := db.SelectContext(ctx, &cols, `SELECT name FROM pragma_table_info(?)`, table); err != nil {
+		return nil, fmt.Errorf("read columns of %s: %w", table, err)
+	}
+	has := make(map[string]bool, len(cols))
+	for _, c := range cols {
+		has[c] = true
+	}
+	return has, nil
+}
+
 // migrateAddProcessedAt adds the processed_at column to items if missing,
 // and backfills it from feedback_at so existing feedback rows land in "processed".
 // Safe to run on a fresh DB: items table won't exist yet and the function is a no-op.
 func migrateAddProcessedAt(ctx context.Context, db *sqlx.DB) error {
-	var tableCount int
-	err := db.GetContext(ctx, &tableCount,
-		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='items'`)
+	has, err := tableColumns(ctx, db, "items")
 	if err != nil {
-		return fmt.Errorf("check items table: %w", err)
+		return err
 	}
-	if tableCount == 0 {
-		// fresh install — schema.sql will create the column as part of CREATE TABLE
+	if has == nil || has["processed_at"] {
 		return nil
 	}
-
-	var columns []string
-	if err := db.SelectContext(ctx, &columns,
-		`SELECT name FROM pragma_table_info('items')`); err != nil {
-		return fmt.Errorf("read items columns: %w", err)
-	}
-	for _, c := range columns {
-		if c == "processed_at" {
-			return nil
-		}
-	}
-
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE items ADD COLUMN processed_at DATETIME`); err != nil {
 		return fmt.Errorf("add processed_at column: %w", err)
@@ -197,27 +208,13 @@ func migrateAddProcessedAt(ctx context.Context, db *sqlx.DB) error {
 
 // migrateAddIconURL adds the icon_url column to feeds if missing.
 func migrateAddIconURL(ctx context.Context, db *sqlx.DB) error {
-	var tableCount int
-	err := db.GetContext(ctx, &tableCount,
-		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='feeds'`)
+	has, err := tableColumns(ctx, db, "feeds")
 	if err != nil {
-		return fmt.Errorf("check feeds table: %w", err)
+		return err
 	}
-	if tableCount == 0 {
+	if has == nil || has["icon_url"] {
 		return nil
 	}
-
-	var columns []string
-	if err := db.SelectContext(ctx, &columns,
-		`SELECT name FROM pragma_table_info('feeds')`); err != nil {
-		return fmt.Errorf("read feeds columns: %w", err)
-	}
-	for _, c := range columns {
-		if c == "icon_url" {
-			return nil
-		}
-	}
-
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE feeds ADD COLUMN icon_url TEXT DEFAULT ''`); err != nil {
 		return fmt.Errorf("add icon_url column: %w", err)
@@ -228,25 +225,13 @@ func migrateAddIconURL(ctx context.Context, db *sqlx.DB) error {
 // migrateAddBeatFeedback adds the feedback and feedback_at columns to beats if missing.
 // Safe to run on a fresh DB: beats table won't exist yet and the function is a no-op.
 func migrateAddBeatFeedback(ctx context.Context, db *sqlx.DB) error {
-	var tableCount int
-	if err := db.GetContext(ctx, &tableCount,
-		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='beats'`); err != nil {
-		return fmt.Errorf("check beats table: %w", err)
+	has, err := tableColumns(ctx, db, "beats")
+	if err != nil {
+		return err
 	}
-	if tableCount == 0 {
+	if has == nil {
 		return nil
 	}
-
-	var columns []string
-	if err := db.SelectContext(ctx, &columns,
-		`SELECT name FROM pragma_table_info('beats')`); err != nil {
-		return fmt.Errorf("read beats columns: %w", err)
-	}
-	has := make(map[string]bool, len(columns))
-	for _, c := range columns {
-		has[c] = true
-	}
-
 	if !has["feedback"] {
 		if _, err := db.ExecContext(ctx,
 			`ALTER TABLE beats ADD COLUMN feedback TEXT DEFAULT ''`); err != nil {
@@ -265,29 +250,41 @@ func migrateAddBeatFeedback(ctx context.Context, db *sqlx.DB) error {
 // migrateAddCanonicalMergedAt adds canonical_merged_at to beats if missing.
 // Safe to run on a fresh DB: beats table won't exist yet and the function is a no-op.
 func migrateAddCanonicalMergedAt(ctx context.Context, db *sqlx.DB) error {
-	var tableCount int
-	if err := db.GetContext(ctx, &tableCount,
-		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='beats'`); err != nil {
-		return fmt.Errorf("check beats table: %w", err)
+	has, err := tableColumns(ctx, db, "beats")
+	if err != nil {
+		return err
 	}
-	if tableCount == 0 {
+	if has == nil || has["canonical_merged_at"] {
 		return nil
 	}
-
-	var columns []string
-	if err := db.SelectContext(ctx, &columns,
-		`SELECT name FROM pragma_table_info('beats')`); err != nil {
-		return fmt.Errorf("read beats columns: %w", err)
-	}
-	for _, c := range columns {
-		if c == "canonical_merged_at" {
-			return nil
-		}
-	}
-
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE beats ADD COLUMN canonical_merged_at DATETIME`); err != nil {
 		return fmt.Errorf("add canonical_merged_at column: %w", err)
+	}
+	return nil
+}
+
+// migrateAddItemEntities adds entities and entities_extracted_at columns to items if missing.
+// Safe to run on a fresh DB: items table won't exist yet and the function is a no-op.
+func migrateAddItemEntities(ctx context.Context, db *sqlx.DB) error {
+	has, err := tableColumns(ctx, db, "items")
+	if err != nil {
+		return err
+	}
+	if has == nil {
+		return nil
+	}
+	if !has["entities"] {
+		if _, err := db.ExecContext(ctx,
+			`ALTER TABLE items ADD COLUMN entities JSON DEFAULT '[]'`); err != nil {
+			return fmt.Errorf("add entities column: %w", err)
+		}
+	}
+	if !has["entities_extracted_at"] {
+		if _, err := db.ExecContext(ctx,
+			`ALTER TABLE items ADD COLUMN entities_extracted_at DATETIME`); err != nil {
+			return fmt.Errorf("add entities_extracted_at column: %w", err)
+		}
 	}
 	return nil
 }

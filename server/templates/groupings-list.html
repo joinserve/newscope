@@ -1,0 +1,73 @@
+{{define "grouping-edit-form"}}
+<form id="grouping-edit-form"
+      hx-put="/api/v1/groupings/{{.ID}}"
+      hx-target="#groupings-list"
+      hx-swap="outerHTML">
+    <h3>Edit Grouping</h3>
+    <div class="form-group">
+        <label for="edit-grouping-name">Name</label>
+        <input type="text" id="edit-grouping-name" name="name" class="form-control" value="{{.Name}}" required>
+    </div>
+    <div class="form-group">
+        <label for="edit-grouping-tags">Tags <small class="text-muted">(comma-separated)</small></label>
+        <input type="text" id="edit-grouping-tags" name="tags" class="form-control"
+               value="{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}"
+               list="tag-suggestions-edit"
+               hx-get="/api/v1/tags/suggest"
+               hx-vals='js:{"q": this.value.split(",").pop().trim()}'
+               hx-target="#tag-suggestions-edit"
+               hx-trigger="keyup changed delay:300ms"
+               hx-swap="innerHTML">
+        <datalist id="tag-suggestions-edit"></datalist>
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="button" class="btn btn-secondary"
+                hx-get="/settings/groupings"
+                hx-target="#grouping-form-container"
+                hx-select="#grouping-form-container > *"
+                hx-swap="innerHTML">Cancel</button>
+    </div>
+</form>
+{{end}}
+
+{{define "groupings-list.html"}}
+<div id="groupings-list" class="groupings-list">
+    {{range .}}
+    <div class="grouping-row" data-id="{{.ID}}" draggable="true">
+        <div class="grouping-drag-handle" aria-label="drag to reorder">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"/>
+                <line x1="8" y1="12" x2="21" y2="12"/>
+                <line x1="8" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="6" x2="3.01" y2="6"/>
+                <line x1="3" y1="12" x2="3.01" y2="12"/>
+                <line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+        </div>
+
+        <div class="grouping-info">
+            <span class="grouping-name">{{.Name}}</span>
+            <code class="grouping-slug">{{.Slug}}</code>
+            <div class="grouping-tags">
+                {{range .Tags}}<span class="tag-chip">{{.}}</span>{{end}}
+            </div>
+        </div>
+
+        <div class="grouping-actions">
+            <button class="btn btn-sm btn-secondary grouping-edit-btn"
+                    hx-get="/settings/groupings/{{.ID}}/edit"
+                    hx-target="#grouping-form-container"
+                    hx-swap="innerHTML">Edit</button>
+            <button class="btn btn-sm btn-danger"
+                    hx-delete="/api/v1/groupings/{{.ID}}"
+                    hx-target="#groupings-list"
+                    hx-swap="outerHTML"
+                    hx-confirm="Delete grouping '{{.Name}}'?">Delete</button>
+        </div>
+    </div>
+    {{else}}
+    <p class="text-muted no-groupings">No groupings yet. Create one below.</p>
+    {{end}}
+</div>
+{{end}}

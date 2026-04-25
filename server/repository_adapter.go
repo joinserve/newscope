@@ -16,6 +16,7 @@ import (
 //go:generate moq -out mocks/classification_repo.go -pkg mocks -skip-ensure -fmt goimports . ClassificationRepo
 //go:generate moq -out mocks/setting_repo.go -pkg mocks -skip-ensure -fmt goimports . SettingRepo
 //go:generate moq -out mocks/beat_repo.go -pkg mocks -skip-ensure -fmt goimports . BeatRepo
+//go:generate moq -out mocks/grouping_repo.go -pkg mocks -skip-ensure -fmt goimports . GroupingRepo
 
 // RepositoryAdapter adapts repositories to server.Database interface
 type RepositoryAdapter struct {
@@ -24,6 +25,7 @@ type RepositoryAdapter struct {
 	classificationRepo ClassificationRepo
 	settingRepo        SettingRepo
 	beatRepo           BeatRepo
+	groupingRepo       GroupingRepo
 }
 
 // FeedRepo defines the feed repository interface used by the adapter
@@ -68,11 +70,24 @@ type SettingRepo interface {
 // The UI implementer decides the final shape — either a SearchWithMembers
 // method on the repo, or enrichment in the handler.
 type BeatRepo interface {
-	ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
 	SearchWithMembers(ctx context.Context, query string, limit int) ([]domain.BeatWithMembers, error)
+}
+
+// GroupingRepo defines the grouping repository interface used by the adapter.
+type GroupingRepo interface {
+	ListGroupings(ctx context.Context) ([]domain.Grouping, error)
+	GetGrouping(ctx context.Context, id int64) (domain.Grouping, error)
+	GetGroupingBySlug(ctx context.Context, slug string) (domain.Grouping, error)
+	CreateGrouping(ctx context.Context, g domain.Grouping) (int64, error)
+	UpdateGrouping(ctx context.Context, g domain.Grouping) error
+	DeleteGrouping(ctx context.Context, id int64) error
+	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
+	GroupingCounts(ctx context.Context) (map[int64]int, error)
+	SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error)
 }
 
 // NewRepositoryAdapter creates a new repository adapter from concrete repositories
@@ -83,10 +98,12 @@ func NewRepositoryAdapter(repos *repository.Repositories) *RepositoryAdapter {
 		classificationRepo: repos.Classification,
 		settingRepo:        repos.Setting,
 		beatRepo:           repos.Beat,
+		groupingRepo:       repos.Grouping,
 	}
 }
 
-// NewRepositoryAdapterWithInterfaces creates a new repository adapter with interface dependencies for testing
+// NewRepositoryAdapterWithInterfaces creates a new repository adapter with interface dependencies for testing.
+// groupingRepo may be nil; grouping methods will return an error if called on a nil repo.
 func NewRepositoryAdapterWithInterfaces(feedRepo FeedRepo, itemRepo ItemRepo, classificationRepo ClassificationRepo, settingRepo SettingRepo, beatRepo BeatRepo) *RepositoryAdapter {
 	return &RepositoryAdapter{
 		feedRepo:           feedRepo,
@@ -360,12 +377,12 @@ func getFeedDisplayName(title, feedURL string) string {
 	return feedURL
 }
 
-// ListBeats lists beat aggregation summaries, optionally filtered by topic.
-func (r *RepositoryAdapter) ListBeats(ctx context.Context, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
+// ListBeats lists beat aggregation summaries, optionally filtered by groupingID and topic.
+func (r *RepositoryAdapter) ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
 	if r.beatRepo == nil {
 		return nil, nil // graceful degradation
 	}
-	return r.beatRepo.ListBeats(ctx, topic, limit, offset)
+	return r.beatRepo.ListBeats(ctx, groupingID, topic, limit, offset)
 }
 
 // SetFeedback updates the user feedback for a beat.
@@ -398,4 +415,77 @@ func (r *RepositoryAdapter) SearchBeatsWithMembers(ctx context.Context, query st
 		return nil, nil
 	}
 	return r.beatRepo.SearchWithMembers(ctx, query, limit)
+}
+
+// ListGroupings returns all user-defined groupings ordered by display_order.
+func (r *RepositoryAdapter) ListGroupings(ctx context.Context) ([]domain.Grouping, error) {
+	if r.groupingRepo == nil {
+		return nil, fmt.Errorf("grouping repository not configured")
+	}
+	return r.groupingRepo.ListGroupings(ctx)
+}
+
+// GetGrouping returns a grouping by its id.
+func (r *RepositoryAdapter) GetGrouping(ctx context.Context, id int64) (domain.Grouping, error) {
+	if r.groupingRepo == nil {
+		return domain.Grouping{}, fmt.Errorf("grouping repository not configured")
+	}
+	return r.groupingRepo.GetGrouping(ctx, id)
+}
+
+// GetGroupingBySlug returns a grouping by its URL slug.
+func (r *RepositoryAdapter) GetGroupingBySlug(ctx context.Context, slug string) (domain.Grouping, error) {
+	if r.groupingRepo == nil {
+		return domain.Grouping{}, fmt.Errorf("grouping repository not configured")
+	}
+	return r.groupingRepo.GetGroupingBySlug(ctx, slug)
+}
+
+// CreateGrouping inserts a new grouping and returns its id.
+func (r *RepositoryAdapter) CreateGrouping(ctx context.Context, g domain.Grouping) (int64, error) {
+	if r.groupingRepo == nil {
+		return 0, fmt.Errorf("grouping repository not configured")
+	}
+	return r.groupingRepo.CreateGrouping(ctx, g)
+}
+
+// UpdateGrouping updates name and tags of an existing grouping.
+func (r *RepositoryAdapter) UpdateGrouping(ctx context.Context, g domain.Grouping) error {
+	if r.groupingRepo == nil {
+		return fmt.Errorf("grouping repository not configured")
+	}
+	return r.groupingRepo.UpdateGrouping(ctx, g)
+}
+
+// DeleteGrouping removes a grouping.
+func (r *RepositoryAdapter) DeleteGrouping(ctx context.Context, id int64) error {
+	if r.groupingRepo == nil {
+		return fmt.Errorf("grouping repository not configured")
+	}
+	return r.groupingRepo.DeleteGrouping(ctx, id)
+}
+
+// ReorderGroupings sets display_order for the provided id list in order.
+func (r *RepositoryAdapter) ReorderGroupings(ctx context.Context, idsInOrder []int64) error {
+	if r.groupingRepo == nil {
+		return fmt.Errorf("grouping repository not configured")
+	}
+	return r.groupingRepo.ReorderGroupings(ctx, idsInOrder)
+}
+
+// GroupingCounts returns a map of grouping_id → unread beat count for the header dropdown.
+// Key 0 represents the main inbox (unassigned beats).
+func (r *RepositoryAdapter) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+	if r.groupingRepo == nil {
+		return map[int64]int{}, nil // graceful degradation
+	}
+	return r.groupingRepo.GroupingCounts(ctx)
+}
+
+// SuggestTags returns tags from items.topics and items.entities matching the given prefix.
+func (r *RepositoryAdapter) SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error) {
+	if r.groupingRepo == nil {
+		return nil, nil
+	}
+	return r.groupingRepo.SuggestTags(ctx, prefix, limit)
 }

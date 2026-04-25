@@ -1,0 +1,114 @@
+{{template "base.html" .}}
+
+{{define "title"}}Groupings - Newscope{{end}}
+
+{{define "content"}}
+<div class="groupings-page">
+    <div class="groupings-header">
+        <p class="text-muted">Define named beat streams. Beats whose members include all tags in a grouping are assigned to it.</p>
+    </div>
+
+    <div class="groupings-body">
+        <section class="groupings-list-section">
+            <h3>Existing Groupings</h3>
+            {{template "groupings-list.html" .Groupings}}
+        </section>
+
+        <section class="grouping-form-section">
+            <div id="grouping-form-container">
+                {{template "grouping-new-form" .}}
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+function initGroupingsDrag() {
+    const list = document.getElementById('groupings-list');
+    if (!list || list.dataset.dragInitialized) return;
+    list.dataset.dragInitialized = 'true';
+
+    let dragged = null;
+
+    list.querySelectorAll('.grouping-row[draggable]').forEach(row => {
+        row.addEventListener('dragstart', e => {
+            dragged = row;
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        row.addEventListener('dragend', () => {
+            if (!dragged) return;
+            row.classList.remove('dragging');
+            dragged = null;
+            setTimeout(sendReorder, 50);
+        });
+        row.addEventListener('dragover', e => {
+            e.preventDefault();
+            if (!dragged || dragged === row) return;
+            const rect = row.getBoundingClientRect();
+            const after = e.clientY > rect.top + rect.height / 2;
+            if (after) {
+                row.after(dragged);
+            } else {
+                row.before(dragged);
+            }
+        });
+        row.addEventListener('drop', e => {
+            e.preventDefault();
+        });
+    });
+}
+
+let isReordering = false;
+function sendReorder() {
+    if (isReordering) return;
+    const list = document.getElementById('groupings-list');
+    if (!list) return;
+    isReordering = true;
+    const ids = Array.from(list.querySelectorAll('.grouping-row[data-id]'))
+        .map(r => parseInt(r.dataset.id, 10));
+    fetch('/api/v1/groupings/reorder', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids})
+    }).then(r => r.text()).then(html => {
+        const current = document.getElementById('groupings-list');
+        if (current) current.outerHTML = html;
+        initGroupingsDrag();
+    }).finally(() => {
+        isReordering = false;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', initGroupingsDrag);
+document.addEventListener('htmx:afterSettle', initGroupingsDrag);
+</script>
+{{end}}
+
+{{define "grouping-new-form"}}
+<form id="grouping-create-form"
+      hx-post="/api/v1/groupings"
+      hx-target="#groupings-list"
+      hx-swap="outerHTML"
+      hx-on::after-request="if(event.detail.successful) this.reset()">
+    <h3>New Grouping</h3>
+    <div class="form-group">
+        <label for="grouping-name">Name</label>
+        <input type="text" id="grouping-name" name="name" class="form-control" placeholder="e.g. AI News" required>
+    </div>
+    <div class="form-group">
+        <label for="grouping-tags">Tags <small class="text-muted">(comma-separated)</small></label>
+        <input type="text" id="grouping-tags" name="tags" class="form-control" placeholder="e.g. ai, llm"
+               list="tag-suggestions-new"
+               hx-get="/api/v1/tags/suggest"
+               hx-vals='js:{"q": this.value.split(",").pop().trim()}'
+               hx-target="#tag-suggestions-new"
+               hx-trigger="keyup changed delay:300ms"
+               hx-swap="innerHTML">
+        <datalist id="tag-suggestions-new"></datalist>
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Create</button>
+    </div>
+</form>
+{{end}}

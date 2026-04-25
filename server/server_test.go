@@ -27,12 +27,31 @@ func testServer(t *testing.T, cfg ConfigProvider, database Database, scheduler S
 	return New(cfg, database, scheduler, "test", false)
 }
 
-// stubBigTags supplies a no-op GetBigTagsFunc when the mock hasn't set one,
-// so handler tests don't need to stub it just to survive refreshBigTags.
+// stubBigTags supplies no-op stubs for expensive side-channel lookups so that
+// handler tests don't need to stub these methods just to survive initialization.
 func stubBigTags(database Database) {
-	if m, ok := database.(*mocks.DatabaseMock); ok && m.GetBigTagsFunc == nil {
+	m, ok := database.(*mocks.DatabaseMock)
+	if !ok {
+		return
+	}
+	if m.GetBigTagsFunc == nil {
 		m.GetBigTagsFunc = func(ctx context.Context, threshold int) (map[string]int, error) {
 			return map[string]int{}, nil
+		}
+	}
+	if m.ListGroupingsFunc == nil {
+		m.ListGroupingsFunc = func(ctx context.Context) ([]domain.Grouping, error) {
+			return nil, nil
+		}
+	}
+	if m.GroupingCountsFunc == nil {
+		m.GroupingCountsFunc = func(ctx context.Context) (map[int64]int, error) {
+			return map[int64]int{}, nil
+		}
+	}
+	if m.GetGroupingBySlugFunc == nil {
+		m.GetGroupingBySlugFunc = func(ctx context.Context, slug string) (domain.Grouping, error) {
+			return domain.Grouping{}, fmt.Errorf("not found")
 		}
 	}
 }
