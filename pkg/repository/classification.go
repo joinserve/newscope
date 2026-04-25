@@ -49,6 +49,10 @@ type itemWithFeedSQL struct {
 	UserFeedback string     `db:"user_feedback"`
 	FeedbackAt   *time.Time `db:"feedback_at"`
 
+	// entity extraction
+	Entities            classificationSQL `db:"entities"`
+	EntitiesExtractedAt *time.Time        `db:"entities_extracted_at"`
+
 	// processing state: set when the user dismisses from the main board
 	ProcessedAt *time.Time `db:"processed_at"`
 

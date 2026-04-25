@@ -255,6 +255,10 @@
           "$ref": "#/$defs/BeatsConfig",
           "description": "Beat aggregation configuration"
         },
+        "entities": {
+          "$ref": "#/$defs/EntitiesConfig",
+          "description": "Entity extraction configuration"
+        },
         "log": {
           "$ref": "#/$defs/LogConfig",
           "description": "Logging output configuration"
@@ -271,6 +275,7 @@
         "rsshub",
         "embedding",
         "beats",
+        "entities",
         "log"
       ]
     },
@@ -300,6 +305,37 @@
         "endpoint",
         "model",
         "api_key"
+      ]
+    },
+    "EntitiesConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable entity extraction from classified items",
+          "default": false
+        },
+        "provider": {
+          "type": "string",
+          "description": "Entity extraction LLM provider (e.g. 'openai'; empty disables feature)"
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name for entity extraction (e.g. gpt-4o-mini)"
+        },
+        "batch": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Batch size for entity extraction",
+          "default": 20
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "enabled",
+        "provider",
+        "model",
+        "batch"
       ]
     },
     "ExtractionConfig": {

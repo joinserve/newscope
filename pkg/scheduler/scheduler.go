@@ -9,6 +9,9 @@
 //go:generate moq -out mocks/embed_store.go -pkg mocks -skip-ensure -fmt goimports . EmbedStore
 //go:generate moq -out mocks/beat_store.go -pkg mocks -skip-ensure -fmt goimports . BeatStore
 //go:generate moq -out mocks/merger.go -pkg mocks -skip-ensure -fmt goimports . Merger
+//go:generate moq -out mocks/entity_store.go -pkg mocks -skip-ensure -fmt goimports . EntityStore
+//go:generate moq -out mocks/entity_extractor.go -pkg mocks -skip-ensure -fmt goimports . EntityExtractor
+//go:generate moq -out mocks/grouping_assigner.go -pkg mocks -skip-ensure -fmt goimports . GroupingAssigner
 
 package scheduler
 
@@ -33,6 +36,7 @@ type Scheduler struct {
 	embedWorker       *EmbedWorker
 	beatWorker        *BeatWorker
 	mergeWorker       *MergeWorker
+	entityWorker      *EntityWorker
 	itemManager       ItemManager
 
 	updateInterval     time.Duration
@@ -176,6 +180,11 @@ type Params struct {
 	// merge worker configuration
 	MergeInterval  time.Duration
 	MergeBatchSize int
+	// entity extraction configuration (nil EntityStore = feature disabled)
+	EntityStore     EntityStore
+	EntityExtractor EntityExtractor
+	EntityInterval  time.Duration
+	EntityBatch     int
 	// retry configuration for database operations
 	RetryAttempts     int           // number of retry attempts (default: 5)
 	RetryInitialDelay time.Duration // initial retry delay (default: 100ms)
@@ -274,6 +283,21 @@ func NewScheduler(params Params) *Scheduler {
 		})
 	}
 
+	// initialize entity worker when entity store and extractor are both provided
+	if params.EntityStore != nil && params.EntityExtractor != nil {
+		interval := params.EntityInterval
+		if interval <= 0 {
+			interval = params.UpdateInterval
+		}
+		s.entityWorker = NewEntityWorker(EntityWorkerConfig{
+			Store:     params.EntityStore,
+			Extractor: params.EntityExtractor,
+			Grouping:  params.GroupingEngine,
+			Interval:  interval,
+			Batch:     params.EntityBatch,
+		})
+	}
+
 	return s
 }
 
@@ -330,6 +354,15 @@ func (s *Scheduler) Start(ctx context.Context) {
 		go func() {
 			defer s.wg.Done()
 			s.mergeWorker.Run(ctx)
+		}()
+	}
+
+	// start entity worker if entity extraction is enabled
+	if s.entityWorker != nil {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.entityWorker.Run(ctx)
 		}()
 	}
 

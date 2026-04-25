@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS items (
     user_feedback TEXT DEFAULT '',      -- 'like', 'dislike', 'done', 'spam', empty
     feedback_at DATETIME,
 
+    -- Entity extraction results
+    entities JSON DEFAULT '[]',          -- Extracted named entities (companies, people, places)
+    entities_extracted_at DATETIME,      -- NULL = pending extraction
+
     -- Processing state: when the user dismissed the article from the main board
     -- (any of like / dislike / done sets this). Null = still in inbox.
     processed_at DATETIME,
@@ -77,6 +81,7 @@ CREATE INDEX IF NOT EXISTS idx_items_extraction ON items(extracted_at);
 CREATE INDEX IF NOT EXISTS idx_items_score_feedback ON items(relevance_score DESC) WHERE user_feedback = '';
 CREATE INDEX IF NOT EXISTS idx_items_processed ON items(processed_at);
 CREATE INDEX IF NOT EXISTS idx_items_inbox_score ON items(relevance_score DESC) WHERE processed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_items_entities_pending ON items(entities_extracted_at) WHERE entities_extracted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_feeds_enabled_next ON feeds(enabled, next_fetch) WHERE enabled = 1;
 
 -- Topic-related indexes for JSON column

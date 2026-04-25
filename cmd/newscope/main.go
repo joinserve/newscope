@@ -156,7 +156,7 @@ func run(ctx context.Context, opts Opts) error {
 		RetryJitter:                cfg.Schedule.RetryJitter,
 	}
 
-	// create grouping engine (always wired when beats are enabled)
+	// create grouping engine when beats are enabled; wired to entity worker too
 	var groupingEngine *grouping.Engine
 	if features.BeatsEnabled(*cfg) {
 		embedder := scheduler.NewOpenAIEmbedder(cfg.Embedding.APIKey, cfg.Embedding.Endpoint, cfg.Embedding.Model)
@@ -172,6 +172,18 @@ func run(ctx context.Context, opts Opts) error {
 		groupingEngine = grouping.NewEngine(repos.Grouping)
 		params.GroupingEngine = groupingEngine
 	}
+
+	if features.EntitiesEnabled(*cfg) {
+		batch := cfg.Entities.Batch
+		if batch <= 0 {
+			batch = 20
+		}
+		params.EntityStore = repos.Item
+		params.EntityExtractor = scheduler.NewLLMEntityExtractor(cfg.LLM.APIKey, cfg.LLM.Endpoint, cfg.Entities.Model)
+		params.EntityBatch = batch
+		log.Printf("[INFO] entity extraction enabled with model: %s", cfg.Entities.Model)
+	}
+
 	sched := scheduler.NewScheduler(params)
 	sched.Start(ctx)
 	defer sched.Stop()

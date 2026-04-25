@@ -2,8 +2,10 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -51,6 +53,10 @@ type itemSQL struct {
 	// user feedback
 	UserFeedback string     `db:"user_feedback"`
 	FeedbackAt   *time.Time `db:"feedback_at"`
+
+	// entity extraction
+	Entities             topicsSQL  `db:"entities"`
+	EntitiesExtractedAt  *time.Time `db:"entities_extracted_at"`
 
 	// processing state
 	ProcessedAt *time.Time `db:"processed_at"`
@@ -413,4 +419,61 @@ func (r *ItemRepository) toDomainItem(sqlItem *itemSQL) *domain.Item {
 		CreatedAt:   sqlItem.CreatedAt,
 		UpdatedAt:   sqlItem.UpdatedAt,
 	}
+}
+
+// ListPendingEntities returns classified items that have not yet had entity extraction run.
+// Items are ordered by classified_at ASC to process oldest first.
+func (r *ItemRepository) ListPendingEntities(ctx context.Context, limit int) ([]domain.ClassifiedItem, error) {
+	type pendingRow struct {
+		ID      int64  `db:"id"`
+		Title   string `db:"title"`
+		Summary string `db:"summary"`
+	}
+	var rows []pendingRow
+	if err := r.db.SelectContext(ctx, &rows, `
+		SELECT id, title, summary FROM items
+		WHERE classified_at IS NOT NULL
+		  AND entities_extracted_at IS NULL
+		ORDER BY classified_at ASC
+		LIMIT ?`, limit); err != nil {
+		return nil, fmt.Errorf("list pending entities: %w", err)
+	}
+
+	out := make([]domain.ClassifiedItem, len(rows))
+	for i, row := range rows {
+		out[i] = domain.ClassifiedItem{Item: &domain.Item{ID: row.ID, Title: row.Title, Summary: row.Summary}}
+	}
+	return out, nil
+}
+
+// SaveEntities stores extracted entities for an item and marks it as extracted.
+func (r *ItemRepository) SaveEntities(ctx context.Context, itemID int64, entities []string) error {
+	data, err := json.Marshal(entities)
+	if err != nil {
+		return fmt.Errorf("marshal entities: %w", err)
+	}
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE items SET entities = ?, entities_extracted_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, string(data), itemID); err != nil {
+		return fmt.Errorf("save entities: %w", err)
+	}
+	return nil
+}
+
+// BeatForItem returns the beat ID for the given item if it belongs to one.
+func (r *ItemRepository) BeatForItem(ctx context.Context, itemID int64) (beatID int64, found bool, err error) {
+	err = r.db.GetContext(ctx, &beatID,
+		`SELECT beat_id FROM beat_members WHERE item_id = ?`, itemID)
+	if err != nil {
+		if isNotFound(err) {
+			return 0, false, nil
+		}
+		return 0, false, fmt.Errorf("beat for item: %w", err)
+	}
+	return beatID, true, nil
+}
+
+// isNotFound returns true when err represents a SQL no-rows result.
+func isNotFound(err error) bool {
+	return errors.Is(err, sql.ErrNoRows)
 }

@@ -174,19 +174,32 @@ func (r *GroupingRepository) ReorderGroupings(ctx context.Context, idsInOrder []
 	return tx.Commit()
 }
 
-// BeatTagSet returns the union of topics across all items in the given beat.
-// PR 3 will union items.entities here too.
+// BeatTagSet returns the union of topics and entities across all items in the given beat.
+// Two queries are used because combining multiple json_each columns in one SQLite query
+// is verbose and error-prone; the Go-side union is cleaner.
 func (r *GroupingRepository) BeatTagSet(ctx context.Context, beatID int64) ([]string, error) {
-	var tags []string
-	err := r.db.SelectContext(ctx, &tags, `
+	const baseQuery = `
 		SELECT DISTINCT json_each.value
 		FROM beat_members bm
-		JOIN items i ON i.id = bm.item_id, json_each(i.topics)
-		WHERE bm.beat_id = ?`, beatID)
-	if err != nil {
-		return nil, fmt.Errorf("beat tag set: %w", err)
+		JOIN items i ON i.id = bm.item_id, json_each(%s)
+		WHERE bm.beat_id = ?`
+
+	seen := make(map[string]struct{})
+	for _, col := range []string{"i.topics", "i.entities"} {
+		var vals []string
+		if err := r.db.SelectContext(ctx, &vals, fmt.Sprintf(baseQuery, col), beatID); err != nil {
+			return nil, fmt.Errorf("beat tag set (%s): %w", col, err)
+		}
+		for _, v := range vals {
+			seen[v] = struct{}{}
+		}
 	}
-	return tags, nil
+
+	result := make([]string, 0, len(seen))
+	for v := range seen {
+		result = append(result, v)
+	}
+	return result, nil
 }
 
 // UpsertAssignment inserts or updates the grouping assignment for a beat.

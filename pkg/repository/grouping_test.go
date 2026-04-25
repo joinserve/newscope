@@ -207,8 +207,34 @@ func TestGroupingRepository_BeatTagSet(t *testing.T) {
 	tags, err := repos.Grouping.BeatTagSet(ctx, beatID)
 	require.NoError(t, err)
 
-	// union of both members: ai, tech, china (ai deduplicated by DISTINCT)
+	// union of both members: ai, tech, china (ai deduplicated)
 	assert.ElementsMatch(t, []string{"ai", "tech", "china"}, tags)
+}
+
+func TestGroupingRepository_BeatTagSet_IncludesEntities(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	// item A: topics ai/tech; item B: entities claude (no topics overlap)
+	idA := mkItem(pub, "a", []float32{1, 0, 0})
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idA, &domain.Classification{Score: 5, Topics: []string{"ai", "tech"}}))
+	idB := mkItem(pub.Add(time.Second), "b", []float32{1, 0, 0})
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idB, &domain.Classification{Score: 5, Topics: []string{}}))
+	require.NoError(t, repos.Item.SaveEntities(ctx, idB, []string{"claude", "anthropic"}))
+
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Second)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	tags, err := repos.Grouping.BeatTagSet(ctx, beatID)
+	require.NoError(t, err)
+
+	// topics from A + entities from B are all present
+	assert.ElementsMatch(t, []string{"ai", "tech", "claude", "anthropic"}, tags)
 }
 
 func TestGroupingRepository_UpsertAssignment(t *testing.T) {
@@ -351,4 +377,51 @@ func TestBeatRepository_ListBeats_GroupingFilter(t *testing.T) {
 		require.Len(t, beats, 1)
 		assert.Equal(t, bB, beats[0].ID)
 	})
+}
+
+func TestItemRepository_SaveAndListPendingEntities(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	// mkItem always classifies items; both A and B start as pending
+	idA := mkItem(pub, "a", []float32{1, 0, 0})
+	idB := mkItem(pub.Add(time.Second), "b", []float32{0, 1, 0})
+
+	pending, err := repos.Item.ListPendingEntities(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 2)
+
+	// save entities for A → A is no longer pending
+	require.NoError(t, repos.Item.SaveEntities(ctx, idA, []string{"claude", "anthropic"}))
+
+	pending, err = repos.Item.ListPendingEntities(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	assert.Equal(t, idB, pending[0].ID)
+}
+
+func TestItemRepository_BeatForItem(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	pub := time.Now()
+
+	idA := mkItem(pub, "a", []float32{1, 0, 0})
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	gotBeat, ok, err := repos.Item.BeatForItem(ctx, idA)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, beatID, gotBeat)
+
+	// item not in any beat
+	idB := mkItem(pub.Add(time.Second), "b", []float32{0, 1, 0})
+	_, ok, err = repos.Item.BeatForItem(ctx, idB)
+	require.NoError(t, err)
+	assert.False(t, ok)
 }

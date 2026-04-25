@@ -45,6 +45,7 @@ type Config struct {
 	RSSHub    RSSHubConfig    `yaml:"rsshub" json:"rsshub" jsonschema:"description=RSSHub integration for rsshub:// URL scheme"`
 	Embedding EmbeddingConfig `yaml:"embedding" json:"embedding" jsonschema:"description=Embedding configuration for beat aggregation"`
 	Beats     BeatsConfig     `yaml:"beats" json:"beats" jsonschema:"description=Beat aggregation configuration"`
+	Entities  EntitiesConfig  `yaml:"entities" json:"entities" jsonschema:"description=Entity extraction configuration"`
 	Log       LogConfig       `yaml:"log" json:"log" jsonschema:"description=Logging output configuration"`
 }
 
@@ -73,6 +74,14 @@ type BeatsConfig struct {
 	SimThreshold float64       `yaml:"sim_threshold" json:"sim_threshold" jsonschema:"default=0.85,description=Cosine similarity threshold for grouping items into a beat"`
 	Window       time.Duration `yaml:"window" json:"window" jsonschema:"default=48h,description=Time window within which items can be grouped into a beat"`
 	MaxMembers   int           `yaml:"max_members" json:"max_members" jsonschema:"default=20,description=Maximum number of items per beat"`
+}
+
+// EntitiesConfig holds entity extraction settings.
+type EntitiesConfig struct {
+	Enabled  bool   `yaml:"enabled" json:"enabled" jsonschema:"default=false,description=Enable entity extraction from classified items"`
+	Provider string `yaml:"provider" json:"provider" jsonschema:"description=Entity extraction LLM provider (e.g. 'openai'; empty disables feature)"`
+	Model    string `yaml:"model" json:"model" jsonschema:"description=Model name for entity extraction (e.g. gpt-4o-mini)"`
+	Batch    int    `yaml:"batch" json:"batch" jsonschema:"default=20,minimum=1,description=Batch size for entity extraction"`
 }
 
 // RSSHubConfig holds RSSHub integration settings
