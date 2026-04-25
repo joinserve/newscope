@@ -105,6 +105,7 @@ type BeatStore interface {
 	ListPendingMerge(ctx context.Context, limit int) ([]domain.Beat, error)
 	// SaveCanonical stores the LLM-generated canonical title and summary.
 	SaveCanonical(ctx context.Context, beatID int64, c domain.BeatCanonical) error
+	AppendTitleRevision(ctx context.Context, beatID int64, title, summary string) error
 }
 
 // Merger produces a canonical title and summary for a beat from its member items.

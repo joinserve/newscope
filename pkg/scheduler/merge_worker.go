@@ -85,6 +85,9 @@ func (w *MergeWorker) processBatch(ctx context.Context) {
 			failed++
 			continue
 		}
+		if err := w.store.AppendTitleRevision(ctx, beat.ID, canonical.Title, canonical.Summary); err != nil {
+			lgr.Printf("[WARN] merge_worker: append title revision beat=%d: %v", beat.ID, err)
+		}
 		ok++
 	}
 	lgr.Printf("[INFO] merge_worker: merged %d/%d beats (%d failed)", ok, len(beats), failed)

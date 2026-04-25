@@ -214,3 +214,14 @@ CREATE TABLE IF NOT EXISTS beat_grouping_assignments (
 );
 CREATE INDEX IF NOT EXISTS idx_assignments_grouping
     ON beat_grouping_assignments(grouping_id);
+
+-- Beat title revision history: append-only snapshots of canonical title/summary
+CREATE TABLE IF NOT EXISTS beat_title_revisions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    beat_id      INTEGER NOT NULL REFERENCES beats(id) ON DELETE CASCADE,
+    title        TEXT    NOT NULL,
+    summary      TEXT    NOT NULL,
+    generated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_beat_title_revisions_beat
+    ON beat_title_revisions(beat_id, generated_at);
