@@ -172,9 +172,9 @@ func TestNormalizeEntities(t *testing.T) {
 		want []string
 	}{
 		{[]string{"Claude", "ANTHROPIC", "claude"}, []string{"anthropic", "claude"}}, // dedup + lowercase
-		{[]string{"a", "ab"}, []string{"ab"}},                                         // drop len<2
-		{[]string{"2024", "Q4"}, []string{"q4"}},                                      // drop pure digits
-		{[]string{" SpaceX ", "Tesla"}, []string{"spacex", "tesla"}},                  // trim
+		{[]string{"a", "ab"}, []string{"ab"}},                                        // drop len<2
+		{[]string{"2024", "Q4"}, []string{"q4"}},                                     // drop pure digits
+		{[]string{" SpaceX ", "Tesla"}, []string{"spacex", "tesla"}},                 // trim
 		{nil, nil}, // nil input
 	}
 

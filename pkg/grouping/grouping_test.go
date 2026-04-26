@@ -193,10 +193,10 @@ func TestIsSubset(t *testing.T) {
 		{[]string{"ai"}, []string{"ai", "llm"}, true},
 		{[]string{"ai", "llm"}, []string{"ai", "llm"}, true},
 		{[]string{"ai", "china"}, []string{"ai", "llm"}, false},
-		{[]string{}, []string{"ai"}, false},                     // empty required never matches
-		{[]string{"AI"}, []string{"ai"}, true},                  // case-insensitive
-		{[]string{"ai"}, []string{"AI"}, true},                  // case-insensitive reverse
-		{[]string{"ai"}, []string{}, false},                     // no beat tags
+		{[]string{}, []string{"ai"}, false},                      // empty required never matches
+		{[]string{"AI"}, []string{"ai"}, true},                   // case-insensitive
+		{[]string{"ai"}, []string{"AI"}, true},                   // case-insensitive reverse
+		{[]string{"ai"}, []string{}, false},                      // no beat tags
 		{[]string{"a", "b", "c"}, []string{"c", "b", "a"}, true}, // order-independent
 	}
 

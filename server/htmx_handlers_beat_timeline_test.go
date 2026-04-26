@@ -39,10 +39,10 @@ func TestBuildBeatTimeline_Segmentation(t *testing.T) {
 	//   rev2 segment (i=1): m3 (in [rev2, rev3))
 	//   rev3 segment (i=2): m4 (in [rev3, ∞))
 	members := []domain.ClassifiedItem{
-		makeItem(t0.Add(-1*time.Hour), "m1-before-rev1"),   // pre-first → rev1 segment
-		makeItem(t0.Add(1*time.Hour), "m2-in-r1-window"),   // [rev1, rev2) → rev1 segment
-		makeItem(t1.Add(1*time.Hour), "m3-in-r2-window"),   // [rev2, rev3) → rev2 segment
-		makeItem(t2.Add(1*time.Hour), "m4-after-rev3"),     // [rev3, ∞) → rev3 segment
+		makeItem(t0.Add(-1*time.Hour), "m1-before-rev1"),    // pre-first → rev1 segment
+		makeItem(t0.Add(1*time.Hour), "m2-in-r1-window"),    // [rev1, rev2) → rev1 segment
+		makeItem(t1.Add(1*time.Hour), "m3-in-r2-window"),    // [rev2, rev3) → rev2 segment
+		makeItem(t2.Add(1*time.Hour), "m4-after-rev3"),      // [rev3, ∞) → rev3 segment
 		makeItem(t0.Add(30*time.Minute), "m5-in-r1-window"), // [rev1, rev2) → rev1 segment
 	}
 

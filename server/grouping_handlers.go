@@ -245,4 +245,3 @@ func parseTags(raw string) []string {
 	}
 	return tags
 }
-
