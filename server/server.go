@@ -57,16 +57,16 @@ type bigTagsCache struct {
 
 // Server represents HTTP server instance
 type Server struct {
-	config          ConfigProvider
-	db              Database
-	scheduler       Scheduler
-	groupingEngine  GroupingEngine // may be nil when beats feature is disabled
-	version         string
-	debug           bool
-	templates       *template.Template
-	pageTemplates   map[string]*template.Template
-	router          *routegroup.Bundle
-	bigTags         *bigTagsCache
+	config         ConfigProvider
+	db             Database
+	scheduler      Scheduler
+	groupingEngine GroupingEngine // may be nil when beats feature is disabled
+	version        string
+	debug          bool
+	templates      *template.Template
+	pageTemplates  map[string]*template.Template
+	router         *routegroup.Bundle
+	bigTags        *bigTagsCache
 }
 
 // Database interface for server operations
@@ -275,6 +275,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			}
 			return u.Hostname()
 		},
+		"pathEscape": url.PathEscape,
 		"extractImage": func(content, description string) string {
 			imgRe := regexp.MustCompile(`(?i)<img[^>]+src="([^">]+)"`)
 			if matches := imgRe.FindStringSubmatch(content); len(matches) > 1 {

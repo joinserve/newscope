@@ -1374,7 +1374,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	feedName := r.PathValue("name")
 
-	feedName, _ = url.QueryUnescape(feedName)
+	feedName, _ = url.PathUnescape(feedName)
 
 	limit := 100 // reasonable limit for a single feed view
 
@@ -1496,12 +1496,12 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		commonPageData
-		Beats          []domain.BeatWithMembers
-		CurrentPage    int
-		TotalCount     int
-		HasNext        bool
-		HasPrev        bool
-		IsHTMX         bool
+		Beats           []domain.BeatWithMembers
+		CurrentPage     int
+		TotalCount      int
+		HasNext         bool
+		HasPrev         bool
+		IsHTMX          bool
 		CurrentGrouping *domain.Grouping
 		Groupings       []domain.Grouping
 		GroupingCounts  map[int64]int
