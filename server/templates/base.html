@@ -8,7 +8,17 @@
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
     <link rel="icon" type="image/png" href="/static/img/favicon.svg">
-    
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/static/img/logo.svg">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#101010" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Newscope">
+    <meta name="mobile-web-app-capable" content="yes">
+
     <!-- HTMX v2 -->
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
     
@@ -300,6 +310,14 @@
         }
         document.addEventListener('DOMContentLoaded', function() { initTitleMarquee(); });
         document.addEventListener('htmx:afterSettle', function() { initTitleMarquee(); });
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                    console.warn('SW registration failed:', err);
+                });
+            });
+        }
     </script>
 </body>
 </html>

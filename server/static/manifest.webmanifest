@@ -1,0 +1,18 @@
+{
+  "name": "Newscope",
+  "short_name": "Newscope",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f8fa",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/static/img/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
