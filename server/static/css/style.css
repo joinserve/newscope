@@ -217,7 +217,7 @@ body {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
-    width: auto;
+    max-width: calc(100% - 96px);
     overflow: hidden;
     white-space: nowrap;
     flex: 1;
