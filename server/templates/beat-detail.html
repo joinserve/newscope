@@ -94,7 +94,7 @@
                             </div>
                             <div class="card-main">
                                 <header class="card-head">
-                                    <a href="/source/{{.FeedName}}" class="feed-name" title="顯示 {{.FeedName}} 的文章">{{.FeedName}}</a>
+                                    <a href="/source/{{pathEscape .FeedName}}" class="feed-name" title="顯示 {{.FeedName}} 的文章">{{.FeedName}}</a>
                                     {{if .GetTopics}}
                                     {{$primaryTopic := index .GetTopics 0}}
                                     <span class="card-head-sep" aria-hidden="true">›</span>

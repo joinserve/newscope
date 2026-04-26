@@ -399,7 +399,14 @@ func (r *RepositoryAdapter) GetBeat(ctx context.Context, beatID int64) (domain.B
 	if r.beatRepo == nil {
 		return domain.BeatWithMembers{}, fmt.Errorf("beats disabled")
 	}
-	return r.beatRepo.GetBeat(ctx, beatID)
+	beat, err := r.beatRepo.GetBeat(ctx, beatID)
+	if err != nil {
+		return beat, err
+	}
+	for i := range beat.Members {
+		beat.Members[i].FeedName = getFeedDisplayName(beat.Members[i].FeedName, beat.Members[i].FeedURL)
+	}
+	return beat, nil
 }
 
 // MarkViewed marks a beat as viewed

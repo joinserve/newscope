@@ -55,8 +55,8 @@ type itemSQL struct {
 	FeedbackAt   *time.Time `db:"feedback_at"`
 
 	// entity extraction
-	Entities             topicsSQL  `db:"entities"`
-	EntitiesExtractedAt  *time.Time `db:"entities_extracted_at"`
+	Entities            topicsSQL  `db:"entities"`
+	EntitiesExtractedAt *time.Time `db:"entities_extracted_at"`
 
 	// processing state
 	ProcessedAt *time.Time `db:"processed_at"`

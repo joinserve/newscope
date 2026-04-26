@@ -298,8 +298,8 @@
                 span.classList.add('marquee-active');
             }
         }
-        document.addEventListener('DOMContentLoaded', initTitleMarquee);
-        document.addEventListener('htmx:afterSettle', initTitleMarquee);
+        document.addEventListener('DOMContentLoaded', function() { initTitleMarquee(); });
+        document.addEventListener('htmx:afterSettle', function() { initTitleMarquee(); });
     </script>
 </body>
 </html>
