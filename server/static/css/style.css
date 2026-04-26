@@ -2559,13 +2559,9 @@ main.container {
 
 .timeline-segment {
     position: relative;
-    padding-left: 1.25rem;
+    padding-left: 0.5rem;
     padding-bottom: 1.5rem;
-    border-left: 2px solid var(--border, #e5e7eb);
-}
-
-.timeline-segment.current {
-    border-left-color: var(--accent, #6366f1);
+    border-left: 2px solid var(--border-secondary);
 }
 
 .timeline-segment.current .revision-title {
@@ -2605,7 +2601,7 @@ main.container {
 }
 
 .timeline-members {
-    padding-left: 0.5rem;
+    padding-left: 0;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
