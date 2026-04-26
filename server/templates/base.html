@@ -298,18 +298,8 @@
                 span.classList.add('marquee-active');
             }
         }
-        function initMemberTitleMarquee() {
-            document.querySelectorAll('.timeline-member-summary .member-title').forEach(function(el) {
-                el.classList.remove('marquee-active');
-                const overflow = el.scrollWidth - el.clientWidth;
-                if (overflow > 4) {
-                    el.style.setProperty('--marquee-offset', '-' + overflow + 'px');
-                    el.classList.add('marquee-active');
-                }
-            });
-        }
-        document.addEventListener('DOMContentLoaded', function() { initTitleMarquee(); initMemberTitleMarquee(); });
-        document.addEventListener('htmx:afterSettle', function() { initTitleMarquee(); initMemberTitleMarquee(); });
+        document.addEventListener('DOMContentLoaded', function() { initTitleMarquee(); });
+        document.addEventListener('htmx:afterSettle', function() { initTitleMarquee(); });
     </script>
 </body>
 </html>
