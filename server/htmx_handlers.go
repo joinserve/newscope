@@ -1535,15 +1535,21 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderBeatsListHTMX(w, beats, "Nothing here yet.", data)
-	if currentGrouping != nil {
-		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
-	} else if topic != "" {
-		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+
+	// OOB-swap the page title using the same template the page uses, so the
+	// grouping-switcher dropdown survives a pull-to-refresh on /beats
+	fmt.Fprint(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'>")
+	if tmpl, ok := s.pageTemplates["beats.html"]; ok {
+		if err := tmpl.ExecuteTemplate(w, "page-title-content", data); err != nil {
+			log.Printf("[WARN] render page-title-content OOB: %v", err)
+		}
+	}
+	fmt.Fprint(w, "</h2>")
+
+	if backURL != "" {
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='%s' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>", html.EscapeString(backURL))
 	} else {
-		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'>Beats</h2>")
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'></div>")
+		fmt.Fprint(w, "<div id='header-back' class='header-left' hx-swap-oob='true'></div>")
 	}
 }
 
