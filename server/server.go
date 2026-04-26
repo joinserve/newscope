@@ -45,7 +45,7 @@ const (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-//go:embed static/css/* static/img/*
+//go:embed static/css/* static/img/* static/manifest.webmanifest static/sw.js
 var staticFS embed.FS
 
 // bigTagsCache caches the set of "big" tags (those appearing in ≥threshold items).
@@ -463,6 +463,27 @@ func (s *Server) setupRoutes() {
 		log.Fatalf("[ERROR] can't create embedded file server: %v", err)
 	}
 	s.router.HandleFiles("/static", http.FS(fsys))
+
+	// PWA: manifest and service worker served from root so the SW scope covers /
+	manifestBytes, err := fs.ReadFile(fsys, "manifest.webmanifest")
+	if err != nil {
+		log.Fatalf("[ERROR] read manifest.webmanifest: %v", err)
+	}
+	swBytes, err := fs.ReadFile(fsys, "sw.js")
+	if err != nil {
+		log.Fatalf("[ERROR] read sw.js: %v", err)
+	}
+	s.router.HandleFunc("GET /manifest.webmanifest", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_, _ = w.Write(manifestBytes)
+	})
+	s.router.HandleFunc("GET /sw.js", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Service-Worker-Allowed", "/")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(swBytes)
+	})
 
 	// web UI routes
 	cfg := s.config.GetFullConfig()
