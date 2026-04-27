@@ -66,13 +66,29 @@
 </div>
 
 <script>
-// auto mark-as-read: a beat-card visible >= 1.5s posts to /api/v1/beats/{id}/view.
-// the card stays in the current page; it disappears on the next /beats reload
-// because the unread_count gate filters it out server-side.
+// auto mark-as-read + PTR sharing a single `sent` set so PTR can flush
+// viewport-visible beats synchronously before htmx.ajax fires.
 (function() {
     const VISIBLE_MS = 1500;
     const sent = new Set();
     const timers = new Map();
+
+    function postView(id) {
+        sent.add(id);
+        fetch('/api/v1/beats/' + id + '/view', { method: 'POST', credentials: 'same-origin' })
+            .catch(function() { sent.delete(id); });
+    }
+
+    // synchronously post view for every card currently intersecting the viewport
+    function flushVisible() {
+        document.querySelectorAll('.beat-card[data-beat-id]').forEach(function(card) {
+            const id = card.getAttribute('data-beat-id');
+            if (!id || sent.has(id)) return;
+            const r = card.getBoundingClientRect();
+            if (r.top < window.innerHeight && r.bottom > 0) postView(id);
+        });
+    }
+
     function arm() {
         if (!('IntersectionObserver' in window)) return;
         const cards = document.querySelectorAll('.beat-card[data-beat-id]');
@@ -86,9 +102,7 @@
                     timers.set(id, setTimeout(function() {
                         timers.delete(id);
                         if (sent.has(id)) return;
-                        sent.add(id);
-                        fetch('/api/v1/beats/' + id + '/view', { method: 'POST', credentials: 'same-origin' })
-                            .catch(function() { sent.delete(id); });
+                        postView(id);
                     }, VISIBLE_MS));
                 } else {
                     const t = timers.get(id);
@@ -98,11 +112,11 @@
         }, { threshold: [0, 0.5, 1] });
         cards.forEach(function(c) { obs.observe(c); });
     }
+
     document.addEventListener('DOMContentLoaded', arm);
     document.addEventListener('htmx:afterSettle', arm);
-})();
 
-(function() {
+    // pull-to-refresh
     const THRESHOLD = 80;
     const indicator = document.getElementById('ptr-indicator');
     if (!indicator) return;
@@ -147,6 +161,7 @@
         indicator.classList.remove('ready');
         indicator.classList.add('loading');
         label.textContent = '載入中...';
+        flushVisible();
         const url = window.location.pathname + window.location.search;
         htmx.ajax('GET', url, { target: '#articles-with-pagination', swap: 'innerHTML' })
             .then(reset).catch(reset);
