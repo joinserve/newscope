@@ -677,7 +677,7 @@ document.getElementById('rsshub-search').addEventListener('input', (e) => {
                     list.innerHTML = items.slice(0, 10).map(n => {
                         const name = escapeHtml(n.name || n.key);
                         const key = escapeHtml(n.key);
-                        return `<li data-key="${key}"><strong>${name}</strong> <span>${key}</span></li>`;
+                        return `<li data-key="${key}" data-name="${name}"><strong>${name}</strong> <span>${key}</span></li>`;
                     }).join('');
                     list.hidden = items.length === 0;
                 })
@@ -691,11 +691,12 @@ document.getElementById('rsshub-search').addEventListener('input', (e) => {
         const li = e.target.closest('li[data-key]');
         if (!li) return;
         const key = li.dataset.key;
+        const name = li.dataset.name || key;
         list.hidden = true;
         list.innerHTML = '';
         input.value = '';
         currentCategory = null;
-        loadPlatformDetails({ key: key, name: key });
+        loadPlatformDetails({ key: key, name: name });
     });
     document.addEventListener('click', function(e) {
         if (!list.contains(e.target) && e.target !== input) {
