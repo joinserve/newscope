@@ -401,3 +401,35 @@ func TestFeedRepository_GetActiveFeedNames(t *testing.T) {
 		assert.Empty(t, feedNames)
 	})
 }
+
+func TestFeedRepository_GetFeedByName(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	titled := &domain.Feed{URL: "https://example.com/a.xml", Title: "Threads", FetchInterval: 3600, Enabled: true}
+	require.NoError(t, repos.Feed.CreateFeed(ctx, titled))
+
+	untitled := &domain.Feed{URL: "https://www.untitled.example.org/feed.xml", Title: "", FetchInterval: 3600, Enabled: true}
+	require.NoError(t, repos.Feed.CreateFeed(ctx, untitled))
+
+	t.Run("matches by title", func(t *testing.T) {
+		got, err := repos.Feed.GetFeedByName(ctx, "Threads")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, titled.ID, got.ID)
+	})
+
+	t.Run("matches untitled feed by hostname", func(t *testing.T) {
+		got, err := repos.Feed.GetFeedByName(ctx, "untitled.example.org")
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, untitled.ID, got.ID)
+	})
+
+	t.Run("returns nil for unknown name", func(t *testing.T) {
+		got, err := repos.Feed.GetFeedByName(ctx, "no-such-feed")
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+}

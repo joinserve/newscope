@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/repository"
 )
 
 // DatabaseMock is a mock implementation of server.Database.
@@ -53,6 +54,9 @@ import (
 //			GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
 //				panic("mock out the GetClassifiedItemsWithFilters method")
 //			},
+//			GetFeedByNameFunc: func(ctx context.Context, name string) (*domain.Feed, error) {
+//				panic("mock out the GetFeedByName method")
+//			},
 //			GetFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
 //				panic("mock out the GetFeeds method")
 //			},
@@ -83,7 +87,7 @@ import (
 //			GroupingCountsFunc: func(ctx context.Context) (map[int64]int, error) {
 //				panic("mock out the GroupingCounts method")
 //			},
-//			ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+//			ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the ListBeats method")
 //			},
 //			ListGroupingsFunc: func(ctx context.Context) ([]domain.Grouping, error) {
@@ -168,6 +172,9 @@ type DatabaseMock struct {
 	// GetClassifiedItemsWithFiltersFunc mocks the GetClassifiedItemsWithFilters method.
 	GetClassifiedItemsWithFiltersFunc func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error)
 
+	// GetFeedByNameFunc mocks the GetFeedByName method.
+	GetFeedByNameFunc func(ctx context.Context, name string) (*domain.Feed, error)
+
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context) ([]domain.Feed, error)
 
@@ -199,7 +206,7 @@ type DatabaseMock struct {
 	GroupingCountsFunc func(ctx context.Context) (map[int64]int, error)
 
 	// ListBeatsFunc mocks the ListBeats method.
-	ListBeatsFunc func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
+	ListBeatsFunc func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error)
 
 	// ListGroupingsFunc mocks the ListGroupings method.
 	ListGroupingsFunc func(ctx context.Context) ([]domain.Grouping, error)
@@ -328,6 +335,13 @@ type DatabaseMock struct {
 			// Req is the req argument value.
 			Req domain.ArticlesRequest
 		}
+		// GetFeedByName holds details about calls to the GetFeedByName method.
+		GetFeedByName []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Name is the name argument value.
+			Name string
+		}
 		// GetFeeds holds details about calls to the GetFeeds method.
 		GetFeeds []struct {
 			// Ctx is the ctx argument value.
@@ -402,14 +416,8 @@ type DatabaseMock struct {
 		ListBeats []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// GroupingID is the groupingID argument value.
-			GroupingID *int64
-			// Topic is the topic argument value.
-			Topic string
-			// Limit is the limit argument value.
-			Limit int
-			// Offset is the offset argument value.
-			Offset int
+			// Opts is the opts argument value.
+			Opts repository.ListBeatsOptions
 		}
 		// ListGroupings holds details about calls to the ListGroupings method.
 		ListGroupings []struct {
@@ -535,6 +543,7 @@ type DatabaseMock struct {
 	lockGetClassifiedItems            sync.RWMutex
 	lockGetClassifiedItemsCount       sync.RWMutex
 	lockGetClassifiedItemsWithFilters sync.RWMutex
+	lockGetFeedByName                 sync.RWMutex
 	lockGetFeeds                      sync.RWMutex
 	lockGetGrouping                   sync.RWMutex
 	lockGetGroupingBySlug             sync.RWMutex
@@ -997,6 +1006,42 @@ func (mock *DatabaseMock) GetClassifiedItemsWithFiltersCalls() []struct {
 	return calls
 }
 
+// GetFeedByName calls GetFeedByNameFunc.
+func (mock *DatabaseMock) GetFeedByName(ctx context.Context, name string) (*domain.Feed, error) {
+	if mock.GetFeedByNameFunc == nil {
+		panic("DatabaseMock.GetFeedByNameFunc: method is nil but Database.GetFeedByName was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Name string
+	}{
+		Ctx:  ctx,
+		Name: name,
+	}
+	mock.lockGetFeedByName.Lock()
+	mock.calls.GetFeedByName = append(mock.calls.GetFeedByName, callInfo)
+	mock.lockGetFeedByName.Unlock()
+	return mock.GetFeedByNameFunc(ctx, name)
+}
+
+// GetFeedByNameCalls gets all the calls that were made to GetFeedByName.
+// Check the length with:
+//
+//	len(mockedDatabase.GetFeedByNameCalls())
+func (mock *DatabaseMock) GetFeedByNameCalls() []struct {
+	Ctx  context.Context
+	Name string
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Name string
+	}
+	mock.lockGetFeedByName.RLock()
+	calls = mock.calls.GetFeedByName
+	mock.lockGetFeedByName.RUnlock()
+	return calls
+}
+
 // GetFeeds calls GetFeedsFunc.
 func (mock *DatabaseMock) GetFeeds(ctx context.Context) ([]domain.Feed, error) {
 	if mock.GetFeedsFunc == nil {
@@ -1358,27 +1403,21 @@ func (mock *DatabaseMock) GroupingCountsCalls() []struct {
 }
 
 // ListBeats calls ListBeatsFunc.
-func (mock *DatabaseMock) ListBeats(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+func (mock *DatabaseMock) ListBeats(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 	if mock.ListBeatsFunc == nil {
 		panic("DatabaseMock.ListBeatsFunc: method is nil but Database.ListBeats was just called")
 	}
 	callInfo := struct {
-		Ctx        context.Context
-		GroupingID *int64
-		Topic      string
-		Limit      int
-		Offset     int
+		Ctx  context.Context
+		Opts repository.ListBeatsOptions
 	}{
-		Ctx:        ctx,
-		GroupingID: groupingID,
-		Topic:      topic,
-		Limit:      limit,
-		Offset:     offset,
+		Ctx:  ctx,
+		Opts: opts,
 	}
 	mock.lockListBeats.Lock()
 	mock.calls.ListBeats = append(mock.calls.ListBeats, callInfo)
 	mock.lockListBeats.Unlock()
-	return mock.ListBeatsFunc(ctx, groupingID, topic, limit, offset)
+	return mock.ListBeatsFunc(ctx, opts)
 }
 
 // ListBeatsCalls gets all the calls that were made to ListBeats.
@@ -1386,18 +1425,12 @@ func (mock *DatabaseMock) ListBeats(ctx context.Context, groupingID *int64, topi
 //
 //	len(mockedDatabase.ListBeatsCalls())
 func (mock *DatabaseMock) ListBeatsCalls() []struct {
-	Ctx        context.Context
-	GroupingID *int64
-	Topic      string
-	Limit      int
-	Offset     int
+	Ctx  context.Context
+	Opts repository.ListBeatsOptions
 } {
 	var calls []struct {
-		Ctx        context.Context
-		GroupingID *int64
-		Topic      string
-		Limit      int
-		Offset     int
+		Ctx  context.Context
+		Opts repository.ListBeatsOptions
 	}
 	mock.lockListBeats.RLock()
 	calls = mock.calls.ListBeats

@@ -354,7 +354,7 @@ func TestBeatRepository_ListBeats_GroupingFilter(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("main inbox: nil groupingID returns unassigned beats", func(t *testing.T) {
-		beats, err := repos.Beat.ListBeats(ctx, nil, "", 10, 0)
+		beats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
 		require.NoError(t, err)
 		var ids []int64
 		for _, b := range beats {
@@ -367,12 +367,12 @@ func TestBeatRepository_ListBeats_GroupingFilter(t *testing.T) {
 	})
 
 	t.Run("grouping filter returns only assigned beats", func(t *testing.T) {
-		beats, err := repos.Beat.ListBeats(ctx, &gid1, "", 10, 0)
+		beats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{GroupingID: &gid1, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, beats, 1)
 		assert.Equal(t, bA, beats[0].ID)
 
-		beats, err = repos.Beat.ListBeats(ctx, &gid2, "", 10, 0)
+		beats, err = repos.Beat.ListBeats(ctx, ListBeatsOptions{GroupingID: &gid2, Limit: 10})
 		require.NoError(t, err)
 		require.Len(t, beats, 1)
 		assert.Equal(t, bB, beats[0].ID)

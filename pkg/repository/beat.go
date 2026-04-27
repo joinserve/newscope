@@ -650,34 +650,57 @@ func scanBeatViews(rows *sqlx.Rows) ([]domain.BeatView, error) {
 	return out, rows.Err()
 }
 
+// ListBeatsOptions controls filtering and pagination for ListBeats.
+//
+// GroupingID switches inbox vs. stream: nil means the main inbox (assignments
+// with grouping_id IS NULL); a non-nil value scopes the result to that grouping.
+// Topic, when non-empty, requires at least one member with that topic.
+// FeedID, when non-nil, requires at least one member belonging to that feed —
+// useful for the /source/{name} beats-by-source view.
+type ListBeatsOptions struct {
+	GroupingID *int64
+	Topic      string
+	FeedID     *int64
+	Limit      int
+	Offset     int
+}
+
 // ListBeats returns beats with members, sorted by aggregate score DESC then first_seen_at DESC.
 // Reads per-beat feedback from beats.feedback (column added in PR 6); no KV/settings indirection.
 // Filters out half-baked multi-member beats (canonical_title still NULL, i.e. merge_worker hasn't
 // run yet): only singleton beats and already-canonicalised multi-member beats make it into the list.
-// When topic is non-empty, only beats containing at least one member with that topic are returned.
-// groupingID controls inbox vs. stream: nil = main inbox (unassigned), non-nil = that grouping only.
-func (r *BeatRepository) ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
+func (r *BeatRepository) ListBeats(ctx context.Context, opts ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 	topicFilter := ""
 	var args []interface{}
 
-	if topic != "" {
+	if opts.Topic != "" {
 		topicFilter = `AND EXISTS (
 			SELECT 1 FROM beat_members bm2
 			JOIN items i2 ON i2.id = bm2.item_id, json_each(i2.topics)
 			WHERE bm2.beat_id = b.id AND json_each.value = ?
 		)`
-		args = append(args, topic)
+		args = append(args, opts.Topic)
+	}
+
+	feedFilter := ""
+	if opts.FeedID != nil {
+		feedFilter = `AND EXISTS (
+			SELECT 1 FROM beat_members bm3
+			JOIN items i3 ON i3.id = bm3.item_id
+			WHERE bm3.beat_id = b.id AND i3.feed_id = ?
+		)`
+		args = append(args, *opts.FeedID)
 	}
 
 	var groupFilter string
-	if groupingID == nil {
+	if opts.GroupingID == nil {
 		groupFilter = `AND a.grouping_id IS NULL`
 	} else {
 		groupFilter = `AND a.grouping_id = ?`
-		args = append(args, *groupingID)
+		args = append(args, *opts.GroupingID)
 	}
 
-	args = append(args, limit, offset)
+	args = append(args, opts.Limit, opts.Offset)
 
 	query := fmt.Sprintf(`
 		SELECT
@@ -690,13 +713,13 @@ func (r *BeatRepository) ListBeats(ctx context.Context, groupingID *int64, topic
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
 		LEFT JOIN beat_grouping_assignments a ON a.beat_id = b.id
-		WHERE 1=1 %s
+		WHERE 1=1 %s %s
 		GROUP BY b.id
 		HAVING (COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL)
 		   AND unread_count > 0
 		   %s
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
-		LIMIT ? OFFSET ?`, topicFilter, groupFilter)
+		LIMIT ? OFFSET ?`, topicFilter, feedFilter, groupFilter)
 
 	var rows []beatRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/repository"
 )
 
 const (
@@ -1369,68 +1370,67 @@ func (s *Server) preferenceToggleHandler(w http.ResponseWriter, r *http.Request)
 	s.preferenceViewHandler(w, r)
 }
 
-// sourceHandler handles requests for a specific feed source page
+// sourceHandler renders beats whose members include items from a single feed.
+// In the beats-first navigation introduced by ADR 0014, /source/{name} no longer
+// shows the legacy article inbox — it lists beats so the page is consistent with
+// every other "list of stories" view.
 func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	feedName := r.PathValue("name")
-
 	feedName, _ = url.PathUnescape(feedName)
 
-	limit := 100 // reasonable limit for a single feed view
-
-	// fetch unread articles
-	unreadReq := domain.ArticlesRequest{
-		FeedName:      feedName,
-		ShowProcessed: false,
-		Limit:         limit,
-	}
-	unreadArticles, err := s.db.GetClassifiedItemsWithFilters(ctx, unreadReq)
+	feed, err := s.db.GetFeedByName(ctx, feedName)
 	if err != nil {
-		log.Printf("[ERROR] failed to fetch unread items for source %s: %v", strconv.Quote(feedName), err)
-		s.respondWithError(w, http.StatusInternalServerError, "Failed to load unread articles", err)
+		log.Printf("[ERROR] failed to resolve feed %s: %v", strconv.Quote(feedName), err)
+		s.respondWithError(w, http.StatusInternalServerError, "Failed to resolve feed", err)
 		return
 	}
 
-	// fetch read articles
-	readReq := domain.ArticlesRequest{
-		FeedName:      feedName,
-		ShowProcessed: true,
-		Limit:         limit,
-	}
-	readArticles, err := s.db.GetClassifiedItemsWithFilters(ctx, readReq)
-	if err != nil {
-		log.Printf("[ERROR] failed to fetch read items for source %s: %v", strconv.Quote(feedName), err)
-		s.respondWithError(w, http.StatusInternalServerError, "Failed to load read articles", err)
-		return
+	var beats []domain.BeatWithMembers
+	if feed != nil {
+		beats, err = s.db.ListBeats(ctx, repository.ListBeatsOptions{
+			FeedID: &feed.ID,
+			Limit:  100,
+		})
+		if err != nil {
+			log.Printf("[ERROR] failed to list beats for source %s: %v", strconv.Quote(feedName), err)
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to load beats", err)
+			return
+		}
 	}
 
 	s.refreshBigTags(ctx)
 
 	backURL := r.Referer()
 	if backURL == "" {
-		backURL = "/articles"
+		backURL = "/beats"
 	}
 
 	data := struct {
 		commonPageData
-		FeedName       string
-		UnreadArticles []articleCardData
-		ReadArticles   []articleCardData
+		FeedName string
+		Beats    []domain.BeatWithMembers
+		IsHTMX   bool
 	}{
 		commonPageData: commonPageData{
 			ActivePage: "feeds",
 			PageTitle:  feedName,
 			BackURL:    backURL,
 		},
-		FeedName:       feedName,
-		UnreadArticles: wrapArticleCards(unreadArticles, ""),
-		ReadArticles:   wrapArticleCards(readArticles, ""),
+		FeedName: feedName,
+		Beats:    beats,
+		IsHTMX:   r.Header.Get("HX-Request") == "true",
 	}
 
-	if err := s.renderPage(w, "source.html", data); err != nil {
-		log.Printf("[WARN] failed to render source page: %v", err)
-		s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+	if !data.IsHTMX {
+		if err := s.renderPage(w, "source.html", data); err != nil {
+			log.Printf("[WARN] failed to render source page: %v", err)
+			s.respondWithError(w, http.StatusInternalServerError, "Failed to render page", err)
+		}
+		return
 	}
+
+	s.renderBeatsListHTMX(w, beats, "這個來源還沒有 beat。", nil)
 }
 
 // beatsHandler displays the beats inbox, optionally filtered by grouping slug.
@@ -1464,7 +1464,12 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 		groupingID = &g.ID
 	}
 
-	beats, err := s.db.ListBeats(ctx, groupingID, topic, pageSize, offset)
+	beats, err := s.db.ListBeats(ctx, repository.ListBeatsOptions{
+		GroupingID: groupingID,
+		Topic:      topic,
+		Limit:      pageSize,
+		Offset:     offset,
+	})
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to load beats", err)
 		return

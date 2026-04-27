@@ -2,7 +2,10 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-pkgz/repeater/v2"
@@ -204,6 +207,48 @@ func (r *FeedRepository) DeleteFeed(ctx context.Context, id int64) error {
 		return fmt.Errorf("delete feed: %w", err)
 	}
 	return nil
+}
+
+// GetFeedByName resolves a display name (the same one rendered on `/source/{name}`)
+// back to a Feed row. The match prefers the stored title; if no feed has that
+// title, it falls back to scanning all feeds and comparing the hostname-derived
+// display name (host without `www.`), matching the Go-side getFeedDisplayName
+// helper used by article-card and beat-card. Returns nil when no feed matches.
+func (r *FeedRepository) GetFeedByName(ctx context.Context, name string) (*domain.Feed, error) {
+	var sqlFeed feedSQL
+	err := r.db.GetContext(ctx, &sqlFeed, "SELECT * FROM feeds WHERE title = ? LIMIT 1", name)
+	if err == nil {
+		return r.toDomainFeed(&sqlFeed), nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("get feed by name: %w", err)
+	}
+
+	// fallback: scan untitled feeds and match by hostname
+	var rows []feedSQL
+	if err := r.db.SelectContext(ctx, &rows, "SELECT * FROM feeds WHERE title = ''"); err != nil {
+		return nil, fmt.Errorf("get feed by name fallback: %w", err)
+	}
+	for i := range rows {
+		if hostnameMatchesDisplayName(rows[i].URL, name) {
+			return r.toDomainFeed(&rows[i]), nil
+		}
+	}
+	return nil, nil
+}
+
+// hostnameMatchesDisplayName reports whether a feed URL's hostname (with the
+// `www.` prefix stripped) equals the supplied display name, case-insensitive.
+func hostnameMatchesDisplayName(feedURL, name string) bool {
+	rest := feedURL
+	if i := strings.Index(rest, "://"); i >= 0 {
+		rest = rest[i+3:]
+	}
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		rest = rest[:i]
+	}
+	rest = strings.TrimPrefix(rest, "www.")
+	return strings.EqualFold(rest, name)
 }
 
 // GetActiveFeedNames returns distinct feed names for feeds that have classified articles
