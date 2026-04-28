@@ -929,14 +929,24 @@ html.dark-theme .moon-icon { opacity: 1; }
 }
 
 .feed-card .card-actions {
-    gap: 1.25rem;
+    gap: 0.5rem;
 }
 
-.feed-card .card-actions .action-toggle-off {
+.feed-card .card-actions .action {
+    padding: 0.4rem;
+    border-radius: 8px;
     color: var(--text-secondary);
+    transition: background-color 0.15s ease, color 0.15s ease, opacity 0.2s;
 }
 
-.feed-card .card-actions .action-delete {
+.feed-card .card-actions .action:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    opacity: 1;
+}
+
+.feed-card .card-actions .action-delete:hover {
+    background-color: rgba(255, 48, 64, 0.1);
     color: var(--danger-color);
 }
 
