@@ -469,7 +469,7 @@ func TestBeatRepository_ListBeats_SortsAndAggregates(t *testing.T) {
 	repos.Item.UpdateItemClassification(ctx, id4b, &domain.Classification{Score: 7.0})
 	require.NoError(t, repos.Beat.SaveCanonical(ctx, b3, domain.BeatCanonical{Title: "T3"}))
 
-	beats, err := repos.Beat.ListBeats(ctx, nil, "", 10, 0)
+	beats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, beats, 3)
 
@@ -512,7 +512,7 @@ func TestBeatRepository_ListBeats_HidesUncanonicalisedMultiMember(t *testing.T) 
 	_, _, err = repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idD, Vector: []float32{0, 0, 1}, PublishedAt: pub.Add(2 * time.Hour)}, 0.85, 48*time.Hour, 20)
 	require.NoError(t, err)
 
-	beats, err := repos.Beat.ListBeats(ctx, nil, "", 10, 0)
+	beats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
 	require.NoError(t, err)
 
 	var ids []int64
@@ -546,7 +546,7 @@ func TestBeatRepository_ListBeats_UnreadCount(t *testing.T) {
 	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 	repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: id3, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
 
-	beats, err := repos.Beat.ListBeats(ctx, nil, "", 10, 0)
+	beats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, beats, 1)
 	assert.Equal(t, 2, beats[0].UnreadCount)
@@ -576,7 +576,7 @@ func TestBeatRepository_ListBeats_HidesViewedWithoutNewMembers(t *testing.T) {
 	idC := mkItem(pub, "c", []float32{0, 0, 1})
 	bC, _, _ := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idC, Vector: []float32{0, 0, 1}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
 
-	beats, err := repos.Beat.ListBeats(ctx, nil, "", 10, 0)
+	beats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
 	require.NoError(t, err)
 	var ids []int64
 	for _, b := range beats {
@@ -604,7 +604,7 @@ func TestBeatRepository_ListBeats_TopicFilter(t *testing.T) {
 	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idB, &domain.Classification{Score: 8, Topics: []string{"china", "security"}}))
 
 	// no filter — both beats returned
-	all, err := repos.Beat.ListBeats(ctx, nil, "", 10, 0)
+	all, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
 	require.NoError(t, err)
 	var allIDs []int64
 	for _, b := range all {
@@ -614,21 +614,78 @@ func TestBeatRepository_ListBeats_TopicFilter(t *testing.T) {
 	assert.Contains(t, allIDs, bB)
 
 	// filter by "ai" — only beat A
-	aiBeats, err := repos.Beat.ListBeats(ctx, nil, "ai", 10, 0)
+	aiBeats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Topic: "ai", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, aiBeats, 1)
 	assert.Equal(t, bA, aiBeats[0].ID)
 
 	// filter by "china" — only beat B
-	chinaBeats, err := repos.Beat.ListBeats(ctx, nil, "china", 10, 0)
+	chinaBeats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Topic: "china", Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, chinaBeats, 1)
 	assert.Equal(t, bB, chinaBeats[0].ID)
 
 	// filter by unknown topic — empty result
-	noneBeats, err := repos.Beat.ListBeats(ctx, nil, "nonexistent", 10, 0)
+	noneBeats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Topic: "nonexistent", Limit: 10})
 	require.NoError(t, err)
 	assert.Empty(t, noneBeats)
+}
+
+func TestBeatRepository_ListBeats_FeedFilter(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	pub := time.Now()
+
+	feedA := createTestFeed(t, repos, "feed-a")
+	feedB := createTestFeed(t, repos, "feed-b")
+
+	mkItemForFeed := func(feedID int64, title string, vec []float32, when time.Time) int64 {
+		item := &domain.Item{FeedID: feedID, GUID: title, Title: title, Link: "https://ex.com/" + title, Published: when}
+		require.NoError(t, repos.Item.CreateItem(ctx, item))
+		require.NoError(t, repos.Item.UpdateItemProcessed(ctx, item.ID, nil,
+			&domain.Classification{Score: 7, ClassifiedAt: time.Now()}))
+		require.NoError(t, repos.Embedding.PutEmbedding(ctx, item.ID, "test-model", vec))
+		return item.ID
+	}
+
+	// beat A belongs to feedA
+	idA := mkItemForFeed(feedA.ID, "a-only", []float32{1, 0, 0}, pub)
+	bA, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idA, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// beat B belongs to feedB
+	idB := mkItemForFeed(feedB.ID, "b-only", []float32{0, 1, 0}, pub.Add(time.Hour))
+	bB, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{ItemID: idB, Vector: []float32{0, 1, 0}, PublishedAt: pub.Add(time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// no filter — both
+	all, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
+	require.NoError(t, err)
+	var allIDs []int64
+	for _, b := range all {
+		allIDs = append(allIDs, b.ID)
+	}
+	assert.Contains(t, allIDs, bA)
+	assert.Contains(t, allIDs, bB)
+
+	// filter by feedA
+	onlyA, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{FeedID: &feedA.ID, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, onlyA, 1)
+	assert.Equal(t, bA, onlyA[0].ID)
+
+	// filter by feedB
+	onlyB, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{FeedID: &feedB.ID, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, onlyB, 1)
+	assert.Equal(t, bB, onlyB[0].ID)
+
+	// filter by an unrelated feed id — empty
+	missing := int64(9999)
+	none, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{FeedID: &missing, Limit: 10})
+	require.NoError(t, err)
+	assert.Empty(t, none)
 }
 
 func TestBeatRepository_GetBeat_EagerLoadsMembers(t *testing.T) {

@@ -36,6 +36,7 @@ type FeedRepo interface {
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
 	DeleteFeed(ctx context.Context, feedID int64) error
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
+	GetFeedByName(ctx context.Context, name string) (*domain.Feed, error)
 }
 
 // ItemRepo defines the item repository interface used by the adapter
@@ -70,7 +71,7 @@ type SettingRepo interface {
 // The UI implementer decides the final shape — either a SearchWithMembers
 // method on the repo, or enrichment in the handler.
 type BeatRepo interface {
-	ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error)
+	ListBeats(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error)
 	GetBeat(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 	MarkViewed(ctx context.Context, beatID int64) error
 	SetFeedback(ctx context.Context, beatID int64, feedback string) error
@@ -292,6 +293,11 @@ func (r *RepositoryAdapter) GetActiveFeedNames(ctx context.Context, minScore flo
 	return r.feedRepo.GetActiveFeedNames(ctx, minScore)
 }
 
+// GetFeedByName resolves a feed display name to a Feed row, or nil if no match.
+func (r *RepositoryAdapter) GetFeedByName(ctx context.Context, name string) (*domain.Feed, error) {
+	return r.feedRepo.GetFeedByName(ctx, name)
+}
+
 // GetSetting retrieves a setting value by key
 func (r *RepositoryAdapter) GetSetting(ctx context.Context, key string) (string, error) {
 	return r.settingRepo.GetSetting(ctx, key)
@@ -378,12 +384,12 @@ func getFeedDisplayName(title, feedURL string) string {
 	return feedURL
 }
 
-// ListBeats lists beat aggregation summaries, optionally filtered by groupingID and topic.
-func (r *RepositoryAdapter) ListBeats(ctx context.Context, groupingID *int64, topic string, limit, offset int) ([]domain.BeatWithMembers, error) {
+// ListBeats lists beat aggregation summaries, optionally filtered by grouping, topic, or feed.
+func (r *RepositoryAdapter) ListBeats(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 	if r.beatRepo == nil {
 		return nil, nil // graceful degradation
 	}
-	return r.beatRepo.ListBeats(ctx, groupingID, topic, limit, offset)
+	return r.beatRepo.ListBeats(ctx, opts)
 }
 
 // SetFeedback updates the user feedback for a beat.

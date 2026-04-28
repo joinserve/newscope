@@ -173,6 +173,57 @@ func TestServer_rsshubNamespacesHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code)
 		assert.JSONEq(t, `[]`, rec.Body.String())
 	})
+
+	t.Run("filters by q substring against key and name", func(t *testing.T) {
+		srv := newRSSHubServer(t, upstream.URL)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/rsshub/namespaces?q=BB", http.NoBody)
+		rec := httptest.NewRecorder()
+		srv.rsshubNamespacesHandler(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var got []rsshubNamespaceSummary
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+		keys := make([]string, 0, len(got))
+		for _, s := range got {
+			keys = append(keys, s.Key)
+		}
+		assert.Equal(t, []string{"bbc"}, keys)
+	})
+
+	t.Run("q matches against the localized name", func(t *testing.T) {
+		srv := newRSSHubServer(t, upstream.URL)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/rsshub/namespaces?q=%E4%B8%AD%E5%A4%AE", http.NoBody) // 中央
+		rec := httptest.NewRecorder()
+		srv.rsshubNamespacesHandler(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var got []rsshubNamespaceSummary
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+		require.Len(t, got, 1)
+		assert.Equal(t, "cna", got[0].Key)
+	})
+
+	t.Run("q and category combine (AND)", func(t *testing.T) {
+		srv := newRSSHubServer(t, upstream.URL)
+		// "bb" matches the bbc key but bbc has no "programming" category
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/rsshub/namespaces?q=bb&category=programming", http.NoBody)
+		rec := httptest.NewRecorder()
+		srv.rsshubNamespacesHandler(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.JSONEq(t, `[]`, rec.Body.String())
+
+		// "git" + "programming" matches only github
+		req = httptest.NewRequest(http.MethodGet, "/api/v1/rsshub/namespaces?q=git&category=programming", http.NoBody)
+		rec = httptest.NewRecorder()
+		srv.rsshubNamespacesHandler(rec, req)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		var got []rsshubNamespaceSummary
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+		require.Len(t, got, 1)
+		assert.Equal(t, "github", got[0].Key)
+	})
 }
 
 func TestServer_rsshubNamespaceDetailHandler(t *testing.T) {

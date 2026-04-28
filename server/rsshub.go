@@ -28,6 +28,9 @@ const (
 
 	// rsshubPreviewMaxItems caps the number of items shown in the preview snippet.
 	rsshubPreviewMaxItems = 5
+
+	// rsshubNamespaceListCap caps the namespaces listing returned by the API.
+	rsshubNamespaceListCap = 50
 )
 
 // rsshubRoute captures the subset of an upstream route definition we care about.
@@ -96,18 +99,24 @@ func (s *Server) rsshubCategoriesHandler(w http.ResponseWriter, r *http.Request)
 	writeJSONResponse(w, cats)
 }
 
-// rsshubNamespacesHandler lists all namespaces, optionally filtered by ?category=<name>.
+// rsshubNamespacesHandler lists namespaces, optionally filtered by ?category=<name>
+// or ?q=<text> (case-insensitive substring match against name and key). When both
+// are set, both must match. The result is capped at rsshubNamespaceListCap entries.
 func (s *Server) rsshubNamespacesHandler(w http.ResponseWriter, r *http.Request) {
 	data, err := s.fetchRSSHubNamespaces(r.Context())
 	if err != nil {
 		rsshubUpstreamError(w, err)
 		return
 	}
-	filter := r.URL.Query().Get("category")
+	category := r.URL.Query().Get("category")
+	query := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	out := make([]rsshubNamespaceSummary, 0, len(data))
 	for key, ns := range data {
 		cats := namespaceCategories(ns)
-		if filter != "" && !containsString(cats, filter) {
+		if category != "" && !containsString(cats, category) {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(key), query) && !strings.Contains(strings.ToLower(ns.Name), query) {
 			continue
 		}
 		out = append(out, rsshubNamespaceSummary{
@@ -119,6 +128,9 @@ func (s *Server) rsshubNamespacesHandler(w http.ResponseWriter, r *http.Request)
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	if len(out) > rsshubNamespaceListCap {
+		out = out[:rsshubNamespaceListCap]
+	}
 	writeJSONResponse(w, out)
 }
 

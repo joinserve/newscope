@@ -91,12 +91,70 @@
     font-size: 0.875rem;
     margin: 0;
 }
+.rsshub-search-wrap {
+    position: relative;
+    margin: 0 0 1.5rem;
+    padding: 0 1.5rem;
+}
+.rsshub-search-wrap input[type="search"] {
+    width: 100%;
+    padding: 0.875rem 1.25rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-secondary);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    outline: none;
+    box-sizing: border-box;
+}
+.rsshub-search-wrap input[type="search"]:focus {
+    border-color: var(--primary-color);
+}
+.rsshub-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 1.5rem;
+    right: 1.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 12px;
+    max-height: 320px;
+    overflow-y: auto;
+    list-style: none;
+    padding: 0.25rem 0;
+    margin: 0.25rem 0 0;
+    z-index: 10;
+    box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.12));
+}
+.rsshub-suggestions li {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+.rsshub-suggestions li:hover {
+    background: var(--bg-hover, var(--bg-tertiary));
+}
+.rsshub-suggestions li strong {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+.rsshub-suggestions li span {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    font-family: ui-monospace, monospace;
+}
 </style>
 
 <div class="rsshub-page">
     
     <!-- Step 1: Categories View -->
     <div id="view-categories" class="rsshub-content">
+        <div class="rsshub-search-wrap">
+            <input type="search" id="rsshub-namespace-search" placeholder="搜尋平台 (twitter, threads, ...)" autocomplete="off">
+            <ul id="rsshub-search-suggestions" class="rsshub-suggestions" hidden></ul>
+        </div>
         <div id="categories-grid" class="rsshub-list">
             <p style="color: var(--text-secondary); margin: 0; padding: 1rem 1.5rem;">Loading categories...</p>
         </div>
@@ -593,6 +651,59 @@ document.getElementById('rsshub-search').addEventListener('input', (e) => {
     });
     renderPlatforms(filtered);
 });
+
+(function setupNamespaceAutocomplete() {
+    const input = document.getElementById('rsshub-namespace-search');
+    const list = document.getElementById('rsshub-search-suggestions');
+    if (!input || !list) return;
+    let timer = null;
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        const q = input.value.trim();
+        if (q.length < 2) {
+            list.hidden = true;
+            list.innerHTML = '';
+            return;
+        }
+        timer = setTimeout(function() {
+            fetch('/api/v1/rsshub/namespaces?q=' + encodeURIComponent(q))
+                .then(r => r.json())
+                .then(items => {
+                    if (!Array.isArray(items)) {
+                        list.hidden = true;
+                        list.innerHTML = '';
+                        return;
+                    }
+                    list.innerHTML = items.slice(0, 10).map(n => {
+                        const name = escapeHtml(n.name || n.key);
+                        const key = escapeHtml(n.key);
+                        return `<li data-key="${key}" data-name="${name}"><strong>${name}</strong> <span>${key}</span></li>`;
+                    }).join('');
+                    list.hidden = items.length === 0;
+                })
+                .catch(err => {
+                    console.error('namespace search:', err);
+                    list.hidden = true;
+                });
+        }, 250);
+    });
+    list.addEventListener('click', function(e) {
+        const li = e.target.closest('li[data-key]');
+        if (!li) return;
+        const key = li.dataset.key;
+        const name = li.dataset.name || key;
+        list.hidden = true;
+        list.innerHTML = '';
+        input.value = '';
+        currentCategory = null;
+        loadPlatformDetails({ key: key, name: name });
+    });
+    document.addEventListener('click', function(e) {
+        if (!list.contains(e.target) && e.target !== input) {
+            list.hidden = true;
+        }
+    });
+})();
 
 document.addEventListener('DOMContentLoaded', initRSSHubExplorer);
 </script>
