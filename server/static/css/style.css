@@ -809,7 +809,9 @@ html.dark-theme .moon-icon { opacity: 1; }
     border-bottom: none;
 }
 
-/* Support multi-line descriptions inside settings without overlap */
+/* Support multi-line descriptions inside settings without overlap.
+   The leading padding mirrors the section-header's icon + gap so labels
+   line up with the section heading text, not the heading icon. */
 .setting-item-content {
     display: flex;
     flex-direction: column;
@@ -817,6 +819,7 @@ html.dark-theme .moon-icon { opacity: 1; }
     min-width: 0; /* allows text truncation */
     align-items: flex-start;
     text-align: left;
+    padding-left: calc(1.1rem + 0.5rem);
 }
 
 .setting-item label {
@@ -847,6 +850,13 @@ html.dark-theme .moon-icon { opacity: 1; }
     font-weight: 600;
     margin: 1.5rem 0 1rem;
     color: var(--text-primary);
+    padding-left: calc(1.1rem + 0.5rem);
+}
+
+/* subsection headers that already carry a leading icon (e.g. inside the
+   topic-preferences container) line up with their own icon — no extra indent */
+.topic-section .subsection-header {
+    padding-left: 0;
 }
 
 /* Feeds Page Redesign — feed-card mirrors article-card */
