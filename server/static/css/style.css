@@ -896,10 +896,19 @@ html.dark-theme .moon-icon { opacity: 1; }
     background: rgba(255, 48, 64, 0.1);
 }
 
+.feed-card .feed-url-line {
+    overflow: hidden;
+}
+
 .feed-card .feed-url-line a {
     color: var(--text-secondary);
     text-decoration: none;
-    word-break: break-all;
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.8125rem;
 }
