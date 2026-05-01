@@ -1,3 +1,7 @@
+{{/* a beat with no hydrated members is unrenderable; skip it entirely so the
+   whole /beats response doesn't panic mid-stream. orphan beats can exist if
+   feed-cascade left rows behind. */}}
+{{if gt (len .Members) 0}}
 <article class="article-card beat-card"
          data-beat-id="{{.ID}}"
          data-user-feedback="{{.GetUserFeedback}}"
@@ -6,10 +10,8 @@
          hx-push-url="true"
          hx-swap="innerHTML transition:true"
          hx-trigger="click[!event.target.closest('.card-actions') && !event.target.closest('.clickable-topic')]"
-         {{if gt (len .Members) 0}}
          data-share-url="{{(index .Members 0).Link}}"
-         data-share-title="{{if .CanonicalTitle}}{{unescapeHTML (index .CanonicalTitle)}}{{else}}{{unescapeHTML (index .Members 0).Title}}{{end}}"
-         {{end}}>
+         data-share-title="{{if .CanonicalTitle}}{{unescapeHTML (index .CanonicalTitle)}}{{else}}{{unescapeHTML (index .Members 0).Title}}{{end}}">
 
     {{$membersCount := len .Members}}
     {{if gt $membersCount 0}}
@@ -54,7 +56,7 @@
         <header class="card-head">
             {{if gt $membersCount 1}}
             <span class="feed-name">{{$membersCount}} sources</span>
-            {{else if gt $membersCount 0}}
+            {{else}}
             <a href="/source/{{(index .Members 0).FeedName}}" class="feed-name clickable-topic">{{(index .Members 0).FeedName}}</a>
             {{end}}
 
@@ -83,7 +85,7 @@
         <h3 class="card-title">
             {{if gt $membersCount 1}}
                 {{if .CanonicalTitle}}{{unescapeHTML (index .CanonicalTitle)}}{{else}}Processing...{{end}}
-            {{else if gt $membersCount 0}}
+            {{else}}
                 {{unescapeHTML (index .Members 0).Title}}
             {{end}}
         </h3>
@@ -92,7 +94,7 @@
             <p>
             {{if gt $membersCount 1}}
                 {{if .CanonicalSummary}}{{index .CanonicalSummary}}{{else}}Awaiting canonical summary...{{end}}
-            {{else if gt $membersCount 0}}
+            {{else}}
                 {{(index .Members 0).GetSummary}}
             {{end}}
             </p>
@@ -211,3 +213,4 @@
         </dialog>
     </div>
 </article>
+{{end}}

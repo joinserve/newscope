@@ -780,6 +780,11 @@ func (r *BeatRepository) hydrateBeatRows(ctx context.Context, rows []beatRow) ([
 	out := make([]domain.BeatWithMembers, 0, len(rows))
 	for _, row := range rows {
 		members := membersMap[row.ID]
+		// orphan guard: if every member's item or feed JOIN failed, the beat
+		// has nothing to render; drop it rather than emitting an empty card.
+		if len(members) == 0 {
+			continue
+		}
 		topicsMap := make(map[string]bool)
 		var topics []string
 		for _, m := range members {
