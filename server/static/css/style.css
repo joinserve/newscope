@@ -983,10 +983,14 @@ html.dark-theme .moon-icon { opacity: 1; }
     color: var(--danger-color);
 }
 
-.feed-card .feed-fetch-indicator {
-    margin-left: 0.25rem;
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
+/* spin the refresh icon while the fetch request is in flight */
+.feed-card .action-fetch.htmx-request .icon {
+    animation: feed-fetch-spin 0.9s linear infinite;
+}
+
+@keyframes feed-fetch-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
 }
 
 @media (max-width: 768px) {
