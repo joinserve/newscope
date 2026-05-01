@@ -755,12 +755,14 @@ html.dark-theme .moon-icon { opacity: 1; }
     border-radius: 2px 2px 0 0;
 }
 
-/* Settings Group and Grid Redesign */
+/* Settings Group and Grid Redesign — horizontal gutter comes from
+   .settings-tab-content (1.5rem); the section itself only handles
+   vertical rhythm. */
 .settings-section {
     background-color: transparent;
     border-radius: 0;
     border: none;
-    padding: 1.5rem;
+    padding: 1.5rem 0;
     margin-bottom: 0;
     box-shadow: none;
     border-bottom: 1px solid var(--border-primary);
@@ -2493,13 +2495,24 @@ main.container {
 }
 
 .groupings-header {
-    padding: 0 1.5rem;
+    padding: 1.5rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--border-primary);
+    background-color: var(--bg-primary);
+    border-radius: 24px 24px 0 0;
+}
+
+.groupings-header h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
 }
 
 .groupings-header p {
     color: var(--text-secondary);
-    font-size: 0.9375rem;
-    margin: 0;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0;
 }
 
 .groupings-body {
