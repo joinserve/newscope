@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -123,6 +124,80 @@ func TestRepositories_Integration(t *testing.T) {
 		_, err = repos.Feed.GetFeed(context.Background(), testFeed.ID)
 		assert.Error(t, err)
 	})
+}
+
+func TestNewRepositories_FKEnabledOnEveryPoolConnection(t *testing.T) {
+	// regression: with MaxOpenConns > 1, a one-shot `PRAGMA foreign_keys = ON`
+	// only configures whichever pooled connection happened to answer that exec;
+	// other connections in the pool retain the default (off) and silently no-op
+	// cascading deletes.
+	dbPath := filepath.Join(t.TempDir(), "fk-pool.db")
+	cfg := Config{
+		DSN:             "file:" + dbPath + "?_txlock=immediate",
+		MaxOpenConns:    2,
+		MaxIdleConns:    2,
+		ConnMaxLifetime: time.Hour,
+	}
+	repos, err := NewRepositories(context.Background(), cfg)
+	require.NoError(t, err)
+	defer func() { _ = repos.Close() }()
+
+	ctx := context.Background()
+
+	// pin two distinct pooled connections; each must report foreign_keys = 1
+	c1, err := repos.DB.Connx(ctx)
+	require.NoError(t, err)
+	defer func() { _ = c1.Close() }()
+
+	c2, err := repos.DB.Connx(ctx)
+	require.NoError(t, err)
+	defer func() { _ = c2.Close() }()
+
+	var fk1, fk2 int
+	require.NoError(t, c1.GetContext(ctx, &fk1, "PRAGMA foreign_keys"))
+	require.NoError(t, c2.GetContext(ctx, &fk2, "PRAGMA foreign_keys"))
+	assert.Equal(t, 1, fk1, "first pooled connection must have foreign_keys on")
+	assert.Equal(t, 1, fk2, "second pooled connection must have foreign_keys on")
+}
+
+func TestNewRepositories_CascadeWorksAcrossPool(t *testing.T) {
+	// functional regression: deleting a feed must cascade to its items even
+	// when the connection servicing the DELETE was not the one that received
+	// the original `PRAGMA foreign_keys = ON`. This used to fail silently
+	// (items remained, foreign_keys defaulted to off on that connection).
+	dbPath := filepath.Join(t.TempDir(), "cascade-pool.db")
+	cfg := Config{
+		DSN:             "file:" + dbPath + "?_txlock=immediate",
+		MaxOpenConns:    2,
+		MaxIdleConns:    2,
+		ConnMaxLifetime: time.Hour,
+	}
+	repos, err := NewRepositories(context.Background(), cfg)
+	require.NoError(t, err)
+	defer func() { _ = repos.Close() }()
+
+	ctx := context.Background()
+	feed := createTestFeed(t, repos, "cascade-pool")
+	for i := 0; i < 5; i++ {
+		item := &domain.Item{
+			FeedID:    feed.ID,
+			GUID:      fmt.Sprintf("guid-%d", i),
+			Title:     fmt.Sprintf("title-%d", i),
+			Link:      fmt.Sprintf("https://example.com/%d", i),
+			Published: time.Now(),
+		}
+		require.NoError(t, repos.Item.CreateItem(ctx, item))
+	}
+
+	// run several deletes; the pool may hand out either connection, so this
+	// exercises both. Without the fix, at least one pool slot would skip
+	// the cascade and leave items behind.
+	require.NoError(t, repos.Feed.DeleteFeed(ctx, feed.ID))
+
+	var itemCount int
+	require.NoError(t, repos.DB.GetContext(ctx, &itemCount,
+		`SELECT COUNT(*) FROM items WHERE feed_id = ?`, feed.ID))
+	assert.Equal(t, 0, itemCount, "items must cascade-delete with the feed")
 }
 
 func TestNewRepositories_InvalidDSN(t *testing.T) {

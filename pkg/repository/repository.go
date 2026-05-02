@@ -40,7 +40,7 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 		cfg.DSN = "file:newscope.db?cache=shared&mode=rwc&_txlock=immediate"
 	}
 
-	db, err := sqlx.Open("sqlite", cfg.DSN)
+	db, err := sqlx.Open("sqlite", withConnPragmas(cfg.DSN))
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
@@ -56,24 +56,10 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	}
 
-	// enable foreign keys
-	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-		return nil, fmt.Errorf("enable foreign keys: %w", err)
-	}
-
-	// optimize SQLite settings
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA cache_size = -64000", // 64MB cache
-		"PRAGMA temp_store = MEMORY",
-		"PRAGMA busy_timeout = 5000", // 5 second timeout for locks
-	}
-
-	for _, pragma := range pragmas {
-		if _, err := db.ExecContext(ctx, pragma); err != nil {
-			return nil, fmt.Errorf("execute %s: %w", pragma, err)
-		}
+	// journal_mode is database-level: WAL is recorded in the file header and
+	// subsequent connections inherit it, so a single exec is enough.
+	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode = WAL"); err != nil {
+		return nil, fmt.Errorf("enable WAL: %w", err)
 	}
 
 	// initialize schema
@@ -94,6 +80,28 @@ func NewRepositories(ctx context.Context, cfg Config) (*Repositories, error) {
 	}
 
 	return repos, nil
+}
+
+// withConnPragmas appends modernc.org/sqlite `_pragma=` query parameters that
+// must take effect on every pooled connection. PRAGMAs like foreign_keys are
+// per-connection: running `PRAGMA foreign_keys = ON` once via *sqlx.DB only
+// configures whichever pooled connection answered that exec, leaving every
+// other connection with FKs disabled — and cascade deletes silently no-op
+// on those connections. The driver re-runs `_pragma=` params on every
+// connect (vendor sqlite.go applyQueryParams), which is the supported fix.
+func withConnPragmas(dsn string) string {
+	pragmas := []string{
+		"_pragma=busy_timeout(5000)",
+		"_pragma=cache_size(-64000)",
+		"_pragma=foreign_keys(1)",
+		"_pragma=synchronous(NORMAL)",
+		"_pragma=temp_store(MEMORY)",
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + strings.Join(pragmas, "&")
 }
 
 // Close closes the database connection
