@@ -18,6 +18,7 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/repository"
 	"github.com/umputun/newscope/server/mocks"
 )
 
@@ -1991,7 +1992,7 @@ func TestBeatsHandler_RendersInbox(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+		ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 			title := "Merged Beat Title"
 			return []domain.BeatWithMembers{
 				{
@@ -2198,9 +2199,9 @@ func TestBeatsHandler_TopicFilter(t *testing.T) {
 	var capturedTopic string
 	aiTitle := "AI Beat"
 	database := &mocks.DatabaseMock{
-		ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
-			capturedTopic = topic
-			if topic == "ai" {
+		ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
+			capturedTopic = opts.Topic
+			if opts.Topic == "ai" {
 				return []domain.BeatWithMembers{{
 					ID:             1,
 					CanonicalTitle: &aiTitle,
@@ -2244,15 +2245,25 @@ func TestSourceHandler_Renders(t *testing.T) {
 		},
 	}
 
+	cnaTitle := "CNA Story"
+	var capturedFeedID *int64
 	database := &mocks.DatabaseMock{
-		GetClassifiedItemsWithFiltersFunc: func(ctx context.Context, req domain.ArticlesRequest) ([]domain.ClassifiedItem, error) {
-			return []domain.ClassifiedItem{
-				{
-					Item:           &domain.Item{ID: 1, Title: "Source Article", Link: "https://example.com/1"},
-					FeedName:       "CNA",
-					Classification: &domain.Classification{Score: 7.5, Topics: []string{"tech"}},
-				},
-			}, nil
+		GetFeedByNameFunc: func(ctx context.Context, name string) (*domain.Feed, error) {
+			require.Equal(t, "CNA", name)
+			return &domain.Feed{ID: 42, Title: "CNA"}, nil
+		},
+		ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
+			capturedFeedID = opts.FeedID
+			return []domain.BeatWithMembers{{
+				ID:             7,
+				CanonicalTitle: &cnaTitle,
+				AggregateScore: 7.5,
+				Members: []domain.ClassifiedItem{{
+					Item:     &domain.Item{ID: 1, Title: "Source Article", Link: "https://example.com/1"},
+					FeedName: "CNA",
+					FeedURL:  "https://example.com",
+				}},
+			}}, nil
 		},
 	}
 
@@ -2266,5 +2277,44 @@ func TestSourceHandler_Renders(t *testing.T) {
 	body := w.Body.String()
 	assert.NotContains(t, body, "incomplete or empty template")
 	assert.Contains(t, body, "CNA")
-	assert.Contains(t, body, "Source Article")
+	assert.Contains(t, body, cnaTitle)
+	require.NotNil(t, capturedFeedID)
+	assert.Equal(t, int64(42), *capturedFeedID)
+}
+
+func TestSourceHandler_UnknownFeed(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	listCalled := false
+	database := &mocks.DatabaseMock{
+		GetFeedByNameFunc: func(ctx context.Context, name string) (*domain.Feed, error) {
+			return nil, nil
+		},
+		ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
+			listCalled = true
+			return nil, nil
+		},
+	}
+
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+	req := httptest.NewRequest("GET", "/source/unknown", http.NoBody)
+	req.SetPathValue("name", "unknown")
+	w := httptest.NewRecorder()
+
+	srv.sourceHandler(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.False(t, listCalled, "ListBeats should not be called when the feed name has no match")
+	assert.Contains(t, w.Body.String(), "這個來源還沒有 beat")
 }

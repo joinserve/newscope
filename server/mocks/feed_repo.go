@@ -26,6 +26,9 @@ import (
 //			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetActiveFeedNames method")
 //			},
+//			GetFeedByNameFunc: func(ctx context.Context, name string) (*domain.Feed, error) {
+//				panic("mock out the GetFeedByName method")
+//			},
 //			GetFeedsFunc: func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error) {
 //				panic("mock out the GetFeeds method")
 //			},
@@ -50,6 +53,9 @@ type FeedRepoMock struct {
 
 	// GetActiveFeedNamesFunc mocks the GetActiveFeedNames method.
 	GetActiveFeedNamesFunc func(ctx context.Context, minScore float64) ([]string, error)
+
+	// GetFeedByNameFunc mocks the GetFeedByName method.
+	GetFeedByNameFunc func(ctx context.Context, name string) (*domain.Feed, error)
 
 	// GetFeedsFunc mocks the GetFeeds method.
 	GetFeedsFunc func(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
@@ -82,6 +88,13 @@ type FeedRepoMock struct {
 			Ctx context.Context
 			// MinScore is the minScore argument value.
 			MinScore float64
+		}
+		// GetFeedByName holds details about calls to the GetFeedByName method.
+		GetFeedByName []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Name is the name argument value.
+			Name string
 		}
 		// GetFeeds holds details about calls to the GetFeeds method.
 		GetFeeds []struct {
@@ -118,6 +131,7 @@ type FeedRepoMock struct {
 	lockCreateFeed         sync.RWMutex
 	lockDeleteFeed         sync.RWMutex
 	lockGetActiveFeedNames sync.RWMutex
+	lockGetFeedByName      sync.RWMutex
 	lockGetFeeds           sync.RWMutex
 	lockUpdateFeed         sync.RWMutex
 	lockUpdateFeedStatus   sync.RWMutex
@@ -228,6 +242,42 @@ func (mock *FeedRepoMock) GetActiveFeedNamesCalls() []struct {
 	mock.lockGetActiveFeedNames.RLock()
 	calls = mock.calls.GetActiveFeedNames
 	mock.lockGetActiveFeedNames.RUnlock()
+	return calls
+}
+
+// GetFeedByName calls GetFeedByNameFunc.
+func (mock *FeedRepoMock) GetFeedByName(ctx context.Context, name string) (*domain.Feed, error) {
+	if mock.GetFeedByNameFunc == nil {
+		panic("FeedRepoMock.GetFeedByNameFunc: method is nil but FeedRepo.GetFeedByName was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Name string
+	}{
+		Ctx:  ctx,
+		Name: name,
+	}
+	mock.lockGetFeedByName.Lock()
+	mock.calls.GetFeedByName = append(mock.calls.GetFeedByName, callInfo)
+	mock.lockGetFeedByName.Unlock()
+	return mock.GetFeedByNameFunc(ctx, name)
+}
+
+// GetFeedByNameCalls gets all the calls that were made to GetFeedByName.
+// Check the length with:
+//
+//	len(mockedFeedRepo.GetFeedByNameCalls())
+func (mock *FeedRepoMock) GetFeedByNameCalls() []struct {
+	Ctx  context.Context
+	Name string
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Name string
+	}
+	mock.lockGetFeedByName.RLock()
+	calls = mock.calls.GetFeedByName
+	mock.lockGetFeedByName.RUnlock()
 	return calls
 }
 

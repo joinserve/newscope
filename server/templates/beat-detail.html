@@ -9,7 +9,7 @@
 {{define "beat-detail-content"}}
 <div class="beat-detail">
     <div class="beat-header">
-        <h1 class="beat-title">{{if .Beat.CanonicalTitle}}{{unescapeHTML (index .Beat.CanonicalTitle)}}{{else}}{{unescapeHTML (index .Beat.Members 0).Title}}{{end}}</h1>
+        <h1 class="beat-title">{{if .Beat.CanonicalTitle}}{{unescapeHTML (index .Beat.CanonicalTitle)}}{{else if gt (len .Beat.Members) 0}}{{unescapeHTML (index .Beat.Members 0).Title}}{{else}}(no content){{end}}</h1>
 
         <div class="beat-meta" style="margin-bottom: 1rem;">
             <span class="feed-name">{{len .Beat.Members}} sources</span>

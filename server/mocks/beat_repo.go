@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/repository"
 )
 
 // BeatRepoMock is a mock implementation of server.BeatRepo.
@@ -19,7 +20,7 @@ import (
 //			GetBeatFunc: func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
 //				panic("mock out the GetBeat method")
 //			},
-//			ListBeatsFunc: func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+//			ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the ListBeats method")
 //			},
 //			ListTitleRevisionsFunc: func(ctx context.Context, beatID int64) ([]domain.TitleRevision, error) {
@@ -45,7 +46,7 @@ type BeatRepoMock struct {
 	GetBeatFunc func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error)
 
 	// ListBeatsFunc mocks the ListBeats method.
-	ListBeatsFunc func(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error)
+	ListBeatsFunc func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error)
 
 	// ListTitleRevisionsFunc mocks the ListTitleRevisions method.
 	ListTitleRevisionsFunc func(ctx context.Context, beatID int64) ([]domain.TitleRevision, error)
@@ -72,14 +73,8 @@ type BeatRepoMock struct {
 		ListBeats []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// GroupingID is the groupingID argument value.
-			GroupingID *int64
-			// Topic is the topic argument value.
-			Topic string
-			// Limit is the limit argument value.
-			Limit int
-			// Offset is the offset argument value.
-			Offset int
+			// Opts is the opts argument value.
+			Opts repository.ListBeatsOptions
 		}
 		// ListTitleRevisions holds details about calls to the ListTitleRevisions method.
 		ListTitleRevisions []struct {
@@ -159,27 +154,21 @@ func (mock *BeatRepoMock) GetBeatCalls() []struct {
 }
 
 // ListBeats calls ListBeatsFunc.
-func (mock *BeatRepoMock) ListBeats(ctx context.Context, groupingID *int64, topic string, limit int, offset int) ([]domain.BeatWithMembers, error) {
+func (mock *BeatRepoMock) ListBeats(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 	if mock.ListBeatsFunc == nil {
 		panic("BeatRepoMock.ListBeatsFunc: method is nil but BeatRepo.ListBeats was just called")
 	}
 	callInfo := struct {
-		Ctx        context.Context
-		GroupingID *int64
-		Topic      string
-		Limit      int
-		Offset     int
+		Ctx  context.Context
+		Opts repository.ListBeatsOptions
 	}{
-		Ctx:        ctx,
-		GroupingID: groupingID,
-		Topic:      topic,
-		Limit:      limit,
-		Offset:     offset,
+		Ctx:  ctx,
+		Opts: opts,
 	}
 	mock.lockListBeats.Lock()
 	mock.calls.ListBeats = append(mock.calls.ListBeats, callInfo)
 	mock.lockListBeats.Unlock()
-	return mock.ListBeatsFunc(ctx, groupingID, topic, limit, offset)
+	return mock.ListBeatsFunc(ctx, opts)
 }
 
 // ListBeatsCalls gets all the calls that were made to ListBeats.
@@ -187,18 +176,12 @@ func (mock *BeatRepoMock) ListBeats(ctx context.Context, groupingID *int64, topi
 //
 //	len(mockedBeatRepo.ListBeatsCalls())
 func (mock *BeatRepoMock) ListBeatsCalls() []struct {
-	Ctx        context.Context
-	GroupingID *int64
-	Topic      string
-	Limit      int
-	Offset     int
+	Ctx  context.Context
+	Opts repository.ListBeatsOptions
 } {
 	var calls []struct {
-		Ctx        context.Context
-		GroupingID *int64
-		Topic      string
-		Limit      int
-		Offset     int
+		Ctx  context.Context
+		Opts repository.ListBeatsOptions
 	}
 	mock.lockListBeats.RLock()
 	calls = mock.calls.ListBeats

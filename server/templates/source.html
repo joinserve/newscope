@@ -3,29 +3,13 @@
 {{define "title"}}{{.FeedName}} - Newscope{{end}}
 
 {{define "content"}}
-<div class="source-page-container">
-    <div class="view-threads">
-        <h3 class="source-section-title">未讀訊息</h3>
-        <div id="unread-articles-list">
-            {{range .UnreadArticles}}
-            {{template "article-card.html" .}}
+<div id="articles-with-pagination">
+    <div id="articles-container" class="view-threads">
+        <div id="articles-list">
+            {{range .Beats}}
+            {{template "beat-card.html" .}}
             {{else}}
-            <div class="no-articles">
-                <p>目前沒有未讀文章。</p>
-            </div>
-            {{end}}
-        </div>
-
-        <div class="source-separator"></div>
-
-        <h3 class="source-section-title">已讀訊息</h3>
-        <div id="read-articles-list">
-            {{range .ReadArticles}}
-            {{template "article-card.html" .}}
-            {{else}}
-            <div class="no-articles">
-                <p>目前沒有已讀文章。</p>
-            </div>
+            <p class="no-articles">這個來源還沒有 beat。</p>
             {{end}}
         </div>
     </div>

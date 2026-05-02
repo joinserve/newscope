@@ -1,3 +1,7 @@
+{{/* a beat with no hydrated members is unrenderable; skip it entirely so the
+   whole /beats response doesn't panic mid-stream. orphan beats can exist if
+   feed-cascade left rows behind. */}}
+{{if gt (len .Members) 0}}
 <article class="article-card beat-card"
          data-beat-id="{{.ID}}"
          data-user-feedback="{{.GetUserFeedback}}"
@@ -6,70 +10,46 @@
          hx-push-url="true"
          hx-swap="innerHTML transition:true"
          hx-trigger="click[!event.target.closest('.card-actions') && !event.target.closest('.clickable-topic')]"
-         {{if gt (len .Members) 0}}
          data-share-url="{{(index .Members 0).Link}}"
-         data-share-title="{{if .CanonicalTitle}}{{unescapeHTML (index .CanonicalTitle)}}{{else}}{{unescapeHTML (index .Members 0).Title}}{{end}}"
-         {{end}}>
+         data-share-title="{{if .CanonicalTitle}}{{unescapeHTML (index .CanonicalTitle)}}{{else}}{{unescapeHTML (index .Members 0).Title}}{{end}}">
 
     {{$membersCount := len .Members}}
-    {{if gt $membersCount 1}}
-    <div class="card-avatar">
-        <div class="avatar-stack">
-        {{range $index, $member := .Members}}
-            {{if lt $index 3}}
-                {{$iconSrc := ""}}
-                {{if .FeedIconURL}}
-                    {{if isImageURL .FeedIconURL}}
-                        {{$iconSrc = .FeedIconURL}}
-                    {{else}}
-                        {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" .FeedIconURL}}
-                    {{end}}
-                {{else}}
-                    {{$domain := getDomain .FeedURL}}
-                    {{if $domain}}
-                        {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $domain}}
-                    {{end}}
-                {{end}}
-                {{if $iconSrc}}
-                <img src="{{$iconSrc}}" alt="{{.FeedName}}" class="avatar-img favicon-img stack-{{$index}}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                <div class="avatar-img avatar-fallback stack-{{$index}}" style="display:none;">{{with .FeedName}}{{slice . 0 1}}{{end}}</div>
-                {{else}}
-                <div class="avatar-img avatar-fallback stack-{{$index}}">{{with .FeedName}}{{slice . 0 1}}{{end}}</div>
-                {{end}}
-            {{end}}
-        {{end}}
-        {{if gt $membersCount 3}}
-        <div class="avatar-overflow">+{{sub $membersCount 3}}</div>
-        {{end}}
-        </div>
-        <div class="thread-line"></div>
-    </div>
-    {{else}}
     {{if gt $membersCount 0}}
-    <div class="card-avatar">
-        {{$member := index .Members 0}}
-        {{$iconSrc := ""}}
-        {{if $member.FeedIconURL}}
-            {{if isImageURL $member.FeedIconURL}}
-                {{$iconSrc = $member.FeedIconURL}}
-            {{else}}
-                {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $member.FeedIconURL}}
-            {{end}}
+    {{$first := index .Members 0}}
+    {{$iconSrc := ""}}
+    {{if $first.FeedIconURL}}
+        {{if isImageURL $first.FeedIconURL}}
+            {{$iconSrc = $first.FeedIconURL}}
         {{else}}
-            {{$domain := getDomain $member.FeedURL}}
-            {{if $domain}}
-                {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $domain}}
-            {{end}}
+            {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $first.FeedIconURL}}
         {{end}}
-        {{if $iconSrc}}
-        <img src="{{$iconSrc}}" alt="{{$member.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-        <div class="avatar-img avatar-fallback" style="display:none;">{{with $member.FeedName}}{{slice . 0 1}}{{end}}</div>
+    {{else}}
+        {{$domain := getDomain $first.FeedURL}}
+        {{if $domain}}
+            {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $domain}}
+        {{end}}
+    {{end}}
+    <div class="card-avatar">
+        {{if gt $membersCount 1}}
+        <div class="avatar-stack">
+            {{if $iconSrc}}
+            <img src="{{$iconSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <div class="avatar-img avatar-fallback" style="display:none;">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
+            {{else}}
+            <div class="avatar-img avatar-fallback">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
+            {{end}}
+            <span class="avatar-overflow">+{{sub $membersCount 1}}</span>
+        </div>
         {{else}}
-        <div class="avatar-img avatar-fallback">{{with $member.FeedName}}{{slice . 0 1}}{{end}}</div>
+        {{if $iconSrc}}
+        <img src="{{$iconSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="avatar-img avatar-fallback" style="display:none;">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
+        {{else}}
+        <div class="avatar-img avatar-fallback">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
+        {{end}}
         {{end}}
         <div class="thread-line"></div>
     </div>
-    {{end}}
     {{end}}
 
     <div class="card-main">
@@ -233,3 +213,4 @@
         </dialog>
     </div>
 </article>
+{{end}}
