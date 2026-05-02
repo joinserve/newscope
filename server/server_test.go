@@ -202,6 +202,93 @@ func TestGeneratePageNumbers(t *testing.T) {
 	}
 }
 
+func TestFormatCardTime(t *testing.T) {
+	now := time.Now()
+	loc := now.Location()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	yesterday := today.AddDate(0, 0, -1)
+	lastYear := today.AddDate(-1, 0, 0)
+
+	tests := []struct {
+		name string
+		in   time.Time
+		want string
+	}{
+		{name: "zero time returns empty", in: time.Time{}, want: ""},
+		{name: "30 seconds ago is 剛剛", in: now.Add(-30 * time.Second), want: "剛剛"},
+		{name: "5 minutes ago", in: now.Add(-5 * time.Minute), want: "5 分鐘前"},
+		{
+			name: "earlier today renders HH:mm",
+			in:   today.Add(8 * time.Hour),
+			want: today.Add(8 * time.Hour).Format("15:04"),
+		},
+		{
+			name: "yesterday renders M/D",
+			in:   yesterday.Add(23 * time.Hour),
+			want: yesterday.Add(23 * time.Hour).Format("1/2"),
+		},
+		{
+			name: "last year renders YYYY/M/D",
+			in:   lastYear,
+			want: lastYear.Format("2006/1/2"),
+		},
+		{
+			name: "exactly one hour ago promotes from 分鐘前 to today/HH:mm",
+			in:   now.Add(-time.Hour),
+			// either "HH:mm" (still today) or "1/2" (rolled over midnight); both are
+			// well-formed outputs of formatCardTime — we just confirm it's not the
+			// "分鐘前" tier
+			want: "_skip_strict_",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatCardTime(tc.in)
+			if tc.want == "_skip_strict_" {
+				assert.NotContains(t, got, "分鐘前", "1h boundary must leave the minutes tier")
+				assert.NotEqual(t, "剛剛", got)
+				return
+			}
+			assert.Equal(t, tc.want, got)
+		})
+	}
+
+	t.Run("midnight boundary distinguishes today from yesterday", func(t *testing.T) {
+		oneSecondBeforeMidnight := today.Add(-time.Second)
+		justAfterMidnight := today.Add(time.Second)
+
+		// pre-midnight time falls into the "yesterday" branch → M/D format
+		assert.Equal(t, oneSecondBeforeMidnight.Format("1/2"), formatCardTime(oneSecondBeforeMidnight))
+		// post-midnight time falls into the "today" branch → HH:mm format
+		assert.Equal(t, justAfterMidnight.Format("15:04"), formatCardTime(justAfterMidnight))
+	})
+}
+
+func TestPostingFrequency(t *testing.T) {
+	tests := []struct {
+		name  string
+		count int
+		want  string
+	}{
+		{name: "zero hides line", count: 0, want: ""},
+		{name: "negative hides line", count: -5, want: ""},
+		{name: "single item rounds up to 1/week", count: 1, want: "約 1/週"},
+		{name: "low rate stays in weekly tier", count: 10, want: "約 2/週"},
+		{name: "boundary 30 items in 30 days = 1/day", count: 30, want: "約 1/日"},
+		{name: "ten per day", count: 300, want: "約 10/日"},
+		{name: "23/day still daily tier", count: 690, want: "約 23/日"},
+		{name: "boundary exactly 24/day flips to hourly", count: 720, want: "約 1.0/小時"},
+		{name: "hourly with 1 decimal", count: 1080, want: "約 1.5/小時"},
+		{name: "hourly drops decimal at >= 10", count: 7200, want: "約 10/小時"},
+		{name: "high hourly rounds to integer", count: 36000, want: "約 50/小時"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, postingFrequency(tc.count))
+		})
+	}
+}
+
 func TestServer_GetPageSize(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetFullConfigFunc: func() *config.Config {

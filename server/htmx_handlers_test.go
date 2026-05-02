@@ -204,28 +204,34 @@ func TestServer_feedsHandler(t *testing.T) {
 		GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 			return []string{"Example Feed", "Test RSS"}, nil
 		},
-		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
-			return []domain.Feed{
+		ListFeedsWithStatsFunc: func(ctx context.Context) ([]domain.FeedWithStats, error) {
+			return []domain.FeedWithStats{
 				{
-					ID:            1,
-					URL:           "https://example.com/feed.xml",
-					Title:         "Example Feed",
-					Description:   "A test feed",
-					LastFetched:   &now,
-					NextFetch:     &now,
-					FetchInterval: 3600,
-					ErrorCount:    0,
-					Enabled:       true,
+					Feed: domain.Feed{
+						ID:            1,
+						URL:           "https://example.com/feed.xml",
+						Title:         "Example Feed",
+						Description:   "A test feed",
+						LastFetched:   &now,
+						NextFetch:     &now,
+						FetchInterval: 3600,
+						ErrorCount:    0,
+						Enabled:       true,
+					},
+					ItemCount30d: 90, // ~3/day
 				},
 				{
-					ID:            2,
-					URL:           "https://test.com/rss",
-					Title:         "Test RSS",
-					Description:   "Another feed",
-					FetchInterval: 1800,
-					ErrorCount:    2,
-					LastError:     "Connection timeout",
-					Enabled:       false,
+					Feed: domain.Feed{
+						ID:            2,
+						URL:           "https://test.com/rss",
+						Title:         "Test RSS",
+						Description:   "Another feed",
+						FetchInterval: 1800,
+						ErrorCount:    2,
+						LastError:     "Connection timeout",
+						Enabled:       false,
+					},
+					ItemCount30d: 0,
 				},
 			}, nil
 		},
@@ -490,7 +496,7 @@ func TestServer_FeedsHandler_DatabaseError(t *testing.T) {
 	}
 
 	database := &mocks.DatabaseMock{
-		GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
+		ListFeedsWithStatsFunc: func(ctx context.Context) ([]domain.FeedWithStats, error) {
 			return nil, errors.New("database connection failed")
 		},
 	}
@@ -730,12 +736,14 @@ func TestServer_TemplateErrors(t *testing.T) {
 			GetActiveFeedNamesFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 				return []string{}, nil
 			},
-			GetAllFeedsFunc: func(ctx context.Context) ([]domain.Feed, error) {
-				return []domain.Feed{
+			ListFeedsWithStatsFunc: func(ctx context.Context) ([]domain.FeedWithStats, error) {
+				return []domain.FeedWithStats{
 					{
-						ID:    1,
-						Title: "Test Feed",
-						URL:   "https://example.com/feed",
+						Feed: domain.Feed{
+							ID:    1,
+							Title: "Test Feed",
+							URL:   "https://example.com/feed",
+						},
 					},
 				}, nil
 			},
@@ -1963,6 +1971,8 @@ func newTestServer(t *testing.T) *Server {
 		"unescapeHTML": func(s string) template.HTML {
 			return template.HTML(s) //nolint:gosec // test helper only
 		},
+		"formatCardTime":   formatCardTime,
+		"postingFrequency": postingFrequency,
 	}
 	tmpl := template.New("").Funcs(funcMap)
 	tmpl, err := tmpl.ParseFiles(

@@ -362,8 +362,9 @@ func (s *Server) writeArticlesList(w http.ResponseWriter, req articlesPageReques
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// get all feeds from database
-	feeds, err := s.db.GetAllFeeds(ctx)
+	// get all feeds with rolling 30-day item counts so feed-card can render
+	// the posting-frequency line alongside the existing fetch interval
+	feeds, err := s.db.ListFeedsWithStats(ctx)
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to load feeds", err)
 		return
@@ -376,7 +377,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data
 	data := struct {
 		commonPageData
-		Feeds      []domain.Feed
+		Feeds      []domain.FeedWithStats
 		RSSHubHost string
 	}{
 		commonPageData: commonPageData{
@@ -659,9 +660,14 @@ func wrapArticleCards(items []domain.ClassifiedItem, selectedTopic string) []art
 	return result
 }
 
-// renderFeedCard renders a single feed card
+// renderFeedCard renders a single feed card. The card-level swap path
+// (post-edit, post-toggle, post-fetch) does not carry the rolling
+// posting-frequency stat — that is recomputed on the next full /feeds load.
+// We wrap into FeedWithStats with zero count so the template's frequency
+// guard `{{if $freq}}…{{end}}` simply omits the line on the swapped card.
 func (s *Server) renderFeedCard(w http.ResponseWriter, feed *domain.Feed) {
-	if err := s.templates.ExecuteTemplate(w, "feed-card.html", feed); err != nil {
+	wrapped := domain.FeedWithStats{Feed: *feed}
+	if err := s.templates.ExecuteTemplate(w, "feed-card.html", wrapped); err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render feed", err)
 		return
 	}

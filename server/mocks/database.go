@@ -90,6 +90,9 @@ import (
 //			ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
 //				panic("mock out the ListBeats method")
 //			},
+//			ListFeedsWithStatsFunc: func(ctx context.Context) ([]domain.FeedWithStats, error) {
+//				panic("mock out the ListFeedsWithStats method")
+//			},
 //			ListGroupingsFunc: func(ctx context.Context) ([]domain.Grouping, error) {
 //				panic("mock out the ListGroupings method")
 //			},
@@ -207,6 +210,9 @@ type DatabaseMock struct {
 
 	// ListBeatsFunc mocks the ListBeats method.
 	ListBeatsFunc func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error)
+
+	// ListFeedsWithStatsFunc mocks the ListFeedsWithStats method.
+	ListFeedsWithStatsFunc func(ctx context.Context) ([]domain.FeedWithStats, error)
 
 	// ListGroupingsFunc mocks the ListGroupings method.
 	ListGroupingsFunc func(ctx context.Context) ([]domain.Grouping, error)
@@ -419,6 +425,11 @@ type DatabaseMock struct {
 			// Opts is the opts argument value.
 			Opts repository.ListBeatsOptions
 		}
+		// ListFeedsWithStats holds details about calls to the ListFeedsWithStats method.
+		ListFeedsWithStats []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 		// ListGroupings holds details about calls to the ListGroupings method.
 		ListGroupings []struct {
 			// Ctx is the ctx argument value.
@@ -555,6 +566,7 @@ type DatabaseMock struct {
 	lockGetTopicsFiltered             sync.RWMutex
 	lockGroupingCounts                sync.RWMutex
 	lockListBeats                     sync.RWMutex
+	lockListFeedsWithStats            sync.RWMutex
 	lockListGroupings                 sync.RWMutex
 	lockListTitleRevisions            sync.RWMutex
 	lockMarkViewed                    sync.RWMutex
@@ -1435,6 +1447,38 @@ func (mock *DatabaseMock) ListBeatsCalls() []struct {
 	mock.lockListBeats.RLock()
 	calls = mock.calls.ListBeats
 	mock.lockListBeats.RUnlock()
+	return calls
+}
+
+// ListFeedsWithStats calls ListFeedsWithStatsFunc.
+func (mock *DatabaseMock) ListFeedsWithStats(ctx context.Context) ([]domain.FeedWithStats, error) {
+	if mock.ListFeedsWithStatsFunc == nil {
+		panic("DatabaseMock.ListFeedsWithStatsFunc: method is nil but Database.ListFeedsWithStats was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+	}{
+		Ctx: ctx,
+	}
+	mock.lockListFeedsWithStats.Lock()
+	mock.calls.ListFeedsWithStats = append(mock.calls.ListFeedsWithStats, callInfo)
+	mock.lockListFeedsWithStats.Unlock()
+	return mock.ListFeedsWithStatsFunc(ctx)
+}
+
+// ListFeedsWithStatsCalls gets all the calls that were made to ListFeedsWithStats.
+// Check the length with:
+//
+//	len(mockedDatabase.ListFeedsWithStatsCalls())
+func (mock *DatabaseMock) ListFeedsWithStatsCalls() []struct {
+	Ctx context.Context
+} {
+	var calls []struct {
+		Ctx context.Context
+	}
+	mock.lockListFeedsWithStats.RLock()
+	calls = mock.calls.ListFeedsWithStats
+	mock.lockListFeedsWithStats.RUnlock()
 	return calls
 }
 

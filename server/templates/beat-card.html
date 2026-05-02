@@ -76,7 +76,7 @@
             {{end}}
 
             <span class="card-time">
-                {{.FirstSeenAt.Local.Format "15:04"}}
+                {{formatCardTime .FirstSeenAt}}
             </span>
 
             <span class="score-badge-mini {{if le .AggregateScore 5.0}}score-low{{else if le .AggregateScore 7.0}}score-medium{{else}}score-high{{end}}">{{printf "%.1f" .AggregateScore}}</span>
