@@ -455,6 +455,20 @@ func (r *BeatRepository) MarkViewed(ctx context.Context, beatID int64) error {
 	return nil
 }
 
+// DeleteOrphanBeats removes beat rows whose membership has dropped to zero.
+// The schema's ON DELETE CASCADE clauses clear beat_grouping_assignments and
+// beat_title_revisions, and the beats_fts AFTER DELETE trigger keeps the FTS
+// shadow table in sync. Returns the number of beats deleted; idempotent.
+func (r *BeatRepository) DeleteOrphanBeats(ctx context.Context) (int64, error) {
+	res, err := r.db.ExecContext(ctx, `
+		DELETE FROM beats
+		WHERE id NOT IN (SELECT DISTINCT beat_id FROM beat_members)`)
+	if err != nil {
+		return 0, fmt.Errorf("delete orphan beats: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 // UnreadMemberCount returns the number of members added after the beat's
 // last_viewed_at. When last_viewed_at is NULL the whole membership is unread.
 func (r *BeatRepository) UnreadMemberCount(ctx context.Context, beatID int64) (int, error) {

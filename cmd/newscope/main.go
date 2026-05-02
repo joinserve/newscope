@@ -138,6 +138,7 @@ func run(ctx context.Context, opts Opts) error {
 		// dependencies
 		FeedManager:           repos.Feed,
 		ItemManager:           repos.Item,
+		BeatManager:           repos.Beat,
 		ClassificationManager: repos.Classification,
 		SettingManager:        repos.Setting,
 		Parser:                feedParser,
