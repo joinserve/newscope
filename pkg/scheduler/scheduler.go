@@ -12,6 +12,7 @@
 //go:generate moq -out mocks/entity_store.go -pkg mocks -skip-ensure -fmt goimports . EntityStore
 //go:generate moq -out mocks/entity_extractor.go -pkg mocks -skip-ensure -fmt goimports . EntityExtractor
 //go:generate moq -out mocks/grouping_assigner.go -pkg mocks -skip-ensure -fmt goimports . GroupingAssigner
+//go:generate moq -out mocks/beat_manager.go -pkg mocks -skip-ensure -fmt goimports . BeatManager
 
 package scheduler
 
@@ -38,6 +39,7 @@ type Scheduler struct {
 	mergeWorker       *MergeWorker
 	entityWorker      *EntityWorker
 	itemManager       ItemManager
+	beatManager       BeatManager
 
 	updateInterval     time.Duration
 	cleanupAge         time.Duration
@@ -81,6 +83,11 @@ type ItemManager interface {
 	GetItemsNeedingExtraction(ctx context.Context, limit int) ([]domain.Item, error)
 	GetItemWithExtractedContent(ctx context.Context, id int64) (*domain.Item, error)
 	GetUnembeddedItems(ctx context.Context, limit int) ([]domain.Item, error)
+}
+
+// BeatManager handles beat-level maintenance operations for scheduler.
+type BeatManager interface {
+	DeleteOrphanBeats(ctx context.Context) (int64, error)
 }
 
 // Embedder computes an embedding vector for the given text.
@@ -148,6 +155,7 @@ type Params struct {
 	// dependencies
 	FeedManager           FeedManager
 	ItemManager           ItemManager
+	BeatManager           BeatManager
 	ClassificationManager ClassificationManager
 	SettingManager        SettingManager
 	Parser                Parser
@@ -199,6 +207,7 @@ func NewScheduler(params Params) *Scheduler {
 
 	s := &Scheduler{
 		itemManager:        params.ItemManager,
+		beatManager:        params.BeatManager,
 		updateInterval:     params.UpdateInterval,
 		cleanupAge:         params.CleanupAge,
 		cleanupMinScore:    params.CleanupMinScore,
@@ -465,7 +474,8 @@ func (s *Scheduler) cleanupWorker(ctx context.Context) {
 	}
 }
 
-// performCleanup removes old articles with scores below the threshold
+// performCleanup removes old articles with scores below the threshold and
+// then sweeps any beats whose membership has dropped to zero.
 func (s *Scheduler) performCleanup(ctx context.Context) {
 	lgr.Printf("[INFO] starting cleanup: removing articles older than %v with score below %.1f", s.cleanupAge, s.cleanupMinScore)
 
@@ -479,6 +489,18 @@ func (s *Scheduler) performCleanup(ctx context.Context) {
 		lgr.Printf("[INFO] cleanup completed: removed %d old articles", deleted)
 	} else {
 		lgr.Printf("[DEBUG] cleanup completed: no articles to remove")
+	}
+
+	if s.beatManager != nil {
+		orphans, err := s.beatManager.DeleteOrphanBeats(ctx)
+		switch {
+		case err != nil:
+			lgr.Printf("[WARN] cleanup: delete orphan beats: %v", err)
+		case orphans > 0:
+			lgr.Printf("[INFO] cleanup: removed %d orphan beats", orphans)
+		default:
+			lgr.Printf("[DEBUG] cleanup: no orphan beats")
+		}
 	}
 }
 

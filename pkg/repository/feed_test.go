@@ -433,3 +433,51 @@ func TestFeedRepository_GetFeedByName(t *testing.T) {
 		assert.Nil(t, got)
 	})
 }
+
+func TestFeedRepository_DeleteFeed_SweepsOrphans(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	feed := createTestFeed(t, repos, "to-delete")
+
+	// item in this feed
+	item := &domain.Item{
+		FeedID:    feed.ID,
+		GUID:      "guid-1",
+		Title:     "title-1",
+		Link:      "https://example.com/1",
+		Published: time.Now(),
+	}
+	require.NoError(t, repos.Item.CreateItem(ctx, item))
+	require.NoError(t, repos.Item.UpdateItemProcessed(ctx, item.ID, nil,
+		&domain.Classification{Score: 5, ClassifiedAt: time.Now()}))
+	require.NoError(t, repos.Embedding.PutEmbedding(ctx, item.ID, "test-model", []float32{1, 0, 0}))
+
+	// seed a beat from this single item
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx, domain.BeatCandidate{
+		ItemID: item.ID, Vector: []float32{1, 0, 0}, PublishedAt: item.Published,
+	}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	require.NotZero(t, beatID)
+
+	// delete the feed: cascade clears items + beat_members; transactional sweep
+	// must drop the now-orphan beat
+	require.NoError(t, repos.Feed.DeleteFeed(ctx, feed.ID))
+
+	// feed gone
+	_, err = repos.Feed.GetFeed(ctx, feed.ID)
+	require.Error(t, err)
+
+	// item gone (existing cascade)
+	var itemCount int
+	require.NoError(t, repos.DB.GetContext(ctx, &itemCount,
+		`SELECT COUNT(*) FROM items WHERE id = ?`, item.ID))
+	assert.Equal(t, 0, itemCount)
+
+	// beat gone (new sweep)
+	var beatCount int
+	require.NoError(t, repos.DB.GetContext(ctx, &beatCount,
+		`SELECT COUNT(*) FROM beats WHERE id = ?`, beatID))
+	assert.Equal(t, 0, beatCount, "DeleteFeed must sweep beats whose only members were in the deleted feed")
+}

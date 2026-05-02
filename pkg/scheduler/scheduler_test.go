@@ -1125,9 +1125,13 @@ func TestScheduler_PerformCleanup(t *testing.T) {
 				return 10, nil                            // deleted 10 items
 			},
 		}
+		beatManager := &mocks.BeatManagerMock{
+			DeleteOrphanBeatsFunc: func(ctx context.Context) (int64, error) { return 3, nil },
+		}
 
 		scheduler := &Scheduler{
 			itemManager:     itemManager,
+			beatManager:     beatManager,
 			cleanupAge:      168 * time.Hour,
 			cleanupMinScore: 5.0,
 		}
@@ -1135,8 +1139,9 @@ func TestScheduler_PerformCleanup(t *testing.T) {
 		// execute
 		scheduler.performCleanup(context.Background())
 
-		// verify
+		// verify both phases ran
 		assert.Len(t, itemManager.DeleteOldItemsCalls(), 1)
+		assert.Len(t, beatManager.DeleteOrphanBeatsCalls(), 1)
 	})
 
 	t.Run("cleanup error", func(t *testing.T) {
@@ -1145,9 +1150,13 @@ func TestScheduler_PerformCleanup(t *testing.T) {
 				return 0, assert.AnError
 			},
 		}
+		beatManager := &mocks.BeatManagerMock{
+			DeleteOrphanBeatsFunc: func(ctx context.Context) (int64, error) { return 0, nil },
+		}
 
 		scheduler := &Scheduler{
 			itemManager:     itemManager,
+			beatManager:     beatManager,
 			cleanupAge:      168 * time.Hour,
 			cleanupMinScore: 5.0,
 		}
@@ -1155,14 +1164,61 @@ func TestScheduler_PerformCleanup(t *testing.T) {
 		// execute - should not panic on error
 		scheduler.performCleanup(context.Background())
 
-		// verify
+		// verify item phase ran but bailed before the beat sweep
 		assert.Len(t, itemManager.DeleteOldItemsCalls(), 1)
+		assert.Empty(t, beatManager.DeleteOrphanBeatsCalls())
 	})
 
 	t.Run("no items to cleanup", func(t *testing.T) {
 		itemManager := &mocks.ItemManagerMock{
 			DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
 				return 0, nil // no items deleted
+			},
+		}
+		beatManager := &mocks.BeatManagerMock{
+			DeleteOrphanBeatsFunc: func(ctx context.Context) (int64, error) { return 0, nil },
+		}
+
+		scheduler := &Scheduler{
+			itemManager:     itemManager,
+			beatManager:     beatManager,
+			cleanupAge:      24 * time.Hour,
+			cleanupMinScore: 8.0,
+		}
+
+		// execute
+		scheduler.performCleanup(context.Background())
+
+		// verify
+		assert.Len(t, itemManager.DeleteOldItemsCalls(), 1)
+		assert.Len(t, beatManager.DeleteOrphanBeatsCalls(), 1)
+	})
+
+	t.Run("orphan beat sweep error is logged but not fatal", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{
+			DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+				return 0, nil
+			},
+		}
+		beatManager := &mocks.BeatManagerMock{
+			DeleteOrphanBeatsFunc: func(ctx context.Context) (int64, error) { return 0, assert.AnError },
+		}
+
+		scheduler := &Scheduler{
+			itemManager:     itemManager,
+			beatManager:     beatManager,
+			cleanupAge:      24 * time.Hour,
+			cleanupMinScore: 8.0,
+		}
+
+		assert.NotPanics(t, func() { scheduler.performCleanup(context.Background()) })
+		assert.Len(t, beatManager.DeleteOrphanBeatsCalls(), 1)
+	})
+
+	t.Run("nil beat manager skips orphan sweep", func(t *testing.T) {
+		itemManager := &mocks.ItemManagerMock{
+			DeleteOldItemsFunc: func(ctx context.Context, age time.Duration, minScore float64) (int64, error) {
+				return 0, nil
 			},
 		}
 
@@ -1172,10 +1228,7 @@ func TestScheduler_PerformCleanup(t *testing.T) {
 			cleanupMinScore: 8.0,
 		}
 
-		// execute
-		scheduler.performCleanup(context.Background())
-
-		// verify
+		assert.NotPanics(t, func() { scheduler.performCleanup(context.Background()) })
 		assert.Len(t, itemManager.DeleteOldItemsCalls(), 1)
 	})
 }

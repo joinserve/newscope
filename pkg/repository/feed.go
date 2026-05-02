@@ -200,11 +200,27 @@ func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title, fe
 	return nil
 }
 
-// DeleteFeed removes a feed and all its items
+// DeleteFeed removes a feed and, in the same transaction, sweeps any beats
+// whose membership has dropped to zero so the cascade trail (items →
+// beat_members) does not leave orphan rows in beats /
+// beat_grouping_assignments / beat_title_revisions / beats_fts.
 func (r *FeedRepository) DeleteFeed(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM feeds WHERE id = ?", id)
+	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM feeds WHERE id = ?", id); err != nil {
 		return fmt.Errorf("delete feed: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM beats
+		WHERE id NOT IN (SELECT DISTINCT beat_id FROM beat_members)`); err != nil {
+		return fmt.Errorf("sweep orphan beats: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete feed: %w", err)
 	}
 	return nil
 }

@@ -1265,3 +1265,101 @@ func TestBeatRepository_MigrateBackfillBeatsFTS(t *testing.T) {
 		`SELECT COUNT(*) FROM beats_fts WHERE beats_fts MATCH 'Uniqueword'`))
 	assert.Equal(t, 1, matchCount, "migration must be idempotent")
 }
+
+func TestBeatRepository_DeleteOrphanBeats(t *testing.T) {
+	t.Run("sole-feed orphan deleted with cascade", func(t *testing.T) {
+		repos, cleanup, mkItem := beatTestSetup(t)
+		defer cleanup()
+		ctx := context.Background()
+		pub := time.Now()
+
+		// seed a 2-member beat from one feed; SaveCanonical populates beats_fts and
+		// AppendTitleRevision adds a revision row, so we can verify cascade.
+		beatID := beatWith2Members(t, repos, mkItem, pub)
+		require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+			domain.BeatCanonical{Title: "Uniqueword Title", Summary: "Uniqueword Summary"}))
+		require.NoError(t, repos.Beat.AppendTitleRevision(ctx, beatID, "Uniqueword Title", "Uniqueword Summary"))
+		require.NoError(t, repos.Grouping.UpsertAssignment(ctx, beatID, nil))
+
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beats WHERE id = ?`, 1, beatID)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beats_fts WHERE rowid = ?`, 1, beatID)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beat_grouping_assignments WHERE beat_id = ?`, 1, beatID)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beat_title_revisions WHERE beat_id = ?`, 1, beatID)
+
+		// strip the membership so the beat is orphaned, then sweep
+		_, err := repos.DB.ExecContext(ctx, `DELETE FROM beat_members WHERE beat_id = ?`, beatID)
+		require.NoError(t, err)
+
+		n, err := repos.Beat.DeleteOrphanBeats(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), n)
+
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beats WHERE id = ?`, 0, beatID)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beats_fts WHERE rowid = ?`, 0, beatID)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beat_grouping_assignments WHERE beat_id = ?`, 0, beatID)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beat_title_revisions WHERE beat_id = ?`, 0, beatID)
+	})
+
+	t.Run("multi-feed beat survives partial member loss", func(t *testing.T) {
+		repos, cleanup := setupTestDB(t)
+		defer cleanup()
+		ctx := context.Background()
+		pub := time.Now()
+
+		f1 := createTestFeed(t, repos, "feed-A")
+		f2 := createTestFeed(t, repos, "feed-B")
+
+		makeIn := func(feedID int64, guid string, p time.Time) int64 {
+			it := &domain.Item{FeedID: feedID, GUID: guid, Title: guid, Link: "https://e/" + guid, Published: p}
+			require.NoError(t, repos.Item.CreateItem(ctx, it))
+			require.NoError(t, repos.Item.UpdateItemProcessed(ctx, it.ID, nil,
+				&domain.Classification{Score: 5, ClassifiedAt: time.Now()}))
+			require.NoError(t, repos.Embedding.PutEmbedding(ctx, it.ID, "test-model", []float32{1, 0, 0}))
+			return it.ID
+		}
+
+		id1 := makeIn(f1.ID, "from-A", pub)
+		id2 := makeIn(f2.ID, "from-B", pub.Add(time.Minute))
+		beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+			domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+		require.NoError(t, err)
+		_, _, err = repos.Beat.AttachOrSeed(ctx,
+			domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Minute)}, 0.85, 48*time.Hour, 20)
+		require.NoError(t, err)
+
+		// delete feed A; cascade removes id1 + its beat_members row, but id2 (from feed B)
+		// keeps the beat alive
+		require.NoError(t, repos.Feed.DeleteFeed(ctx, f1.ID))
+
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beats WHERE id = ?`, 1, beatID)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beat_members WHERE beat_id = ?`, 1, beatID)
+
+		// explicit sweep is also a no-op for this beat
+		n, err := repos.Beat.DeleteOrphanBeats(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), n)
+		assertCount(ctx, t, repos.DB, `SELECT COUNT(*) FROM beats WHERE id = ?`, 1, beatID)
+	})
+
+	t.Run("idempotent on clean db", func(t *testing.T) {
+		repos, cleanup := setupTestDB(t)
+		defer cleanup()
+		ctx := context.Background()
+
+		n, err := repos.Beat.DeleteOrphanBeats(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), n)
+
+		n, err = repos.Beat.DeleteOrphanBeats(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), n)
+	})
+}
+
+// assertCount runs a single-row, single-column COUNT query and asserts the result.
+func assertCount(ctx context.Context, t *testing.T, db *sqlx.DB, query string, want int, args ...any) {
+	t.Helper()
+	var got int
+	require.NoError(t, db.GetContext(ctx, &got, query, args...))
+	assert.Equal(t, want, got, "count mismatch for query: %s", query)
+}
