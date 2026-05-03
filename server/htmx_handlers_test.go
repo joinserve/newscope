@@ -18,6 +18,7 @@ import (
 
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
+	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/pkg/repository"
 	"github.com/umputun/newscope/server/mocks"
 )
@@ -590,14 +591,14 @@ func TestServer_RenderFeedCard_TemplateError(t *testing.T) {
 		templates: template.New("broken"), // empty template without feed-card.html
 	}
 
-	feed := &domain.Feed{
+	feedRow := &domain.Feed{
 		ID:    1,
 		Title: "Test Feed",
 		URL:   "https://example.com/feed",
 	}
 
 	w := httptest.NewRecorder()
-	srv.renderFeedCard(w, feed)
+	srv.renderFeedCard(w, feedRow)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "Failed to render feed")
@@ -1963,6 +1964,7 @@ func newTestServer(t *testing.T) *Server {
 		"unescapeHTML": func(s string) template.HTML {
 			return template.HTML(s) //nolint:gosec // test helper only
 		},
+		"channelImageIsUserAvatar": feed.ChannelImageIsUserAvatar,
 	}
 	tmpl := template.New("").Funcs(funcMap)
 	tmpl, err := tmpl.ParseFiles(

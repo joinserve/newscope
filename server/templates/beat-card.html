@@ -32,12 +32,15 @@
         {{end}}
     {{end}}
 
-    {{/* post avatar: per-item author avatar wins (multi-user feeds like
-        threads/search), feed-level channel image is the next preference. */}}
+    {{/* post avatar: per-item author avatar always qualifies (multi-user
+        feeds like threads/search). Feed-level channel image only qualifies
+        when the feed URL is on the single-user SNS whitelist — for news
+        feeds (e.g. CNA) the channel <image> is a topic photo / site logo,
+        NOT a user avatar, so we deliberately fall through to brand. */}}
     {{$postAvatar := ""}}
     {{if $first.ImageURL}}
         {{$postAvatar = $first.ImageURL}}
-    {{else if $first.FeedImageURL}}
+    {{else if and $first.FeedImageURL (channelImageIsUserAvatar $first.FeedURL)}}
         {{$postAvatar = $first.FeedImageURL}}
     {{end}}
 
