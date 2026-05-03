@@ -64,7 +64,7 @@
         {{if gt $membersCount 1}}
         <div class="avatar-stack">
             {{if $mainSrc}}
-            <img src="{{$mainSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            <img src="{{$mainSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
             <div class="avatar-img avatar-fallback" style="display:none;">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
             {{else}}
             <div class="avatar-img avatar-fallback">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
@@ -73,13 +73,13 @@
         </div>
         {{else}}
         {{if $mainSrc}}
-        <img src="{{$mainSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <img src="{{$mainSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
         <div class="avatar-img avatar-fallback" style="display:none;">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
         {{else}}
         <div class="avatar-img avatar-fallback">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
         {{end}}
         {{if $showBadge}}
-        <img src="{{$brand}}" class="avatar-badge" alt="" aria-hidden="true">
+        <img src="{{$brand}}" class="avatar-badge" alt="" aria-hidden="true" referrerpolicy="no-referrer" loading="lazy">
         {{end}}
         {{end}}
         <div class="thread-line"></div>
