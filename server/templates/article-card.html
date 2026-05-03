@@ -51,7 +51,7 @@
             {{end}}
 
             <span class="card-time">
-                {{.Published.Local.Format "15:04"}}
+                {{formatCardTime .Published}}
             </span>
             
             <span class="score-badge-mini {{if le .GetRelevanceScore 5.0}}score-low{{else if le .GetRelevanceScore 7.0}}score-medium{{else}}score-high{{end}}">{{printf "%.1f" .GetRelevanceScore}}</span>
