@@ -2124,6 +2124,91 @@ func TestBeatDetailHandler_WritesLastViewed(t *testing.T) {
 	assert.True(t, markViewedCalled, "MarkViewed should be called before rendering")
 }
 
+func TestBeatDetailHandler_BackURLFromReferer(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+
+	mkDB := func() *mocks.DatabaseMock {
+		title := "Beat Title"
+		return &mocks.DatabaseMock{
+			GetBeatFunc: func(ctx context.Context, beatID int64) (domain.BeatWithMembers, error) {
+				return domain.BeatWithMembers{ID: beatID, CanonicalTitle: &title}, nil
+			},
+			MarkViewedFunc: func(ctx context.Context, beatID int64) error { return nil },
+		}
+	}
+
+	tests := []struct {
+		name       string
+		referer    string
+		wantInBody string
+	}{
+		{
+			name:       "referer from /source/X is preserved",
+			referer:    "/source/Threads",
+			wantInBody: "href='/source/Threads'",
+		},
+		{
+			name:       "referer from /beats?group=ai is preserved",
+			referer:    "/beats?group=ai",
+			wantInBody: "href='/beats?group=ai'",
+		},
+		{
+			name:       "missing referer falls back to /beats",
+			referer:    "",
+			wantInBody: "href='/beats'",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := testServer(t, cfg, mkDB(), &mocks.SchedulerMock{})
+			req := httptest.NewRequest("GET", "/beats/123", http.NoBody)
+			req.Header.Set("HX-Request", "true")
+			if tc.referer != "" {
+				req.Header.Set("Referer", tc.referer)
+			}
+			req.SetPathValue("id", "123")
+			w := httptest.NewRecorder()
+
+			srv.beatDetailHandler(w, req)
+			require.Equal(t, http.StatusOK, w.Code)
+			assert.Contains(t, w.Body.String(), tc.wantInBody,
+				"OOB header-back href should reflect the referer-derived backURL")
+		})
+	}
+
+	t.Run("referer with html-injection chars is escaped", func(t *testing.T) {
+		// referer is user-controlled at the HTTP layer; the OOB swap interpolates
+		// it directly into href='…' so html-escape is required to avoid breaking
+		// the attribute or injecting markup.
+		srv := testServer(t, cfg, mkDB(), &mocks.SchedulerMock{})
+		req := httptest.NewRequest("GET", "/beats/123", http.NoBody)
+		req.Header.Set("HX-Request", "true")
+		req.Header.Set("Referer", `/source/X" onclick="alert(1)`)
+		req.SetPathValue("id", "123")
+		w := httptest.NewRecorder()
+
+		srv.beatDetailHandler(w, req)
+		body := w.Body.String()
+		assert.NotContains(t, body, `onclick="alert(1)"`,
+			"raw attacker payload must not appear unescaped in OOB swap href")
+		assert.Contains(t, body, "&#34;",
+			"double-quote must be html-escaped to keep the href attribute well-formed")
+	})
+}
+
 func TestBeatViewHandler_MarksViewed(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },

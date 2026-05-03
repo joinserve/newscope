@@ -142,6 +142,13 @@ body {
     background-color: var(--bg-body);
     transition: background-color 0.2s ease, color 0.2s ease;
     -webkit-font-smoothing: antialiased;
+    /* iOS Safari boosts the font size of short text it heuristically classifies
+       as primary content, so a feed name like "Claude" renders ~2x larger than
+       a long one like "Hacker News (100+ pts)" even when the CSS font-size is
+       identical. Pinning to 100% disables the heuristic so all .feed-name (and
+       any other short snippet) renders at the declared size. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     display: flex;
     justify-content: center;
     min-height: 100vh;
@@ -910,19 +917,14 @@ html.dark-theme .moon-icon { opacity: 1; }
     background: rgba(255, 48, 64, 0.1);
 }
 
-.feed-card .feed-url-line {
-    overflow: hidden;
-}
-
 .feed-card .feed-url-line a {
     color: var(--text-secondary);
     text-decoration: none;
-    display: inline-block;
-    max-width: 100%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    vertical-align: bottom;
+    /* wrap long urls onto multiple lines so the user can read what is actually
+       subscribed (long rsshub:// urls have no natural break opportunities, so
+       break-all is needed; overflow-wrap: anywhere is the modern complement). */
+    word-break: break-all;
+    overflow-wrap: anywhere;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.8125rem;
 }

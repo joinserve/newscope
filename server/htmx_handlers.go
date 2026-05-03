@@ -1630,6 +1630,14 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 		pageTitle = beat.Members[0].Title
 	}
 
+	// preserve the list-view context (source/{name}, /beats?group=X, …) the
+	// user came from. mirror sourceHandler:1410 — Referer with /beats fallback
+	// when missing (direct paste of the URL or HTMX without explicit referer).
+	backURL := r.Referer()
+	if backURL == "" {
+		backURL = "/beats"
+	}
+
 	data := struct {
 		commonPageData
 		Beat     *domain.BeatWithMembers
@@ -1637,7 +1645,7 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		commonPageData: commonPageData{
 			ActivePage: "beats",
-			BackURL:    "/beats",
+			BackURL:    backURL,
 			PageTitle:  pageTitle,
 		},
 		Beat:     &beat,
@@ -1655,9 +1663,10 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// OOB updates
+		// OOB updates. Referer is user-controlled at the HTTP layer so escape
+		// it before interpolating into the href the same way pageTitle is.
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='%s' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>", html.EscapeString(backURL))
 		return
 	}
 
