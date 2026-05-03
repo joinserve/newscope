@@ -637,6 +637,11 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /rsshub/namespaces", s.rsshubNamespacesHandler)
 		r.HandleFunc("GET /rsshub/namespaces/{name}", s.rsshubNamespaceDetailHandler)
 		r.HandleFunc("GET /rsshub/preview", s.rsshubPreviewHandler)
+
+		// SNS CDN avatar pass-through (ADR 0017). Strips
+		// cross-Origin-Resource-Policy so beat-card <img> embeds work
+		// from this origin. Allowlist + SSRF guard live in img_proxy.go.
+		r.HandleFunc("GET /img-proxy", newImgProxyHandler(defaultImgProxyConfig()))
 	})
 
 	// RSS routes
