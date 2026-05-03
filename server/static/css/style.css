@@ -1432,6 +1432,24 @@ html.dark-theme .moon-icon { opacity: 1; }
     border: 1px solid var(--border-primary);
 }
 
+/* iMessage-style brand badge sitting at the bottom-right of a post avatar.
+   Anchored against .card-avatar (position: relative) so it overhangs the
+   36x36 avatar by ~4px on right and bottom. The white border separates the
+   badge visually from the avatar underneath. */
+.avatar-badge {
+    position: absolute;
+    top: 22px;
+    left: 22px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-primary);
+    object-fit: cover;
+    background: var(--bg-primary);
+    z-index: 4;
+    pointer-events: none;
+}
+
 .thread-line {
     flex: 1;
     width: 2px;

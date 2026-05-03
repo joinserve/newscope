@@ -26,6 +26,7 @@ type feedSQL struct {
 	Title         string     `db:"title"`
 	Description   string     `db:"description"`
 	IconURL       string     `db:"icon_url"`
+	ImageURL      string     `db:"image_url"`
 	LastFetched   *time.Time `db:"last_fetched"`
 	NextFetch     *time.Time `db:"next_fetch"`
 	FetchInterval int        `db:"fetch_interval"`
@@ -190,6 +191,18 @@ func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedID int64, ena
 	return nil
 }
 
+// UpdateFeedImageURL stores the channel-level image URL parsed from the feed.
+// Called by the fetch worker after each successful parse; idempotent. Pass an
+// empty string to clear. Distinct from UpdateFeed (user-facing edit) and
+// UpdateFeedFetched (next-fetch scheduling).
+func (r *FeedRepository) UpdateFeedImageURL(ctx context.Context, feedID int64, imageURL string) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE feeds SET image_url = ? WHERE id = ?", imageURL, feedID)
+	if err != nil {
+		return fmt.Errorf("update feed image_url: %w", err)
+	}
+	return nil
+}
+
 // UpdateFeed updates feed title and interval
 func (r *FeedRepository) UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error {
 	query := "UPDATE feeds SET title = ?, url = ?, icon_url = ?, fetch_interval = ? WHERE id = ?"
@@ -297,6 +310,7 @@ func (r *FeedRepository) toDomainFeed(sqlFeed *feedSQL) *domain.Feed {
 		Title:         sqlFeed.Title,
 		Description:   sqlFeed.Description,
 		IconURL:       sqlFeed.IconURL,
+		ImageURL:      sqlFeed.ImageURL,
 		LastFetched:   sqlFeed.LastFetched,
 		NextFetch:     sqlFeed.NextFetch,
 		FetchInterval: time.Duration(sqlFeed.FetchInterval) * time.Second,

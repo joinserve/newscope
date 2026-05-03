@@ -1363,3 +1363,72 @@ func assertCount(ctx context.Context, t *testing.T, db *sqlx.DB, query string, w
 	require.NoError(t, db.GetContext(ctx, &got, query, args...))
 	assert.Equal(t, want, got, "count mismatch for query: %s", query)
 }
+
+// hydrated members must carry both Item.ImageURL (per-item author avatar) and
+// FeedImageURL (channel-level fallback) so the beat-card render can pick the
+// best avatar source. ListBeats is the production hydration path; this test
+// asserts the SELECT picks up the newly-added joined columns.
+func TestBeatRepository_ListBeats_HydratesImageURLs(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	feed := createTestFeed(t, repos, "image-hydration")
+	require.NoError(t, repos.Feed.UpdateFeedImageURL(ctx, feed.ID, "https://cdn.example.com/feed-channel.jpg"))
+
+	pub := time.Now()
+	mk := func(guid, avatarURL string, offset time.Duration) int64 {
+		t.Helper()
+		it := &domain.Item{
+			FeedID:    feed.ID,
+			GUID:      guid,
+			Title:     guid,
+			Link:      "https://example.com/" + guid,
+			ImageURL:  avatarURL,
+			Published: pub.Add(offset),
+		}
+		require.NoError(t, repos.Item.CreateItem(ctx, it))
+		require.NoError(t, repos.Item.UpdateItemProcessed(ctx, it.ID, nil,
+			&domain.Classification{Score: 6, ClassifiedAt: time.Now()}))
+		require.NoError(t, repos.Embedding.PutEmbedding(ctx, it.ID, "test-model", []float32{1, 0, 0}))
+		return it.ID
+	}
+
+	id1 := mk("with-avatar", "https://cdn.example.com/alice.jpg", 0)
+	id2 := mk("no-avatar", "", time.Minute)
+
+	// seed both items into one beat
+	beatID, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id1, Vector: []float32{1, 0, 0}, PublishedAt: pub}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: id2, Vector: []float32{1, 0, 0}, PublishedAt: pub.Add(time.Minute)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// canonicalise so ListBeats returns the beat
+	require.NoError(t, repos.Beat.SaveCanonical(ctx, beatID,
+		domain.BeatCanonical{Title: "T", Summary: "S"}))
+
+	beats, err := repos.Beat.ListBeats(ctx, ListBeatsOptions{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, beats, 1)
+	require.Len(t, beats[0].Members, 2)
+
+	byGUID := map[string]domain.ClassifiedItem{}
+	for _, m := range beats[0].Members {
+		byGUID[m.GUID] = m
+	}
+
+	withAvatar, ok := byGUID["with-avatar"]
+	require.True(t, ok)
+	assert.Equal(t, "https://cdn.example.com/alice.jpg", withAvatar.ImageURL,
+		"per-item ImageURL must come through SELECT i.image_url")
+	assert.Equal(t, "https://cdn.example.com/feed-channel.jpg", withAvatar.FeedImageURL,
+		"FeedImageURL must come through SELECT f.image_url AS feed_image_url")
+
+	noAvatar, ok := byGUID["no-avatar"]
+	require.True(t, ok)
+	assert.Empty(t, noAvatar.ImageURL, "items with no per-item avatar must hydrate ImageURL as empty")
+	assert.Equal(t, "https://cdn.example.com/feed-channel.jpg", noAvatar.FeedImageURL,
+		"FeedImageURL is per-feed, so all members from the same feed share it")
+}

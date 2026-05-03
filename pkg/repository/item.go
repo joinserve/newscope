@@ -35,6 +35,7 @@ type itemSQL struct {
 	Description string    `db:"description"`
 	Content     string    `db:"content"`
 	Author      string    `db:"author"`
+	ImageURL    string    `db:"image_url"`
 	Published   time.Time `db:"published"`
 
 	// extracted content
@@ -116,21 +117,22 @@ func (r *ItemRepository) CreateItem(ctx context.Context, item *domain.Item) erro
 		Description: item.Description,
 		Content:     item.Content,
 		Author:      item.Author,
+		ImageURL:    item.ImageURL,
 		Published:   item.Published,
 	}
 
 	query := `
 		INSERT INTO items (
-			feed_id, guid, title, link, description, content, 
-			author, published
+			feed_id, guid, title, link, description, content,
+			author, image_url, published
 		) VALUES (
 			?, ?, ?, ?, ?, ?,
-			?, ?
+			?, ?, ?
 		)
 	`
 	result, err := r.db.ExecContext(ctx, query,
 		sqlItem.FeedID, sqlItem.GUID, sqlItem.Title, sqlItem.Link,
-		sqlItem.Description, sqlItem.Content, sqlItem.Author,
+		sqlItem.Description, sqlItem.Content, sqlItem.Author, sqlItem.ImageURL,
 		sqlItem.Published.UTC().Format(SQLiteDateFormat))
 	if err != nil {
 		return fmt.Errorf("create item: %w", err)
@@ -414,6 +416,7 @@ func (r *ItemRepository) toDomainItem(sqlItem *itemSQL) *domain.Item {
 		Description: sqlItem.Description,
 		Content:     sqlItem.Content,
 		Author:      sqlItem.Author,
+		ImageURL:    sqlItem.ImageURL,
 		Published:   sqlItem.Published,
 		Summary:     sqlItem.Summary,
 		CreatedAt:   sqlItem.CreatedAt,

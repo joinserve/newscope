@@ -19,7 +19,12 @@ type Item struct {
 	Description string
 	Content     string
 	Author      string
-	Published   time.Time
+	// imageURL is the per-item author/avatar image (e.g. RSSHub
+	// <media:thumbnail> on multi-user routes like threads/search). Empty for
+	// feeds that don't expose a per-post author avatar; render falls back to
+	// the feed-level image or icon.
+	ImageURL  string
+	Published time.Time
 	// summary is the LLM-generated article summary, set after classification.
 	Summary   string
 	CreatedAt time.Time
@@ -63,9 +68,11 @@ const (
 // ClassifiedItem represents an item with all processing completed
 type ClassifiedItem struct {
 	*Item
-	FeedName       string
-	FeedURL        string
-	FeedIconURL    string
+	FeedName    string
+	FeedURL     string
+	FeedIconURL string
+	// feedImageURL mirrors Feed.ImageURL — the channel-level image.
+	FeedImageURL   string
 	Extraction     *ExtractedContent
 	Classification *Classification
 	UserFeedback   *Feedback
@@ -207,7 +214,11 @@ type ParsedFeed struct {
 	Title       string
 	Description string
 	Link        string
-	Items       []ParsedItem
+	// imageURL is the channel-level <image><url> when present (gofeed
+	// feed.Image.URL). The fetch worker writes this back to feeds.image_url
+	// after each successful parse.
+	ImageURL string
+	Items    []ParsedItem
 }
 
 // ParsedItem represents an item parsed from RSS/Atom (before database storage)
@@ -219,5 +230,10 @@ type ParsedItem struct {
 	Description string
 	Content     string // content from RSS feed (if available)
 	Author      string
-	Published   time.Time
+	// imageURL is the per-item author/avatar image extracted from
+	// <media:thumbnail> when present. RSSHub emits this on multi-user routes
+	// where each post has a different author. Feed-level fallback applies
+	// when this is empty.
+	ImageURL  string
+	Published time.Time
 }

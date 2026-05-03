@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS feeds (
     next_fetch DATETIME,
     fetch_interval INTEGER DEFAULT 1800, -- 30 minutes
     icon_url TEXT DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '',
     error_count INTEGER DEFAULT 0,
     last_error TEXT DEFAULT '',
     enabled BOOLEAN DEFAULT 1,
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS items (
     description TEXT DEFAULT '',
     content TEXT DEFAULT '',        -- Original RSS content
     author TEXT DEFAULT '',
+    image_url TEXT NOT NULL DEFAULT '', -- Per-item author/avatar image (e.g. RSSHub media:thumbnail)
     published DATETIME,
     
     -- Extracted content

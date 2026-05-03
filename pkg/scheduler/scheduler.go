@@ -68,6 +68,7 @@ type FeedManager interface {
 	GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
 	UpdateFeedFetched(ctx context.Context, feedID int64, nextFetch time.Time) error
 	UpdateFeedError(ctx context.Context, feedID int64, errMsg string) error
+	UpdateFeedImageURL(ctx context.Context, feedID int64, imageURL string) error
 }
 
 // ItemManager handles item operations for scheduler

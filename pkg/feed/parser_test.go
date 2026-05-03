@@ -108,6 +108,97 @@ func TestParser_Parse_AtomFeed(t *testing.T) {
 	assert.Equal(t, "John Doe", item.Author)
 }
 
+func TestParser_Parse_ChannelAndItemImages(t *testing.T) {
+	// channel <image><url> at the feed level (single-user route shape) plus
+	// per-item <media:thumbnail> at the item level (multi-user route shape,
+	// like RSSHub /threads/search). Both must come through. The first item
+	// also has a description-embedded <img>; we must NOT pick that up as the
+	// per-item author avatar (gofeed's Item.Image would, but it's the post's
+	// content image, not the avatar — see extractAuthorImage's docstring).
+	rssContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+<channel>
+	<title>Test SNS Feed</title>
+	<link>http://example.com</link>
+	<description>desc</description>
+	<image>
+		<url>https://cdn.example.com/feed-channel.jpg</url>
+		<title>Channel</title>
+		<link>http://example.com</link>
+	</image>
+	<item>
+		<title>Post by alice</title>
+		<link>http://example.com/p/1</link>
+		<description><![CDATA[some text <img src="https://cdn.example.com/post-content-image.jpg"/>]]></description>
+		<guid>http://example.com/p/1</guid>
+		<media:thumbnail url="https://cdn.example.com/alice-avatar.jpg"/>
+	</item>
+	<item>
+		<title>Post by bob</title>
+		<link>http://example.com/p/2</link>
+		<description>plain text post</description>
+		<guid>http://example.com/p/2</guid>
+		<media:thumbnail url="https://cdn.example.com/bob-avatar.jpg"/>
+	</item>
+	<item>
+		<title>Post with no avatar</title>
+		<link>http://example.com/p/3</link>
+		<description>also plain</description>
+		<guid>http://example.com/p/3</guid>
+	</item>
+</channel>
+</rss>`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(rssContent))
+	}))
+	defer server.Close()
+
+	parser := NewParser(5*time.Second, "TestAgent/1.0", "")
+	feed, err := parser.Parse(context.Background(), server.URL)
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://cdn.example.com/feed-channel.jpg", feed.ImageURL,
+		"channel <image><url> must populate ParsedFeed.ImageURL")
+
+	require.Len(t, feed.Items, 3)
+	assert.Equal(t, "https://cdn.example.com/alice-avatar.jpg", feed.Items[0].ImageURL,
+		"per-item author avatar must come from <media:thumbnail>, not from a description <img>")
+	assert.Equal(t, "https://cdn.example.com/bob-avatar.jpg", feed.Items[1].ImageURL)
+	assert.Empty(t, feed.Items[2].ImageURL,
+		"items without media:thumbnail must leave ImageURL empty (caller falls back to feed image)")
+}
+
+func TestParser_Parse_NoChannelImage(t *testing.T) {
+	// channel image absent — ParsedFeed.ImageURL stays empty so the worker
+	// does not overwrite an existing feeds.image_url with garbage.
+	rssContent := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+	<title>Plain Feed</title>
+	<link>http://example.com</link>
+	<description>desc</description>
+	<item>
+		<title>Plain item</title>
+		<link>http://example.com/x</link>
+		<guid>http://example.com/x</guid>
+	</item>
+</channel>
+</rss>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(rssContent))
+	}))
+	defer server.Close()
+
+	parser := NewParser(5*time.Second, "TestAgent/1.0", "")
+	feed, err := parser.Parse(context.Background(), server.URL)
+	require.NoError(t, err)
+	assert.Empty(t, feed.ImageURL)
+	assert.Empty(t, feed.Items[0].ImageURL)
+}
+
 func TestParser_Parse_Errors(t *testing.T) {
 	t.Run("HTTP error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

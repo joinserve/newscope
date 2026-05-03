@@ -846,7 +846,8 @@ func (r *BeatRepository) loadMembersForBeatsUI(ctx context.Context, beatIDs []in
 			i.*,
 			f.title AS feed_title,
 			f.url AS feed_url,
-			f.icon_url AS feed_icon_url
+			f.icon_url AS feed_icon_url,
+			f.image_url AS feed_image_url
 		FROM beat_members bm
 		JOIN items i ON i.id = bm.item_id
 		JOIN feeds f ON f.id = i.feed_id

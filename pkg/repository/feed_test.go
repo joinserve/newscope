@@ -481,3 +481,41 @@ func TestFeedRepository_DeleteFeed_SweepsOrphans(t *testing.T) {
 		`SELECT COUNT(*) FROM beats WHERE id = ?`, beatID))
 	assert.Equal(t, 0, beatCount, "DeleteFeed must sweep beats whose only members were in the deleted feed")
 }
+
+func TestFeedRepository_UpdateFeedImageURL(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	feed := createTestFeed(t, repos, "image-url-feed")
+
+	// fresh feed starts with empty image_url
+	got, err := repos.Feed.GetFeed(ctx, feed.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got.ImageURL)
+
+	t.Run("set", func(t *testing.T) {
+		require.NoError(t, repos.Feed.UpdateFeedImageURL(ctx, feed.ID, "https://cdn.example.com/v1.jpg"))
+		got, err := repos.Feed.GetFeed(ctx, feed.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "https://cdn.example.com/v1.jpg", got.ImageURL)
+	})
+
+	t.Run("overwrite", func(t *testing.T) {
+		require.NoError(t, repos.Feed.UpdateFeedImageURL(ctx, feed.ID, "https://cdn.example.com/v2.jpg"))
+		got, err := repos.Feed.GetFeed(ctx, feed.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "https://cdn.example.com/v2.jpg", got.ImageURL)
+	})
+
+	t.Run("clear with empty string", func(t *testing.T) {
+		require.NoError(t, repos.Feed.UpdateFeedImageURL(ctx, feed.ID, ""))
+		got, err := repos.Feed.GetFeed(ctx, feed.ID)
+		require.NoError(t, err)
+		assert.Empty(t, got.ImageURL)
+	})
+
+	t.Run("non-existent feed is a no-op (sqlite UPDATE without rows succeeds)", func(t *testing.T) {
+		err := repos.Feed.UpdateFeedImageURL(ctx, 99999, "https://cdn.example.com/x.jpg")
+		assert.NoError(t, err)
+	})
+}

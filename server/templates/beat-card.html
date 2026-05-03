@@ -16,24 +16,52 @@
     {{$membersCount := len .Members}}
     {{if gt $membersCount 0}}
     {{$first := index .Members 0}}
-    {{$iconSrc := ""}}
+
+    {{/* brand icon: user-curated platform mark, also the favicon fallback */}}
+    {{$brand := ""}}
     {{if $first.FeedIconURL}}
         {{if isImageURL $first.FeedIconURL}}
-            {{$iconSrc = $first.FeedIconURL}}
+            {{$brand = $first.FeedIconURL}}
         {{else}}
-            {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $first.FeedIconURL}}
+            {{$brand = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $first.FeedIconURL}}
         {{end}}
     {{else}}
         {{$domain := getDomain $first.FeedURL}}
         {{if $domain}}
-            {{$iconSrc = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $domain}}
+            {{$brand = printf "https://www.google.com/s2/favicons?domain=%s&sz=128" $domain}}
         {{end}}
     {{end}}
-    <div class="card-avatar">
+
+    {{/* post avatar: per-item author avatar wins (multi-user feeds like
+        threads/search), feed-level channel image is the next preference. */}}
+    {{$postAvatar := ""}}
+    {{if $first.ImageURL}}
+        {{$postAvatar = $first.ImageURL}}
+    {{else if $first.FeedImageURL}}
+        {{$postAvatar = $first.FeedImageURL}}
+    {{end}}
+
+    {{/* main avatar: post wins when distinct from brand; else fall back to
+        brand (or post if brand is missing); else .avatar-fallback letter. */}}
+    {{$mainSrc := ""}}
+    {{if and $postAvatar (ne $postAvatar $brand)}}
+        {{$mainSrc = $postAvatar}}
+    {{else if $brand}}
+        {{$mainSrc = $brand}}
+    {{else if $postAvatar}}
+        {{$mainSrc = $postAvatar}}
+    {{end}}
+
+    {{/* brand badge overlay: only on the single-member branch, only when the
+        main avatar is the post (not the brand). Multi-member uses +N at the
+        bottom-right; the badge would collide, so we suppress it there. */}}
+    {{$showBadge := and (eq $membersCount 1) $brand (eq $mainSrc $postAvatar) (ne $mainSrc $brand)}}
+
+    <div class="card-avatar{{if $showBadge}} avatar-with-badge{{end}}">
         {{if gt $membersCount 1}}
         <div class="avatar-stack">
-            {{if $iconSrc}}
-            <img src="{{$iconSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+            {{if $mainSrc}}
+            <img src="{{$mainSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
             <div class="avatar-img avatar-fallback" style="display:none;">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
             {{else}}
             <div class="avatar-img avatar-fallback">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
@@ -41,11 +69,14 @@
             <span class="avatar-overflow">+{{sub $membersCount 1}}</span>
         </div>
         {{else}}
-        {{if $iconSrc}}
-        <img src="{{$iconSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        {{if $mainSrc}}
+        <img src="{{$mainSrc}}" alt="{{$first.FeedName}}" class="avatar-img favicon-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
         <div class="avatar-img avatar-fallback" style="display:none;">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
         {{else}}
         <div class="avatar-img avatar-fallback">{{with $first.FeedName}}{{slice . 0 1}}{{end}}</div>
+        {{end}}
+        {{if $showBadge}}
+        <img src="{{$brand}}" class="avatar-badge" alt="" aria-hidden="true">
         {{end}}
         {{end}}
         <div class="thread-line"></div>
