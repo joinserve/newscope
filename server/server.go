@@ -168,19 +168,29 @@ func (s *Server) GetPageSize() int {
 // (今天 / 昨天 / weekday + time) for the beat-detail revision timeline
 // where chronological context matters more than compactness.
 func formatCardTime(t time.Time) string {
+	return formatCardTimeAt(t, time.Now())
+}
+
+// formatCardTimeAt is the testable seam for formatCardTime: same logic,
+// `now` is passed in so tests can pin a deterministic clock and exercise
+// every tier without flaking on TZ or run time.
+func formatCardTimeAt(t, now time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	now := time.Now()
 	loc := now.Location()
 	t = t.In(loc)
 
-	delta := now.Sub(t)
-	switch {
-	case delta < time.Minute:
-		return "剛剛"
-	case delta < time.Hour:
-		return fmt.Sprintf("%d 分鐘前", int(delta/time.Minute))
+	// guard the relative tiers against future timestamps. without this,
+	// a future time produces a negative delta which silently passes the
+	// `< time.Minute` check and renders as "剛剛".
+	if delta := now.Sub(t); delta >= 0 {
+		switch {
+		case delta < time.Minute:
+			return "剛剛"
+		case delta < time.Hour:
+			return fmt.Sprintf("%d 分鐘前", int(delta/time.Minute))
+		}
 	}
 
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
