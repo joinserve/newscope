@@ -203,9 +203,13 @@ func TestGeneratePageNumbers(t *testing.T) {
 }
 
 func TestFormatCardTime(t *testing.T) {
-	now := time.Now()
-	loc := now.Location()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	// fixed reference clock so every tier is reachable regardless of when
+	// or where the test runs. 14:00 UTC is far enough from midnight that
+	// 8 hours into the day stays "earlier today" and 2 hours later stays
+	// "today" without crossing the date boundary.
+	loc := time.UTC
+	now := time.Date(2026, 5, 4, 14, 0, 0, 0, loc)
+	today := time.Date(2026, 5, 4, 0, 0, 0, 0, loc)
 	yesterday := today.AddDate(0, 0, -1)
 	lastYear := today.AddDate(-1, 0, 0)
 
@@ -223,6 +227,11 @@ func TestFormatCardTime(t *testing.T) {
 			want: today.Add(8 * time.Hour).Format("15:04"),
 		},
 		{
+			name: "future time today renders HH:mm not 剛剛",
+			in:   now.Add(2 * time.Hour),
+			want: now.Add(2 * time.Hour).Format("15:04"),
+		},
+		{
 			name: "yesterday renders M/D",
 			in:   yesterday.Add(23 * time.Hour),
 			want: yesterday.Add(23 * time.Hour).Format("1/2"),
@@ -232,35 +241,27 @@ func TestFormatCardTime(t *testing.T) {
 			in:   lastYear,
 			want: lastYear.Format("2006/1/2"),
 		},
-		{
-			name: "exactly one hour ago promotes from 分鐘前 to today/HH:mm",
-			in:   now.Add(-time.Hour),
-			// either "HH:mm" (still today) or "1/2" (rolled over midnight); both are
-			// well-formed outputs of formatCardTime — we just confirm it's not the
-			// "分鐘前" tier
-			want: "_skip_strict_",
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := formatCardTime(tc.in)
-			if tc.want == "_skip_strict_" {
-				assert.NotContains(t, got, "分鐘前", "1h boundary must leave the minutes tier")
-				assert.NotEqual(t, "剛剛", got)
-				return
-			}
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.want, formatCardTimeAt(tc.in, now))
 		})
 	}
+
+	t.Run("exactly one hour ago promotes from 分鐘前 to today/HH:mm", func(t *testing.T) {
+		got := formatCardTimeAt(now.Add(-time.Hour), now)
+		assert.NotContains(t, got, "分鐘前", "1h boundary must leave the minutes tier")
+		assert.NotEqual(t, "剛剛", got)
+	})
 
 	t.Run("midnight boundary distinguishes today from yesterday", func(t *testing.T) {
 		oneSecondBeforeMidnight := today.Add(-time.Second)
 		justAfterMidnight := today.Add(time.Second)
 
 		// pre-midnight time falls into the "yesterday" branch → M/D format
-		assert.Equal(t, oneSecondBeforeMidnight.Format("1/2"), formatCardTime(oneSecondBeforeMidnight))
+		assert.Equal(t, oneSecondBeforeMidnight.Format("1/2"), formatCardTimeAt(oneSecondBeforeMidnight, now))
 		// post-midnight time falls into the "today" branch → HH:mm format
-		assert.Equal(t, justAfterMidnight.Format("15:04"), formatCardTime(justAfterMidnight))
+		assert.Equal(t, justAfterMidnight.Format("15:04"), formatCardTimeAt(justAfterMidnight, now))
 	})
 }
 
