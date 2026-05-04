@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -518,4 +519,62 @@ func TestFeedRepository_UpdateFeedImageURL(t *testing.T) {
 		err := repos.Feed.UpdateFeedImageURL(ctx, 99999, "https://cdn.example.com/x.jpg")
 		assert.NoError(t, err)
 	})
+}
+
+func TestFeedRepository_ListFeedsWithStats(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now()
+
+	feedSilent := createTestFeed(t, repos, "silent")
+	feedMixed := createTestFeed(t, repos, "mixed")
+	feedBusy := createTestFeed(t, repos, "busy")
+
+	// helper to insert an item at a given published time
+	makeItem := func(feedID int64, guid string, published time.Time) {
+		t.Helper()
+		err := repos.Item.CreateItem(ctx, &domain.Item{
+			FeedID:    feedID,
+			GUID:      guid,
+			Title:     guid,
+			Link:      "https://example.com/" + guid,
+			Published: published,
+		})
+		require.NoError(t, err)
+	}
+
+	// silent: zero items
+	// mixed: 3 items inside the window, 2 outside (>30d ago)
+	for i := 0; i < 3; i++ {
+		makeItem(feedMixed.ID, "mixed-in-"+strconv.Itoa(i), now.Add(-time.Duration(i+1)*24*time.Hour))
+	}
+	for i := 0; i < 2; i++ {
+		makeItem(feedMixed.ID, "mixed-out-"+strconv.Itoa(i), now.Add(-time.Duration(40+i)*24*time.Hour))
+	}
+	// busy: 25/day average → 750 items in 30 days; spread evenly across the window
+	for i := 0; i < 750; i++ {
+		offset := time.Duration(i) * (30 * 24 * time.Hour) / 750
+		makeItem(feedBusy.ID, "busy-"+strconv.Itoa(i), now.Add(-offset))
+	}
+
+	got, err := repos.Feed.ListFeedsWithStats(ctx)
+	require.NoError(t, err)
+
+	counts := make(map[int64]int, len(got))
+	for _, f := range got {
+		counts[f.ID] = f.ItemCount30d
+	}
+	assert.Equal(t, 0, counts[feedSilent.ID], "silent feed should report 0 items")
+	assert.Equal(t, 3, counts[feedMixed.ID], "mixed feed should count only items inside the 30-day window")
+	assert.Equal(t, 750, counts[feedBusy.ID], "busy feed should count all in-window items")
+
+	// confirm the embedded Feed fields (title) survive the JOIN
+	titles := make(map[int64]string, len(got))
+	for _, f := range got {
+		titles[f.ID] = f.Title
+	}
+	assert.Equal(t, "silent", titles[feedSilent.ID])
+	assert.Equal(t, "mixed", titles[feedMixed.ID])
+	assert.Equal(t, "busy", titles[feedBusy.ID])
 }

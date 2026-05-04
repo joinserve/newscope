@@ -362,8 +362,9 @@ func (s *Server) writeArticlesList(w http.ResponseWriter, req articlesPageReques
 func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// get all feeds from database
-	feeds, err := s.db.GetAllFeeds(ctx)
+	// get all feeds with rolling 30-day item counts so feed-card can render
+	// the posting-frequency line alongside the existing fetch interval
+	feeds, err := s.db.ListFeedsWithStats(ctx)
 	if err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to load feeds", err)
 		return
@@ -376,7 +377,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 	// prepare template data
 	data := struct {
 		commonPageData
-		Feeds      []domain.Feed
+		Feeds      []domain.FeedWithStats
 		RSSHubHost string
 	}{
 		commonPageData: commonPageData{
@@ -659,9 +660,14 @@ func wrapArticleCards(items []domain.ClassifiedItem, selectedTopic string) []art
 	return result
 }
 
-// renderFeedCard renders a single feed card
+// renderFeedCard renders a single feed card. The card-level swap path
+// (post-edit, post-toggle, post-fetch) does not carry the rolling
+// posting-frequency stat — that is recomputed on the next full /feeds load.
+// We wrap into FeedWithStats with zero count so the template's frequency
+// guard `{{if $freq}}…{{end}}` simply omits the line on the swapped card.
 func (s *Server) renderFeedCard(w http.ResponseWriter, feed *domain.Feed) {
-	if err := s.templates.ExecuteTemplate(w, "feed-card.html", feed); err != nil {
+	wrapped := domain.FeedWithStats{Feed: *feed}
+	if err := s.templates.ExecuteTemplate(w, "feed-card.html", wrapped); err != nil {
 		s.respondWithError(w, http.StatusInternalServerError, "Failed to render feed", err)
 		return
 	}
@@ -1624,6 +1630,14 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 		pageTitle = beat.Members[0].Title
 	}
 
+	// preserve the list-view context (source/{name}, /beats?group=X, …) the
+	// user came from. mirror sourceHandler:1410 — Referer with /beats fallback
+	// when missing (direct paste of the URL or HTMX without explicit referer).
+	backURL := r.Referer()
+	if backURL == "" {
+		backURL = "/beats"
+	}
+
 	data := struct {
 		commonPageData
 		Beat     *domain.BeatWithMembers
@@ -1631,7 +1645,7 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		commonPageData: commonPageData{
 			ActivePage: "beats",
-			BackURL:    "/beats",
+			BackURL:    backURL,
 			PageTitle:  pageTitle,
 		},
 		Beat:     &beat,
@@ -1649,9 +1663,10 @@ func (s *Server) beatDetailHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// OOB updates
+		// OOB updates. Referer is user-controlled at the HTTP layer so escape
+		// it before interpolating into the href the same way pageTitle is.
 		fmt.Fprintf(w, "<h2 id='page-title' class='page-title' hx-swap-oob='true'><span class='title-text'>%s</span></h2>", html.EscapeString(pageTitle))
-		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='/beats' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>")
+		fmt.Fprintf(w, "<div id='header-back' class='header-left' hx-swap-oob='true'><a href='%s' class='back-button' title='返回'><svg width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m15 18-6-6 6-6'/></svg></a></div>", html.EscapeString(backURL))
 		return
 	}
 

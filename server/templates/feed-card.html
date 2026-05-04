@@ -41,6 +41,8 @@
 
         <div class="feed-meta">
             <span>每 {{durationMinutes .FetchInterval}} 分鐘更新</span>
+            {{$freq := postingFrequency .ItemCount30d}}
+            {{if $freq}}<span>{{$freq}}</span>{{end}}
             {{if .LastFetched}}
             <span>上次抓取：<time datetime="{{.LastFetched.Format "2006-01-02T15:04:05Z07:00"}}">{{.LastFetched.Local.Format "Jan 2, 15:04"}}</time></span>
             {{end}}

@@ -101,6 +101,39 @@ func (r *FeedRepository) GetFeeds(ctx context.Context, enabledOnly bool) ([]doma
 	return feeds, nil
 }
 
+// ListFeedsWithStats returns every feed with a rolling 30-day item count,
+// joined in a single query. The count is 0 for feeds with no items in the
+// window; callers decide how to display that (the /feeds page hides the
+// frequency line in that case).
+func (r *FeedRepository) ListFeedsWithStats(ctx context.Context) ([]domain.FeedWithStats, error) {
+	type row struct {
+		feedSQL
+		ItemCount30d int `db:"item_count_30d"`
+	}
+	query := `
+		SELECT f.*, COALESCE(s.cnt, 0) AS item_count_30d
+		FROM feeds f
+		LEFT JOIN (
+			SELECT feed_id, COUNT(*) AS cnt
+			FROM items
+			WHERE published >= datetime('now', '-30 days')
+			GROUP BY feed_id
+		) s ON s.feed_id = f.id
+		ORDER BY f.title`
+	var rows []row
+	if err := r.db.SelectContext(ctx, &rows, query); err != nil {
+		return nil, fmt.Errorf("list feeds with stats: %w", err)
+	}
+	out := make([]domain.FeedWithStats, len(rows))
+	for i := range rows {
+		out[i] = domain.FeedWithStats{
+			Feed:         *r.toDomainFeed(&rows[i].feedSQL),
+			ItemCount30d: rows[i].ItemCount30d,
+		}
+	}
+	return out, nil
+}
+
 // GetFeedsToFetch retrieves feeds that need updating
 func (r *FeedRepository) GetFeedsToFetch(ctx context.Context, limit int) ([]domain.Feed, error) {
 	query := `

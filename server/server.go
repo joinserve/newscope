@@ -85,6 +85,7 @@ type Database interface {
 	GetTopTopicsByScore(ctx context.Context, minScore float64, limit int) ([]domain.TopicWithScore, error)
 	GetActiveFeedNames(ctx context.Context, minScore float64) ([]string, error)
 	GetAllFeeds(ctx context.Context) ([]domain.Feed, error)
+	ListFeedsWithStats(ctx context.Context) ([]domain.FeedWithStats, error)
 	GetFeedByName(ctx context.Context, name string) (*domain.Feed, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
 	UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error
@@ -152,6 +153,91 @@ func (s *Server) GetPageSize() int {
 }
 
 // generatePageNumbers creates a slice of page numbers for pagination display
+// formatCardTime renders a per-item timestamp for content-card surfaces
+// (beat-card, article-card, beat-detail member rows) in the most compact
+// form that still preserves enough context for quick skimming.
+//
+// Tiers, evaluated in order against now:
+//   - zero time     → "" (caller templates already guard with .IsZero)
+//   - < 1 minute    → 剛剛
+//   - < 1 hour      → N 分鐘前
+//   - same calendar day → HH:mm
+//   - same year     → M/D
+//   - earlier year  → YYYY/M/D
+//
+// Distinct from formatRelativeDay, which is intentionally kept verbose
+// (今天 / 昨天 / weekday + time) for the beat-detail revision timeline
+// where chronological context matters more than compactness.
+func formatCardTime(t time.Time) string {
+	return formatCardTimeAt(t, time.Now())
+}
+
+// formatCardTimeAt is the testable seam for formatCardTime: same logic,
+// `now` is passed in so tests can pin a deterministic clock and exercise
+// every tier without flaking on TZ or run time.
+func formatCardTimeAt(t, now time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	loc := now.Location()
+	t = t.In(loc)
+
+	// guard the relative tiers against future timestamps. without this,
+	// a future time produces a negative delta which silently passes the
+	// `< time.Minute` check and renders as "剛剛".
+	if delta := now.Sub(t); delta >= 0 {
+		switch {
+		case delta < time.Minute:
+			return "剛剛"
+		case delta < time.Hour:
+			return fmt.Sprintf("%d 分鐘前", int(delta/time.Minute))
+		}
+	}
+
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+	switch {
+	case !d.Before(today):
+		return t.Format("15:04")
+	case t.Year() == now.Year():
+		return t.Format("1/2")
+	default:
+		return t.Format("2006/1/2")
+	}
+}
+
+// postingFrequency formats a rolling 30-day item count into a human-readable
+// publishing rate for the feed-card. Returns "" when the count is zero so the
+// template can omit the line entirely (no "0/週" filler for inactive feeds).
+//
+// Tiers:
+//   - daily ≥ 24 → 約 X/小時 (1 decimal if X < 10, integer otherwise)
+//   - daily ≥ 1  → 約 X/日   (integer)
+//   - else       → 約 X/週   (integer; clamped to ≥1 so a feed with one item
+//     in 30 days never reads as "0/週")
+func postingFrequency(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	daily := float64(count) / 30
+	switch {
+	case daily >= 24:
+		hourly := daily / 24
+		if hourly < 10 {
+			return fmt.Sprintf("約 %.1f/小時", hourly)
+		}
+		return fmt.Sprintf("約 %d/小時", int(hourly+0.5))
+	case daily >= 1:
+		return fmt.Sprintf("約 %d/日", int(daily+0.5))
+	default:
+		weekly := int(daily*7 + 0.5)
+		if weekly < 1 {
+			weekly = 1
+		}
+		return fmt.Sprintf("約 %d/週", weekly)
+	}
+}
+
 func generatePageNumbers(currentPage, totalPages int) []int {
 	if totalPages <= 0 {
 		return []int{}
@@ -326,6 +412,8 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		"formatTime": func(t time.Time) string {
 			return t.In(time.Now().Location()).Format("15:04")
 		},
+		"postingFrequency": postingFrequency,
+		"formatCardTime":   formatCardTime,
 	}
 
 	// parse component templates only
@@ -566,6 +654,11 @@ func (s *Server) setupRoutes() {
 		r.HandleFunc("GET /rsshub/namespaces", s.rsshubNamespacesHandler)
 		r.HandleFunc("GET /rsshub/namespaces/{name}", s.rsshubNamespaceDetailHandler)
 		r.HandleFunc("GET /rsshub/preview", s.rsshubPreviewHandler)
+
+		// SNS CDN avatar pass-through (ADR 0017). Strips
+		// cross-Origin-Resource-Policy so beat-card <img> embeds work
+		// from this origin. Allowlist + SSRF guard live in img_proxy.go.
+		r.HandleFunc("GET /img-proxy", newImgProxyHandler(defaultImgProxyConfig()))
 	})
 
 	// RSS routes

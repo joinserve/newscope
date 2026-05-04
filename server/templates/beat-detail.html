@@ -19,7 +19,7 @@
             <span class="topic-chip-big" style="margin-left: 0.5rem;">#{{$beatPrimary}}</span>
             {{end}}
             {{end}}
-            <span class="card-time" style="margin-left: 0.5rem;">{{.Beat.FirstSeenAt.Local.Format "2006-01-02 15:04"}}</span>
+            <span class="card-time" style="margin-left: 0.5rem;">{{formatCardTime .Beat.FirstSeenAt}}</span>
         </div>
 
         {{if .Beat.CanonicalSummary}}
@@ -59,7 +59,7 @@
                 {{range .Members}}
                 <details class="timeline-member-details"{{if $isCurrent}} open{{end}}>
                     <summary class="timeline-member-summary">
-                        {{if not .AddedAt.IsZero}}<time>{{.AddedAt | formatTime}}</time>{{end}}
+                        {{if not .AddedAt.IsZero}}<time>{{formatCardTime .AddedAt}}</time>{{end}}
                         <span class="feed-name">{{.FeedName}}</span>
                         <a href="{{.Link}}" target="_blank" rel="noopener" class="member-title">{{unescapeHTML .Title}}</a>
                         <span class="expand-chevron" aria-hidden="true">▾</span>
@@ -100,7 +100,7 @@
                                     <span class="card-head-sep" aria-hidden="true">›</span>
                                     <a href="/articles?topic={{$primaryTopic}}" class="card-topic">{{$primaryTopic}}</a>
                                     {{end}}
-                                    <span class="card-time">{{.Published.Local.Format "15:04"}}</span>
+                                    <span class="card-time">{{formatCardTime .Published}}</span>
                                     <span class="score-badge-mini {{if le .GetRelevanceScore 5.0}}score-low{{else if le .GetRelevanceScore 7.0}}score-medium{{else}}score-high{{end}}">{{printf "%.1f" .GetRelevanceScore}}</span>
                                 </header>
                                 <h3 class="card-title">

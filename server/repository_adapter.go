@@ -31,6 +31,7 @@ type RepositoryAdapter struct {
 // FeedRepo defines the feed repository interface used by the adapter
 type FeedRepo interface {
 	GetFeeds(ctx context.Context, enabledOnly bool) ([]domain.Feed, error)
+	ListFeedsWithStats(ctx context.Context) ([]domain.FeedWithStats, error)
 	CreateFeed(ctx context.Context, feed *domain.Feed) error
 	UpdateFeed(ctx context.Context, feedID int64, title, feedURL, iconURL string, fetchInterval time.Duration) error
 	UpdateFeedStatus(ctx context.Context, feedID int64, enabled bool) error
@@ -266,6 +267,12 @@ func (r *RepositoryAdapter) GetAllFeeds(ctx context.Context) ([]domain.Feed, err
 	}
 
 	return domainFeeds, nil
+}
+
+// ListFeedsWithStats returns every feed with a rolling 30-day item count for
+// the /feeds page's posting-frequency display.
+func (r *RepositoryAdapter) ListFeedsWithStats(ctx context.Context) ([]domain.FeedWithStats, error) {
+	return r.feedRepo.ListFeedsWithStats(ctx)
 }
 
 // CreateFeed adds a new feed
