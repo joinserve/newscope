@@ -1975,6 +1975,7 @@ func newTestServer(t *testing.T) *Server {
 		"channelImageIsUserAvatar": feed.ChannelImageIsUserAvatar,
 		"formatCardTime":           formatCardTime,
 		"postingFrequency":         postingFrequency,
+		"imgProxyIfNeeded":         imgProxyURLIfNeeded,
 	}
 	tmpl := template.New("").Funcs(funcMap)
 	tmpl, err := tmpl.ParseFiles(

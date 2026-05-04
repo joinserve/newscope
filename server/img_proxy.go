@@ -140,6 +140,26 @@ func isHostAllowed(host string, suffixes []string) bool {
 	return false
 }
 
+// imgProxyURLIfNeeded wraps a raw image URL in the proxy URL when its host
+// matches the production allowlist (SNS CDNs that set CORP same-origin and
+// would otherwise be blocked when embedded as <img>); returns the URL
+// unchanged for any other host so favicons / non-SNS images keep loading
+// directly. The funcMap entry `imgProxyIfNeeded` in beat-card.html points
+// at this function.
+func imgProxyURLIfNeeded(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return rawURL
+	}
+	if isHostAllowed(strings.ToLower(u.Hostname()), imgProxyDefaultHostSuffixes) {
+		return "/api/v1/img-proxy?url=" + url.QueryEscape(rawURL)
+	}
+	return rawURL
+}
+
 // newImgProxyHandler returns the http.HandlerFunc for GET /api/v1/img-proxy.
 // The handler closes over the supplied config so production and tests can
 // share the same logic with different seams. See ADR 0017 for the full

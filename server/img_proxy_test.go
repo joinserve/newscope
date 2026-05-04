@@ -374,3 +374,61 @@ func newImgProxyReq(t *testing.T, upstream string) *http.Request {
 	q := "url=" + url.QueryEscape(upstream)
 	return httptest.NewRequest(http.MethodGet, "/api/v1/img-proxy?"+q, http.NoBody)
 }
+
+// imgProxyURLIfNeeded is the template-side gate: SNS CDN URLs go through
+// /api/v1/img-proxy, everything else (favicons, non-allowlisted hosts,
+// non-URLs) passes through unchanged so the page does not regress
+// non-SNS image rendering.
+func TestImgProxyURLIfNeeded(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "instagram cdn wrapped",
+			in:   "https://scontent-tpe1-1.cdninstagram.com/v/t51.82787-19/abc.jpg?stp=foo&oh=bar",
+			want: "/api/v1/img-proxy?url=" + url.QueryEscape("https://scontent-tpe1-1.cdninstagram.com/v/t51.82787-19/abc.jpg?stp=foo&oh=bar"),
+		},
+		{
+			name: "fbcdn wrapped",
+			in:   "https://static.fbcdn.net/x.jpg",
+			want: "/api/v1/img-proxy?url=" + url.QueryEscape("https://static.fbcdn.net/x.jpg"),
+		},
+		{
+			name: "twimg wrapped",
+			in:   "https://pbs.twimg.com/x.jpg",
+			want: "/api/v1/img-proxy?url=" + url.QueryEscape("https://pbs.twimg.com/x.jpg"),
+		},
+		{
+			name: "google favicon passes through unchanged",
+			in:   "https://www.google.com/s2/favicons?domain=hnrss.org&sz=128",
+			want: "https://www.google.com/s2/favicons?domain=hnrss.org&sz=128",
+		},
+		{
+			name: "cna news image passes through unchanged",
+			in:   "https://imgcdn.cna.com.tw/www/images/pic_fb.jpg",
+			want: "https://imgcdn.cna.com.tw/www/images/pic_fb.jpg",
+		},
+		{
+			name: "empty string returns empty",
+			in:   "",
+			want: "",
+		},
+		{
+			name: "malformed url returns input unchanged",
+			in:   "not a url at all",
+			want: "not a url at all",
+		},
+		{
+			name: "relative url returns input unchanged (no host)",
+			in:   "/static/avatar.png",
+			want: "/static/avatar.png",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, imgProxyURLIfNeeded(tc.in))
+		})
+	}
+}

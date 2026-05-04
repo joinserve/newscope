@@ -371,6 +371,7 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 		// twitter, Instagram, Facebook); news/topic feeds like CNA fall
 		// through and rely on per-item <media:thumbnail> instead.
 		"channelImageIsUserAvatar": feed.ChannelImageIsUserAvatar,
+		"imgProxyIfNeeded":         imgProxyURLIfNeeded,
 		"extractImage": func(content, description string) string {
 			imgRe := regexp.MustCompile(`(?i)<img[^>]+src="([^">]+)"`)
 			if matches := imgRe.FindStringSubmatch(content); len(matches) > 1 {
