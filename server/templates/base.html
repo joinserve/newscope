@@ -21,6 +21,17 @@
 
     <!-- HTMX v2 -->
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <script>
+        // body has hx-history="false" (set in f740b44 to dodge a stale-cache
+        // bug); without a snapshot, browser back / forward fires popstate
+        // against a URL HTMX cannot restore. refreshOnHistoryMiss tells
+        // HTMX to do a full GET on miss instead of leaving the page in an
+        // inconsistent state. effect: browser back becomes equivalent to
+        // clicking the in-page back arrow (which is already a plain <a>
+        // full-navigation link), regardless of which hx-push-url'd link
+        // got the user to the current URL.
+        htmx.config.refreshOnHistoryMiss = true;
+    </script>
     
     <!-- Simple CSS Reset and Base Styles -->
     <link rel="stylesheet" href="/static/css/style.css">
