@@ -675,8 +675,14 @@ type ListBeatsOptions struct {
 	GroupingID *int64
 	Topic      string
 	FeedID     *int64
-	Limit      int
-	Offset     int
+	// dateFrom, when non-zero, restricts the result to beats with at least
+	// one member whose published time is >= DateFrom. Mirrors the existing
+	// per-item filter on /articles. Implemented as an EXISTS subquery so
+	// the rendered member list still carries every member of a qualifying
+	// beat, not only the ones inside the window.
+	DateFrom time.Time
+	Limit    int
+	Offset   int
 }
 
 // ListBeats returns beats with members, sorted by aggregate score DESC then first_seen_at DESC.
@@ -706,6 +712,16 @@ func (r *BeatRepository) ListBeats(ctx context.Context, opts ListBeatsOptions) (
 		args = append(args, *opts.FeedID)
 	}
 
+	dateFilter := ""
+	if !opts.DateFrom.IsZero() {
+		dateFilter = `AND EXISTS (
+			SELECT 1 FROM beat_members bm4
+			JOIN items i4 ON i4.id = bm4.item_id
+			WHERE bm4.beat_id = b.id AND i4.published >= ?
+		)`
+		args = append(args, opts.DateFrom)
+	}
+
 	var groupFilter string
 	if opts.GroupingID == nil {
 		groupFilter = `AND a.grouping_id IS NULL`
@@ -727,13 +743,13 @@ func (r *BeatRepository) ListBeats(ctx context.Context, opts ListBeatsOptions) (
 		JOIN beat_members bm ON bm.beat_id = b.id
 		JOIN items i ON i.id = bm.item_id
 		LEFT JOIN beat_grouping_assignments a ON a.beat_id = b.id
-		WHERE 1=1 %s %s
+		WHERE 1=1 %s %s %s
 		GROUP BY b.id
 		HAVING (COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL)
 		   AND unread_count > 0
 		   %s
 		ORDER BY aggregate_score DESC, b.first_seen_at DESC
-		LIMIT ? OFFSET ?`, topicFilter, feedFilter, groupFilter)
+		LIMIT ? OFFSET ?`, topicFilter, feedFilter, dateFilter, groupFilter)
 
 	var rows []beatRow
 	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {

@@ -688,6 +688,79 @@ func TestBeatRepository_ListBeats_FeedFilter(t *testing.T) {
 	assert.Empty(t, none)
 }
 
+// regression: prior to the date filter, ListBeats ignored DateFrom entirely
+// — beat handlers parsed `date_range` from the query but the value never
+// reached SQL, so /beats / /source / /beats?group=X all rendered every
+// date despite the sidebar default of "today". This test pins the new
+// EXISTS-subquery filter: zero DateFrom returns everything; a non-zero
+// DateFrom keeps only beats with at least one member published on/after.
+func TestBeatRepository_ListBeats_DateFromFilter(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now()
+
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	yesterday := startOfToday.Add(-24 * time.Hour)
+	lastWeek := startOfToday.Add(-7 * 24 * time.Hour)
+
+	// three single-member beats published today / yesterday / last week
+	idToday := mkItem(now, "today-article", []float32{1, 0, 0})
+	bToday, _, _ := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: idToday, Vector: []float32{1, 0, 0}, PublishedAt: now}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idToday, &domain.Classification{Score: 7}))
+
+	idYesterday := mkItem(yesterday.Add(12*time.Hour), "yesterday-article", []float32{0, 1, 0})
+	bYesterday, _, _ := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: idYesterday, Vector: []float32{0, 1, 0}, PublishedAt: yesterday.Add(12 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idYesterday, &domain.Classification{Score: 8}))
+
+	idLastWeek := mkItem(lastWeek.Add(8*time.Hour), "lastweek-article", []float32{0, 0, 1})
+	bLastWeek, _, _ := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: idLastWeek, Vector: []float32{0, 0, 1}, PublishedAt: lastWeek.Add(8 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, repos.Item.UpdateItemClassification(ctx, idLastWeek, &domain.Classification{Score: 9}))
+
+	collect := func(opts ListBeatsOptions) map[int64]bool {
+		t.Helper()
+		opts.Limit = 50
+		got, err := repos.Beat.ListBeats(ctx, opts)
+		require.NoError(t, err)
+		out := make(map[int64]bool, len(got))
+		for _, b := range got {
+			out[b.ID] = true
+		}
+		return out
+	}
+
+	t.Run("zero DateFrom returns all beats (no filter)", func(t *testing.T) {
+		got := collect(ListBeatsOptions{})
+		assert.True(t, got[bToday], "today beat should appear when filter is off")
+		assert.True(t, got[bYesterday], "yesterday beat should appear when filter is off")
+		assert.True(t, got[bLastWeek], "last-week beat should appear when filter is off")
+	})
+
+	t.Run("DateFrom=startOfToday keeps only today's beat", func(t *testing.T) {
+		got := collect(ListBeatsOptions{DateFrom: startOfToday})
+		assert.True(t, got[bToday], "today beat must pass the filter")
+		assert.False(t, got[bYesterday], "yesterday beat must be excluded")
+		assert.False(t, got[bLastWeek], "last-week beat must be excluded")
+	})
+
+	t.Run("DateFrom=7-days-ago keeps all three", func(t *testing.T) {
+		got := collect(ListBeatsOptions{DateFrom: lastWeek.Add(-time.Hour)})
+		assert.True(t, got[bToday])
+		assert.True(t, got[bYesterday])
+		assert.True(t, got[bLastWeek])
+	})
+
+	t.Run("DateFrom in the future excludes everything", func(t *testing.T) {
+		got := collect(ListBeatsOptions{DateFrom: now.Add(48 * time.Hour)})
+		assert.False(t, got[bToday])
+		assert.False(t, got[bYesterday])
+		assert.False(t, got[bLastWeek])
+	})
+}
+
 func TestBeatRepository_GetBeat_EagerLoadsMembers(t *testing.T) {
 	repos, cleanup, mkItem := beatTestSetup(t)
 	defer cleanup()

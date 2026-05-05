@@ -1385,6 +1385,8 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	feedName := r.PathValue("name")
 	feedName, _ = url.PathUnescape(feedName)
 
+	dateRange, dateFrom := parseDateRange(r.URL.Query().Get("date_range"))
+
 	feed, err := s.db.GetFeedByName(ctx, feedName)
 	if err != nil {
 		log.Printf("[ERROR] failed to resolve feed %s: %v", strconv.Quote(feedName), err)
@@ -1395,8 +1397,9 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 	var beats []domain.BeatWithMembers
 	if feed != nil {
 		beats, err = s.db.ListBeats(ctx, repository.ListBeatsOptions{
-			FeedID: &feed.ID,
-			Limit:  100,
+			FeedID:   &feed.ID,
+			DateFrom: dateFrom,
+			Limit:    100,
 		})
 		if err != nil {
 			log.Printf("[ERROR] failed to list beats for source %s: %v", strconv.Quote(feedName), err)
@@ -1422,6 +1425,7 @@ func (s *Server) sourceHandler(w http.ResponseWriter, r *http.Request) {
 			ActivePage: "feeds",
 			PageTitle:  feedName,
 			BackURL:    backURL,
+			DateRange:  dateRange,
 		},
 		FeedName: feedName,
 		Beats:    beats,
@@ -1456,6 +1460,7 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	topic := strings.TrimSpace(r.URL.Query().Get("topic"))
 	groupSlug := strings.TrimSpace(r.URL.Query().Get("group"))
+	dateRange, dateFrom := parseDateRange(r.URL.Query().Get("date_range"))
 
 	// resolve optional group slug → groupingID
 	var currentGrouping *domain.Grouping
@@ -1473,6 +1478,7 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 	beats, err := s.db.ListBeats(ctx, repository.ListBeatsOptions{
 		GroupingID: groupingID,
 		Topic:      topic,
+		DateFrom:   dateFrom,
 		Limit:      pageSize,
 		Offset:     offset,
 	})
@@ -1524,6 +1530,7 @@ func (s *Server) beatsHandler(w http.ResponseWriter, r *http.Request) {
 			BackURL:       backURL,
 			PageTitle:     pageTitle,
 			SelectedTopic: topic,
+			DateRange:     dateRange,
 		},
 		Beats:           beats,
 		CurrentPage:     page,

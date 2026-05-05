@@ -2325,6 +2325,117 @@ func TestBeatsHandler_TopicFilter(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "AI Beat")
 }
 
+// regression: beatsHandler used to ignore the date_range query so the
+// sidebar's default-of-"today" was a no-op — every date showed up. Pin
+// the new wiring: default request → DateFrom == startOfToday;
+// date_range=all → DateFrom is zero (no filter); date_range=7d → 6 days
+// before today (matches parseDateRange semantics).
+func TestBeatsHandler_PassesDateRangeToListBeats(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	tests := []struct {
+		name       string
+		query      string
+		wantFrom   time.Time
+		wantIsZero bool
+	}{
+		{name: "no query → defaults to today", query: "", wantFrom: startOfToday},
+		{name: "date_range=today → today", query: "?date_range=today", wantFrom: startOfToday},
+		{name: "date_range=all → zero (no filter)", query: "?date_range=all", wantIsZero: true},
+		{name: "date_range=7d → 6 days before today", query: "?date_range=7d", wantFrom: startOfToday.AddDate(0, 0, -6)},
+		{name: "garbage value falls back to today", query: "?date_range=banana", wantFrom: startOfToday},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var captured time.Time
+			database := &mocks.DatabaseMock{
+				ListBeatsFunc: func(_ context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
+					captured = opts.DateFrom
+					return nil, nil
+				},
+			}
+			srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+			req := httptest.NewRequest("GET", "/beats"+tc.query, http.NoBody)
+			req.Header.Set("HX-Request", "true")
+			w := httptest.NewRecorder()
+			srv.beatsHandler(w, req)
+			require.Equal(t, http.StatusOK, w.Code)
+			if tc.wantIsZero {
+				assert.True(t, captured.IsZero(), "ListBeats should receive zero DateFrom for date_range=all")
+			} else {
+				assert.True(t, captured.Equal(tc.wantFrom),
+					"ListBeats DateFrom: want %v, got %v", tc.wantFrom, captured)
+			}
+		})
+	}
+}
+
+func TestSourceHandler_PassesDateRangeToListBeats(t *testing.T) {
+	cfg := &mocks.ConfigProviderMock{
+		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
+		GetFullConfigFunc: func() *config.Config {
+			return &config.Config{
+				Embedding: config.EmbeddingConfig{Provider: "test"},
+				Server: struct {
+					Listen   string        `yaml:"listen" json:"listen" jsonschema:"default=:8080,description=HTTP server listen address"`
+					Timeout  time.Duration `yaml:"timeout" json:"timeout" jsonschema:"default=30s,description=HTTP server timeout"`
+					PageSize int           `yaml:"page_size" json:"page_size" jsonschema:"default=50,minimum=1,description=Articles per page for pagination"`
+					BaseURL  string        `yaml:"base_url" json:"base_url" jsonschema:"default=http://localhost:8080,description=Base URL for RSS feeds and external links"`
+				}{PageSize: 50, BaseURL: "http://localhost"},
+			}
+		},
+	}
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	feedID := int64(42)
+
+	var captured time.Time
+	database := &mocks.DatabaseMock{
+		GetFeedByNameFunc: func(_ context.Context, _ string) (*domain.Feed, error) {
+			return &domain.Feed{ID: feedID, Title: "Test"}, nil
+		},
+		ListBeatsFunc: func(_ context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
+			captured = opts.DateFrom
+			return nil, nil
+		},
+	}
+	srv := testServer(t, cfg, database, &mocks.SchedulerMock{})
+
+	// no query → today
+	req := httptest.NewRequest("GET", "/source/Test", http.NoBody)
+	req.SetPathValue("name", "Test")
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	srv.sourceHandler(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, captured.Equal(startOfToday), "default → today")
+
+	// explicit all
+	captured = time.Time{}.Add(time.Hour) // sentinel
+	req = httptest.NewRequest("GET", "/source/Test?date_range=all", http.NoBody)
+	req.SetPathValue("name", "Test")
+	req.Header.Set("HX-Request", "true")
+	w = httptest.NewRecorder()
+	srv.sourceHandler(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, captured.IsZero(), "date_range=all → zero")
+}
+
 func TestSourceHandler_Renders(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
