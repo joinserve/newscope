@@ -45,7 +45,7 @@ func stubBigTags(database Database) {
 		}
 	}
 	if m.GroupingCountsFunc == nil {
-		m.GroupingCountsFunc = func(ctx context.Context) (map[int64]int, error) {
+		m.GroupingCountsFunc = func(ctx context.Context, dateFrom time.Time) (map[int64]int, error) {
 			return map[int64]int{}, nil
 		}
 	}

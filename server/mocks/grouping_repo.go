@@ -6,6 +6,7 @@ package mocks
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/umputun/newscope/pkg/domain"
 )
@@ -28,7 +29,7 @@ import (
 //			GetGroupingBySlugFunc: func(ctx context.Context, slug string) (domain.Grouping, error) {
 //				panic("mock out the GetGroupingBySlug method")
 //			},
-//			GroupingCountsFunc: func(ctx context.Context) (map[int64]int, error) {
+//			GroupingCountsFunc: func(ctx context.Context, dateFrom time.Time) (map[int64]int, error) {
 //				panic("mock out the GroupingCounts method")
 //			},
 //			ListGroupingsFunc: func(ctx context.Context) ([]domain.Grouping, error) {
@@ -63,7 +64,7 @@ type GroupingRepoMock struct {
 	GetGroupingBySlugFunc func(ctx context.Context, slug string) (domain.Grouping, error)
 
 	// GroupingCountsFunc mocks the GroupingCounts method.
-	GroupingCountsFunc func(ctx context.Context) (map[int64]int, error)
+	GroupingCountsFunc func(ctx context.Context, dateFrom time.Time) (map[int64]int, error)
 
 	// ListGroupingsFunc mocks the ListGroupings method.
 	ListGroupingsFunc func(ctx context.Context) ([]domain.Grouping, error)
@@ -111,6 +112,8 @@ type GroupingRepoMock struct {
 		GroupingCounts []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// DateFrom is the dateFrom argument value.
+			DateFrom time.Time
 		}
 		// ListGroupings holds details about calls to the ListGroupings method.
 		ListGroupings []struct {
@@ -297,19 +300,21 @@ func (mock *GroupingRepoMock) GetGroupingBySlugCalls() []struct {
 }
 
 // GroupingCounts calls GroupingCountsFunc.
-func (mock *GroupingRepoMock) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+func (mock *GroupingRepoMock) GroupingCounts(ctx context.Context, dateFrom time.Time) (map[int64]int, error) {
 	if mock.GroupingCountsFunc == nil {
 		panic("GroupingRepoMock.GroupingCountsFunc: method is nil but GroupingRepo.GroupingCounts was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
+		Ctx      context.Context
+		DateFrom time.Time
 	}{
-		Ctx: ctx,
+		Ctx:      ctx,
+		DateFrom: dateFrom,
 	}
 	mock.lockGroupingCounts.Lock()
 	mock.calls.GroupingCounts = append(mock.calls.GroupingCounts, callInfo)
 	mock.lockGroupingCounts.Unlock()
-	return mock.GroupingCountsFunc(ctx)
+	return mock.GroupingCountsFunc(ctx, dateFrom)
 }
 
 // GroupingCountsCalls gets all the calls that were made to GroupingCounts.
@@ -317,10 +322,12 @@ func (mock *GroupingRepoMock) GroupingCounts(ctx context.Context) (map[int64]int
 //
 //	len(mockedGroupingRepo.GroupingCountsCalls())
 func (mock *GroupingRepoMock) GroupingCountsCalls() []struct {
-	Ctx context.Context
+	Ctx      context.Context
+	DateFrom time.Time
 } {
 	var calls []struct {
-		Ctx context.Context
+		Ctx      context.Context
+		DateFrom time.Time
 	}
 	mock.lockGroupingCounts.RLock()
 	calls = mock.calls.GroupingCounts
