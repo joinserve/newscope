@@ -2022,15 +2022,32 @@ html.dark-theme .moon-icon { opacity: 1; }
         margin: 0;
     }
 
+    /* full-screen scroll shell on mobile.
+       body is fixed at the dynamic viewport height with no scroll of its
+       own; .layout-main is the only thing that scrolls. iOS Safari only
+       collapses / shows the URL bar when the document/window scrolls, so
+       moving scroll into an inner element keeps the layout viewport
+       constant — the bottom sidebar stays anchored instead of being
+       dragged off-screen during the URL-bar transition that the user
+       reported on non-PWA Safari. PWA standalone has no URL bar so it
+       was already stable; this brings the in-browser experience to
+       match. dvh (vs vh) handles the rare cases when the dynamic
+       viewport changes for reasons other than scroll (e.g. keyboard). */
+    body {
+        height: 100dvh;
+        overflow: hidden;
+    }
     .layout-main {
         margin: 0;
-        margin-bottom: calc(60px + env(safe-area-inset-bottom));
         padding-top: 0;
+        padding-bottom: calc(60px + env(safe-area-inset-bottom));
         max-width: 100%;
         border-right: none;
         border-radius: 0;
-        height: auto;
-        overflow: visible;
+        height: 100%;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
     }
 
     .content-frame {

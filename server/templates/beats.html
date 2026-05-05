@@ -68,10 +68,23 @@
 <script>
 // auto mark-as-read + PTR sharing a single `sent` set so PTR can flush
 // viewport-visible beats synchronously before htmx.ajax fires.
+//
+// scroll model: on mobile the body is fixed-height and .layout-main is the
+// scroll container (full-screen-shell pattern, see style.css mobile media
+// query). on desktop the document scrolls and .layout-main does not. PTR
+// reads scrollTop off the actual scroller; IntersectionObserver uses
+// .layout-main as root only when it is the scroller, otherwise falls back
+// to the document viewport. window.matchMedia mirrors the css breakpoint
+// so there is one source of truth.
 (function() {
     const VISIBLE_MS = 1500;
     const sent = new Set();
     const timers = new Map();
+
+    const layoutMain = document.querySelector('.layout-main');
+    const isMobileShell = window.matchMedia('(max-width: 1200px)').matches;
+    const scroller = (isMobileShell && layoutMain) ? layoutMain : null;
+    function scrollTop() { return scroller ? scroller.scrollTop : window.scrollY; }
 
     function postView(id) {
         sent.add(id);
@@ -79,7 +92,9 @@
             .catch(function() { sent.delete(id); });
     }
 
-    // synchronously post view for every card currently intersecting the viewport
+    // synchronously post view for every card currently intersecting the viewport.
+    // measured against the actual viewport (visualViewport / window.innerHeight),
+    // not the scroller, because getBoundingClientRect is viewport-relative.
     function flushVisible() {
         document.querySelectorAll('.beat-card[data-beat-id]').forEach(function(card) {
             const id = card.getAttribute('data-beat-id');
@@ -97,6 +112,25 @@
             for (const entry of entries) {
                 const id = entry.target.getAttribute('data-beat-id');
                 if (!id || sent.has(id)) continue;
+                // primary trigger: card scrolled fully off the top of the
+                // viewport (user passed it going down). fires immediately
+                // regardless of how briefly the card was visible — this is
+                // what makes "swiped past quickly" still count as read.
+                // entry.boundingClientRect.bottom <= rootBounds.top means
+                // the card's bottom edge is at or above the scroll root's
+                // top edge. rootBounds.top is 0 for document root, may be
+                // non-zero for an element root.
+                const rootTop = entry.rootBounds ? entry.rootBounds.top : 0;
+                if (!entry.isIntersecting && entry.boundingClientRect.bottom <= rootTop) {
+                    const t = timers.get(id);
+                    if (t) { clearTimeout(t); timers.delete(id); }
+                    postView(id);
+                    continue;
+                }
+                // secondary trigger: card lingers >= 1.5s while >= half
+                // visible. catches the case of a user dwelling on a beat
+                // without scrolling past it (e.g. only one beat fits the
+                // viewport, or they stop reading without scrolling).
                 if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
                     if (timers.has(id)) continue;
                     timers.set(id, setTimeout(function() {
@@ -109,7 +143,7 @@
                     if (t) { clearTimeout(t); timers.delete(id); }
                 }
             }
-        }, { threshold: [0, 0.5, 1] });
+        }, { root: scroller, threshold: [0, 0.5, 1] });
         cards.forEach(function(c) { obs.observe(c); });
     }
 
@@ -131,13 +165,20 @@
         tracking = false;
     }
 
-    document.addEventListener('touchstart', function(e) {
-        if (window.scrollY > 0) return;
+    // attach touch handlers to the scroller so the PTR gesture is detected
+    // wherever the actual scrolling happens (the mobile shell scrolls
+    // .layout-main, not the document). on desktop scroller is null and we
+    // listen on document; touch events don't normally fire there but the
+    // wiring is harmless.
+    const touchTarget = scroller || document;
+
+    touchTarget.addEventListener('touchstart', function(e) {
+        if (scrollTop() > 0) return;
         startY = e.touches[0].clientY;
         tracking = true;
     }, { passive: true });
 
-    document.addEventListener('touchmove', function(e) {
+    touchTarget.addEventListener('touchmove', function(e) {
         if (!tracking || startY === null) return;
         const dy = e.touches[0].clientY - startY;
         if (dy <= 0) {
@@ -154,7 +195,7 @@
         }
     }, { passive: true });
 
-    document.addEventListener('touchend', function() {
+    touchTarget.addEventListener('touchend', function() {
         if (!tracking) return;
         const armed = indicator.classList.contains('ready');
         if (!armed) { reset(); return; }
