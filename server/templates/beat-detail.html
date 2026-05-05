@@ -59,7 +59,7 @@
                 {{range .Members}}
                 <details class="timeline-member-details"{{if $isCurrent}} open{{end}}>
                     <summary class="timeline-member-summary">
-                        {{if not .AddedAt.IsZero}}<time>{{formatCardTime .AddedAt}}</time>{{end}}
+                        {{if not .Published.IsZero}}<time>{{formatCardTime .Published}}</time>{{end}}
                         <span class="feed-name">{{.FeedName}}</span>
                         <a href="{{.Link}}" target="_blank" rel="noopener" class="member-title">{{unescapeHTML .Title}}</a>
                         <span class="expand-chevron" aria-hidden="true">▾</span>

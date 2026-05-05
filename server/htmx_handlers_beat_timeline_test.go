@@ -117,6 +117,71 @@ func TestBuildBeatTimeline_NoRevisionsNoMembers(t *testing.T) {
 	assert.Empty(t, timeline.Segments, "no revisions and no members yields empty timeline")
 }
 
+// regression: members come from the repo ordered by relevance_score DESC
+// (right for the inbox card, wrong for a chronological timeline). build
+// must re-sort each segment by Published DESC so the timeline reads
+// newest-first and the time visible in the collapsed summary lines up
+// with the post the user expects to see when expanded.
+func TestBuildBeatTimeline_MembersSortedByPublishedDesc(t *testing.T) {
+	t1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC) // oldest
+	t2 := time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC)
+	t3 := time.Date(2024, 1, 1, 17, 0, 0, 0, time.UTC) // newest
+
+	rev := time.Date(2024, 1, 1, 9, 0, 0, 0, time.UTC) // before all members
+	revisions := []domain.TitleRevision{
+		{ID: 1, BeatID: 1, Title: "R1", GeneratedAt: rev},
+	}
+
+	mk := func(title string, published, addedAt time.Time) domain.ClassifiedItem {
+		return domain.ClassifiedItem{
+			Item:    &domain.Item{Title: title, Published: published},
+			AddedAt: addedAt,
+		}
+	}
+
+	// fed in score-DESC order (mimicking the repo SELECT) and intentionally
+	// not in chronological order.
+	members := []domain.ClassifiedItem{
+		mk("middle-published", t2, rev.Add(time.Hour)),
+		mk("oldest-published", t1, rev.Add(time.Hour)),
+		mk("newest-published", t3, rev.Add(time.Hour)),
+	}
+
+	timeline := buildBeatTimeline(revisions, members)
+	require.Len(t, timeline.Segments, 1)
+	got := timeline.Segments[0].Members
+	require.Len(t, got, 3)
+	assert.Equal(t, "newest-published", got[0].Title, "newest Published must come first")
+	assert.Equal(t, "middle-published", got[1].Title)
+	assert.Equal(t, "oldest-published", got[2].Title, "oldest Published must come last")
+}
+
+// no-revision branch is a separate code path; ensure it sorts too.
+func TestBuildBeatTimeline_NoRevisions_MembersSortedByPublishedDesc(t *testing.T) {
+	t1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	t2 := time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC)
+	t3 := time.Date(2024, 1, 1, 17, 0, 0, 0, time.UTC)
+
+	mk := func(title string, published time.Time) domain.ClassifiedItem {
+		return domain.ClassifiedItem{
+			Item:    &domain.Item{Title: title, Published: published},
+			AddedAt: time.Now(),
+		}
+	}
+	members := []domain.ClassifiedItem{
+		mk("mid", t2),
+		mk("old", t1),
+		mk("new", t3),
+	}
+	timeline := buildBeatTimeline(nil, members)
+	require.Len(t, timeline.Segments, 1)
+	got := timeline.Segments[0].Members
+	require.Len(t, got, 3)
+	assert.Equal(t, "new", got[0].Title)
+	assert.Equal(t, "mid", got[1].Title)
+	assert.Equal(t, "old", got[2].Title)
+}
+
 func TestBeatDetailHandler_TimelineRender(t *testing.T) {
 	cfg := &mocks.ConfigProviderMock{
 		GetServerConfigFunc: func() (string, time.Duration) { return ":8080", 30 * time.Second },
