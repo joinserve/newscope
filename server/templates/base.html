@@ -21,6 +21,37 @@
 
     <!-- HTMX v2 -->
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <script>
+        // browser back / forward should behave like clicking the in-page
+        // back arrow: navigate to whatever .back-button[href] points at —
+        // a server-set value (Referer with a /beats fallback) that's the
+        // canonical "where this page came from".
+        //
+        // why this and not htmx's history cache: body carries
+        // hx-history="false" (added in f740b44 to dodge a stale-cache bug),
+        // so HTMX has no snapshot. popstate against a URL HTMX cannot
+        // restore would otherwise leave the DOM in an inconsistent state
+        // mid-tap. refreshOnHistoryMiss=true would only reload whatever
+        // intermediate URL the browser landed on after popping
+        // (e.g. /beats?topic=ai when the user actually wanted /beats), so
+        // we go further: read the page's own back-button URL and assign.
+        //
+        // capture phase + stopImmediatePropagation so htmx's onpopstate
+        // (registered later, at init time) doesn't also fire its own
+        // navigation and race us. when the page has no back button (e.g.
+        // top-level /beats), we don't intercept — let the browser do its
+        // native back, and refreshOnHistoryMiss=true catches the cache
+        // miss as a defense-in-depth fallback.
+        htmx.config.refreshOnHistoryMiss = true;
+        window.addEventListener('popstate', function(e) {
+            var back = document.querySelector('.back-button[href]');
+            if (!back) return;
+            var target = back.getAttribute('href');
+            if (!target) return;
+            e.stopImmediatePropagation();
+            location.assign(target);
+        }, { capture: true });
+    </script>
     
     <!-- Simple CSS Reset and Base Styles -->
     <link rel="stylesheet" href="/static/css/style.css">
