@@ -80,6 +80,9 @@ func (p *Parser) Parse(ctx context.Context, url string) (*domain.ParsedFeed, err
 		Link:        feed.Link,
 		Items:       make([]domain.ParsedItem, 0, len(feed.Items)),
 	}
+	if feed.Image != nil {
+		result.ImageURL = feed.Image.URL
+	}
 
 	for _, item := range feed.Items {
 		parsedItem := domain.ParsedItem{
@@ -87,6 +90,7 @@ func (p *Parser) Parse(ctx context.Context, url string) (*domain.ParsedFeed, err
 			Link:        item.Link,
 			Description: item.Description,
 			Content:     item.Content,
+			ImageURL:    extractAuthorImage(item),
 		}
 
 		// set GUID
@@ -114,6 +118,31 @@ func (p *Parser) Parse(ctx context.Context, url string) (*domain.ParsedFeed, err
 	}
 
 	return result, nil
+}
+
+// extractAuthorImage pulls the per-item author avatar URL from RSS extensions.
+// We do not use gofeed's Item.Image because gofeed's RSS translator falls
+// through to "first <img> in description HTML" — that returns the post's media
+// content, not the author's avatar. RSSHub emits the author profile pic via
+// <media:thumbnail url="..."/> on multi-user routes (threads/search,
+// bsky/search, etc), which lands at item.Extensions["media"]["thumbnail"].
+// itunes:image is a secondary fallback for podcast-style feeds.
+func extractAuthorImage(item *gofeed.Item) string {
+	if media, ok := item.Extensions["media"]; ok {
+		for _, ext := range media["thumbnail"] {
+			if u := ext.Attrs["url"]; u != "" {
+				return u
+			}
+		}
+	}
+	if itunes, ok := item.Extensions["itunes"]; ok {
+		for _, ext := range itunes["image"] {
+			if u := ext.Attrs["href"]; u != "" {
+				return u
+			}
+		}
+	}
+	return ""
 }
 
 // fetch retrieves content from a URL

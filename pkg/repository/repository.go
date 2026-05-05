@@ -124,6 +124,12 @@ func initSchema(ctx context.Context, db *sqlx.DB) error {
 	if err := migrateAddIconURL(ctx, db); err != nil {
 		return fmt.Errorf("migrate icon_url: %w", err)
 	}
+	if err := migrateAddFeedImageURL(ctx, db); err != nil {
+		return fmt.Errorf("migrate feed image_url: %w", err)
+	}
+	if err := migrateAddItemImageURL(ctx, db); err != nil {
+		return fmt.Errorf("migrate item image_url: %w", err)
+	}
 	if err := migrateAddBeatFeedback(ctx, db); err != nil {
 		return fmt.Errorf("migrate beat feedback: %w", err)
 	}
@@ -229,6 +235,42 @@ func migrateAddIconURL(ctx context.Context, db *sqlx.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE feeds ADD COLUMN icon_url TEXT DEFAULT ''`); err != nil {
 		return fmt.Errorf("add icon_url column: %w", err)
+	}
+	return nil
+}
+
+// migrateAddFeedImageURL adds the image_url column to feeds if missing.
+// image_url is the channel-level <image><url> auto-extracted from the parsed
+// feed. icon_url stays user-curated for the brand/platform mark.
+func migrateAddFeedImageURL(ctx context.Context, db *sqlx.DB) error {
+	has, err := tableColumns(ctx, db, "feeds")
+	if err != nil {
+		return err
+	}
+	if has == nil || has["image_url"] {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE feeds ADD COLUMN image_url TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add feed image_url column: %w", err)
+	}
+	return nil
+}
+
+// migrateAddItemImageURL adds the image_url column to items if missing.
+// Per-item value, used for the post-author avatar on multi-user feeds where
+// each post can have a different author (e.g. RSSHub <media:thumbnail>).
+func migrateAddItemImageURL(ctx context.Context, db *sqlx.DB) error {
+	has, err := tableColumns(ctx, db, "items")
+	if err != nil {
+		return err
+	}
+	if has == nil || has["image_url"] {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE items ADD COLUMN image_url TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add item image_url column: %w", err)
 	}
 	return nil
 }

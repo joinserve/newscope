@@ -324,6 +324,14 @@ func (fp *FeedProcessor) UpdateFeed(ctx context.Context, f *domain.Feed, process
 		return
 	}
 
+	// persist channel-level image when present and changed; non-fatal —
+	// failure here must not abort the rest of the fetch.
+	if parsedFeed.ImageURL != "" && parsedFeed.ImageURL != f.ImageURL {
+		if err := fp.feedManager.UpdateFeedImageURL(ctx, f.ID, parsedFeed.ImageURL); err != nil {
+			lgr.Printf("[WARN] failed to update image_url for feed %s: %v", feedID, err)
+		}
+	}
+
 	// store new items
 	newCount := 0
 	for _, item := range parsedFeed.Items {
@@ -356,6 +364,7 @@ func (fp *FeedProcessor) UpdateFeed(ctx context.Context, f *domain.Feed, process
 			Description: item.Description,
 			Content:     item.Content,
 			Author:      item.Author,
+			ImageURL:    item.ImageURL,
 			Published:   item.Published,
 		}
 

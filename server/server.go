@@ -25,6 +25,7 @@ import (
 	"github.com/umputun/newscope/pkg/config"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/features"
+	"github.com/umputun/newscope/pkg/feed"
 	"github.com/umputun/newscope/pkg/repository"
 )
 
@@ -364,6 +365,13 @@ func New(cfg ConfigProvider, database Database, scheduler Scheduler, version str
 			return u.Hostname()
 		},
 		"pathEscape": url.PathEscape,
+		// channelImageIsUserAvatar tells the beat-card render whether the
+		// per-feed channel image can be trusted as a per-user avatar. True
+		// only for the whitelisted single-user RSSHub routes (Threads,
+		// twitter, Instagram, Facebook); news/topic feeds like CNA fall
+		// through and rely on per-item <media:thumbnail> instead.
+		"channelImageIsUserAvatar": feed.ChannelImageIsUserAvatar,
+		"imgProxyIfNeeded":         imgProxyURLIfNeeded,
 		"extractImage": func(content, description string) string {
 			imgRe := regexp.MustCompile(`(?i)<img[^>]+src="([^">]+)"`)
 			if matches := imgRe.FindStringSubmatch(content); len(matches) > 1 {

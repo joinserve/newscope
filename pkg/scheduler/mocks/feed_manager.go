@@ -29,6 +29,9 @@ import (
 //			UpdateFeedFetchedFunc: func(ctx context.Context, feedID int64, nextFetch time.Time) error {
 //				panic("mock out the UpdateFeedFetched method")
 //			},
+//			UpdateFeedImageURLFunc: func(ctx context.Context, feedID int64, imageURL string) error {
+//				panic("mock out the UpdateFeedImageURL method")
+//			},
 //		}
 //
 //		// use mockedFeedManager in code that requires scheduler.FeedManager
@@ -47,6 +50,9 @@ type FeedManagerMock struct {
 
 	// UpdateFeedFetchedFunc mocks the UpdateFeedFetched method.
 	UpdateFeedFetchedFunc func(ctx context.Context, feedID int64, nextFetch time.Time) error
+
+	// UpdateFeedImageURLFunc mocks the UpdateFeedImageURL method.
+	UpdateFeedImageURLFunc func(ctx context.Context, feedID int64, imageURL string) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -82,11 +88,21 @@ type FeedManagerMock struct {
 			// NextFetch is the nextFetch argument value.
 			NextFetch time.Time
 		}
+		// UpdateFeedImageURL holds details about calls to the UpdateFeedImageURL method.
+		UpdateFeedImageURL []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// FeedID is the feedID argument value.
+			FeedID int64
+			// ImageURL is the imageURL argument value.
+			ImageURL string
+		}
 	}
-	lockGetFeed           sync.RWMutex
-	lockGetFeeds          sync.RWMutex
-	lockUpdateFeedError   sync.RWMutex
-	lockUpdateFeedFetched sync.RWMutex
+	lockGetFeed            sync.RWMutex
+	lockGetFeeds           sync.RWMutex
+	lockUpdateFeedError    sync.RWMutex
+	lockUpdateFeedFetched  sync.RWMutex
+	lockUpdateFeedImageURL sync.RWMutex
 }
 
 // GetFeed calls GetFeedFunc.
@@ -238,5 +254,45 @@ func (mock *FeedManagerMock) UpdateFeedFetchedCalls() []struct {
 	mock.lockUpdateFeedFetched.RLock()
 	calls = mock.calls.UpdateFeedFetched
 	mock.lockUpdateFeedFetched.RUnlock()
+	return calls
+}
+
+// UpdateFeedImageURL calls UpdateFeedImageURLFunc.
+func (mock *FeedManagerMock) UpdateFeedImageURL(ctx context.Context, feedID int64, imageURL string) error {
+	if mock.UpdateFeedImageURLFunc == nil {
+		panic("FeedManagerMock.UpdateFeedImageURLFunc: method is nil but FeedManager.UpdateFeedImageURL was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		FeedID   int64
+		ImageURL string
+	}{
+		Ctx:      ctx,
+		FeedID:   feedID,
+		ImageURL: imageURL,
+	}
+	mock.lockUpdateFeedImageURL.Lock()
+	mock.calls.UpdateFeedImageURL = append(mock.calls.UpdateFeedImageURL, callInfo)
+	mock.lockUpdateFeedImageURL.Unlock()
+	return mock.UpdateFeedImageURLFunc(ctx, feedID, imageURL)
+}
+
+// UpdateFeedImageURLCalls gets all the calls that were made to UpdateFeedImageURL.
+// Check the length with:
+//
+//	len(mockedFeedManager.UpdateFeedImageURLCalls())
+func (mock *FeedManagerMock) UpdateFeedImageURLCalls() []struct {
+	Ctx      context.Context
+	FeedID   int64
+	ImageURL string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		FeedID   int64
+		ImageURL string
+	}
+	mock.lockUpdateFeedImageURL.RLock()
+	calls = mock.calls.UpdateFeedImageURL
+	mock.lockUpdateFeedImageURL.RUnlock()
 	return calls
 }

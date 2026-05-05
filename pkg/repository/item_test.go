@@ -51,6 +51,41 @@ func TestItemRepository_CreateItem_DateFormatting(t *testing.T) {
 	assert.Equal(t, 1, count)
 }
 
+func TestItemRepository_CreateItem_PersistsImageURL(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	feed := createTestFeed(t, repos, "image-url-item-feed")
+
+	item := &domain.Item{
+		FeedID:    feed.ID,
+		GUID:      "guid-with-avatar",
+		Title:     "Post with author avatar",
+		Link:      "https://example.com/post/1",
+		ImageURL:  "https://cdn.example.com/author-avatar.jpg",
+		Published: time.Now(),
+	}
+	require.NoError(t, repos.Item.CreateItem(ctx, item))
+	require.NotZero(t, item.ID)
+
+	got, err := repos.Item.GetItem(ctx, item.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "https://cdn.example.com/author-avatar.jpg", got.ImageURL)
+
+	// item without an avatar persists as empty (NOT NULL DEFAULT '' on column)
+	bare := &domain.Item{
+		FeedID:    feed.ID,
+		GUID:      "guid-no-avatar",
+		Title:     "Post without avatar",
+		Link:      "https://example.com/post/2",
+		Published: time.Now(),
+	}
+	require.NoError(t, repos.Item.CreateItem(ctx, bare))
+	got2, err := repos.Item.GetItem(ctx, bare.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got2.ImageURL)
+}
+
 func TestItemRepository_GetItems(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
