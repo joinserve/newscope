@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1758,17 +1759,24 @@ func (s *Server) beatSearchHandler(w http.ResponseWriter, r *http.Request) {
 
 // buildBeatTimeline buckets members into timeline segments based on title revisions.
 // members earlier than the first revision are placed in the first segment.
-// segments are returned newest first.
+// segments are returned newest first; within each segment, members are
+// ordered by Published DESC so the timeline reads as the user's natural
+// "newest post first" expectation. The repo loads members ordered by
+// relevance_score for the inbox card; that order is wrong for a
+// chronological timeline view, so we re-sort here rather than changing
+// the SQL.
 func buildBeatTimeline(revisions []domain.TitleRevision, members []domain.ClassifiedItem) domain.BeatTimeline {
 	if len(revisions) == 0 {
 		// no revisions yet — return a single empty segment with all members
 		if len(members) == 0 {
 			return domain.BeatTimeline{}
 		}
+		segMembers := append([]domain.ClassifiedItem(nil), members...)
+		sortMembersByPublishedDesc(segMembers)
 		seg := domain.TitleRevision{GeneratedAt: time.Time{}}
 		return domain.BeatTimeline{Segments: []domain.TimelineSegment{{
 			Revision:  seg,
-			Members:   members,
+			Members:   segMembers,
 			IsCurrent: true,
 		}}}
 	}
@@ -1795,6 +1803,7 @@ func buildBeatTimeline(revisions []domain.TitleRevision, members []domain.Classi
 			}
 			segMembers = append(segMembers, m)
 		}
+		sortMembersByPublishedDesc(segMembers)
 		segments[i] = domain.TimelineSegment{
 			Revision:  rev,
 			Members:   segMembers,
@@ -1807,6 +1816,16 @@ func buildBeatTimeline(revisions []domain.TitleRevision, members []domain.Classi
 		segments[i], segments[j] = segments[j], segments[i]
 	}
 	return domain.BeatTimeline{Segments: segments}
+}
+
+// sortMembersByPublishedDesc sorts in place by source-Published time, newest
+// first. Stable so members with identical Published times keep their input
+// order (which is relevance_score DESC from the repo SELECT, a sensible
+// secondary key for breaking ties on timestamp-second granularity).
+func sortMembersByPublishedDesc(members []domain.ClassifiedItem) {
+	sort.SliceStable(members, func(i, j int) bool {
+		return members[i].Published.After(members[j].Published)
+	})
 }
 
 // beatFeedbackHandler handles feedback (like/dislike/clear) for a beat.
