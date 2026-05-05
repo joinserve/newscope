@@ -231,20 +231,35 @@ func (r *GroupingRepository) ActiveBeatIDs(ctx context.Context, since time.Time)
 	return ids, nil
 }
 
-// GroupingCounts returns a map of grouping_id → unread beat count for the dropdown.
-// Key 0 represents the main inbox (beats with no assignment or assignment.grouping_id IS NULL).
-func (r *GroupingRepository) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+// GroupingCounts returns a map of grouping_id → unread beat count for the
+// dropdown. Key 0 represents the main inbox (beats with no assignment or
+// assignment.grouping_id IS NULL). When dateFrom is non-zero, only beats
+// with at least one member published on/after dateFrom are counted —
+// matches the EXISTS-based filter applied by ListBeats so the sidebar
+// numbers stay in sync with what the list actually renders.
+func (r *GroupingRepository) GroupingCounts(ctx context.Context, dateFrom time.Time) (map[int64]int, error) {
 	type row struct {
 		GID   int64 `db:"gid"`
 		Count int   `db:"cnt"`
 	}
+	dateClause := ""
+	args := []interface{}{}
+	if !dateFrom.IsZero() {
+		dateClause = `AND EXISTS (
+			SELECT 1 FROM beat_members bm2
+			JOIN items i2 ON i2.id = bm2.item_id
+			WHERE bm2.beat_id = b.id AND i2.published >= ?
+		)`
+		args = append(args, dateFrom)
+	}
 	var rows []row
-	err := r.db.SelectContext(ctx, &rows, `
+	query := `
 		WITH unread AS (
 			SELECT b.id AS beat_id
 			FROM beats b
 			JOIN beat_members bm ON bm.beat_id = b.id
 			JOIN items i ON i.id = bm.item_id
+			WHERE 1=1 ` + dateClause + `
 			GROUP BY b.id
 			HAVING (COUNT(bm.item_id) = 1 OR b.canonical_title IS NOT NULL)
 			   AND SUM(CASE WHEN b.last_viewed_at IS NULL OR bm.added_at > b.last_viewed_at THEN 1 ELSE 0 END) > 0
@@ -252,8 +267,8 @@ func (r *GroupingRepository) GroupingCounts(ctx context.Context) (map[int64]int,
 		SELECT COALESCE(a.grouping_id, 0) AS gid, COUNT(*) AS cnt
 		FROM unread u
 		LEFT JOIN beat_grouping_assignments a ON a.beat_id = u.beat_id
-		GROUP BY gid`)
-	if err != nil {
+		GROUP BY gid`
+	if err := r.db.SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, fmt.Errorf("grouping counts: %w", err)
 	}
 	out := make(map[int64]int, len(rows))

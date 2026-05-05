@@ -139,7 +139,7 @@
                     <div class="filter-group">
                         <label>最低分數</label>
                         <select id="score-filter" name="score" class="filter-select"
-                                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                                hx-get="{{if eq .ActivePage "beats"}}/beats{{else if .IsSearch}}/search{{else}}/articles{{end}}"
                                 hx-trigger="change"
                                 hx-target="#articles-with-pagination"
                                 hx-swap="innerHTML show:body:top"
@@ -154,7 +154,7 @@
                     <div class="filter-group">
                         <label>排序方式</label>
                         <select id="sort-filter" name="sort" class="filter-select"
-                                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                                hx-get="{{if eq .ActivePage "beats"}}/beats{{else if .IsSearch}}/search{{else}}/articles{{end}}"
                                 hx-trigger="change"
                                 hx-target="#articles-with-pagination"
                                 hx-swap="innerHTML show:body:top"
@@ -167,7 +167,7 @@
                     <div class="filter-group">
                         <label>發布時間</label>
                         <select id="date-range-filter" name="date_range" class="filter-select"
-                                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                                hx-get="{{if eq .ActivePage "beats"}}/beats{{else if .IsSearch}}/search{{else}}/articles{{end}}"
                                 hx-trigger="change"
                                 hx-target="#articles-with-pagination"
                                 hx-swap="innerHTML show:body:top"
@@ -182,7 +182,7 @@
                     <div class="filter-group">
                         <label>主題</label>
                         <select id="topic-filter" name="topic" class="filter-select"
-                                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                                hx-get="{{if eq .ActivePage "beats"}}/beats{{else if .IsSearch}}/search{{else}}/articles{{end}}"
                                 hx-trigger="change"
                                 hx-target="#articles-with-pagination"
                                 hx-swap="innerHTML show:body:top"
@@ -200,7 +200,7 @@
                     <div class="filter-group">
                         <label>訂閱源</label>
                         <select id="feed-filter" name="feed" class="filter-select"
-                                hx-get="{{if .IsSearch}}/search{{else}}/articles{{end}}"
+                                hx-get="{{if eq .ActivePage "beats"}}/beats{{else if .IsSearch}}/search{{else}}/articles{{end}}"
                                 hx-trigger="change"
                                 hx-target="#articles-with-pagination"
                                 hx-swap="innerHTML show:body:top"

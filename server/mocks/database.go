@@ -84,7 +84,7 @@ import (
 //			GetTopicsFilteredFunc: func(ctx context.Context, minScore float64) ([]string, error) {
 //				panic("mock out the GetTopicsFiltered method")
 //			},
-//			GroupingCountsFunc: func(ctx context.Context) (map[int64]int, error) {
+//			GroupingCountsFunc: func(ctx context.Context, dateFrom time.Time) (map[int64]int, error) {
 //				panic("mock out the GroupingCounts method")
 //			},
 //			ListBeatsFunc: func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error) {
@@ -206,7 +206,7 @@ type DatabaseMock struct {
 	GetTopicsFilteredFunc func(ctx context.Context, minScore float64) ([]string, error)
 
 	// GroupingCountsFunc mocks the GroupingCounts method.
-	GroupingCountsFunc func(ctx context.Context) (map[int64]int, error)
+	GroupingCountsFunc func(ctx context.Context, dateFrom time.Time) (map[int64]int, error)
 
 	// ListBeatsFunc mocks the ListBeats method.
 	ListBeatsFunc func(ctx context.Context, opts repository.ListBeatsOptions) ([]domain.BeatWithMembers, error)
@@ -417,6 +417,8 @@ type DatabaseMock struct {
 		GroupingCounts []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// DateFrom is the dateFrom argument value.
+			DateFrom time.Time
 		}
 		// ListBeats holds details about calls to the ListBeats method.
 		ListBeats []struct {
@@ -1383,19 +1385,21 @@ func (mock *DatabaseMock) GetTopicsFilteredCalls() []struct {
 }
 
 // GroupingCounts calls GroupingCountsFunc.
-func (mock *DatabaseMock) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+func (mock *DatabaseMock) GroupingCounts(ctx context.Context, dateFrom time.Time) (map[int64]int, error) {
 	if mock.GroupingCountsFunc == nil {
 		panic("DatabaseMock.GroupingCountsFunc: method is nil but Database.GroupingCounts was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
+		Ctx      context.Context
+		DateFrom time.Time
 	}{
-		Ctx: ctx,
+		Ctx:      ctx,
+		DateFrom: dateFrom,
 	}
 	mock.lockGroupingCounts.Lock()
 	mock.calls.GroupingCounts = append(mock.calls.GroupingCounts, callInfo)
 	mock.lockGroupingCounts.Unlock()
-	return mock.GroupingCountsFunc(ctx)
+	return mock.GroupingCountsFunc(ctx, dateFrom)
 }
 
 // GroupingCountsCalls gets all the calls that were made to GroupingCounts.
@@ -1403,10 +1407,12 @@ func (mock *DatabaseMock) GroupingCounts(ctx context.Context) (map[int64]int, er
 //
 //	len(mockedDatabase.GroupingCountsCalls())
 func (mock *DatabaseMock) GroupingCountsCalls() []struct {
-	Ctx context.Context
+	Ctx      context.Context
+	DateFrom time.Time
 } {
 	var calls []struct {
-		Ctx context.Context
+		Ctx      context.Context
+		DateFrom time.Time
 	}
 	mock.lockGroupingCounts.RLock()
 	calls = mock.calls.GroupingCounts

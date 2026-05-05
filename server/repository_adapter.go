@@ -89,7 +89,7 @@ type GroupingRepo interface {
 	UpdateGrouping(ctx context.Context, g domain.Grouping) error
 	DeleteGrouping(ctx context.Context, id int64) error
 	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
-	GroupingCounts(ctx context.Context) (map[int64]int, error)
+	GroupingCounts(ctx context.Context, dateFrom time.Time) (map[int64]int, error)
 	SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error)
 }
 
@@ -496,11 +496,11 @@ func (r *RepositoryAdapter) ReorderGroupings(ctx context.Context, idsInOrder []i
 
 // GroupingCounts returns a map of grouping_id → unread beat count for the header dropdown.
 // Key 0 represents the main inbox (unassigned beats).
-func (r *RepositoryAdapter) GroupingCounts(ctx context.Context) (map[int64]int, error) {
+func (r *RepositoryAdapter) GroupingCounts(ctx context.Context, dateFrom time.Time) (map[int64]int, error) {
 	if r.groupingRepo == nil {
 		return map[int64]int{}, nil // graceful degradation
 	}
-	return r.groupingRepo.GroupingCounts(ctx)
+	return r.groupingRepo.GroupingCounts(ctx, dateFrom)
 }
 
 // SuggestTags returns tags from items.topics and items.entities matching the given prefix.

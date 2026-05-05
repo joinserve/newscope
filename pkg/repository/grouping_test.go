@@ -311,11 +311,54 @@ func TestGroupingRepository_GroupingCounts(t *testing.T) {
 	require.NoError(t, err)
 	_ = bB
 
-	counts, err := repos.Grouping.GroupingCounts(ctx)
+	counts, err := repos.Grouping.GroupingCounts(ctx, time.Time{})
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, counts[gid1], "G1 should have 1 unread beat")
 	assert.Equal(t, 1, counts[0], "main inbox (key 0) should have 1 unassigned unread beat")
+}
+
+// regression: sidebar count must honor the same dateFrom that filters the
+// list, otherwise the user sees "All beats (48)" next to an empty list when
+// they pick the "today" filter.
+func TestGroupingRepository_GroupingCounts_DateFromFilter(t *testing.T) {
+	repos, cleanup, mkItem := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	yesterday := startOfToday.Add(-24 * time.Hour)
+
+	// today beat (single member, unassigned → main inbox)
+	idToday := mkItem(now, "today", []float32{1, 0, 0})
+	_, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: idToday, Vector: []float32{1, 0, 0}, PublishedAt: now}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	// yesterday beat (also unassigned)
+	idYesterday := mkItem(yesterday.Add(12*time.Hour), "yesterday", []float32{0, 1, 0})
+	_, _, err = repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: idYesterday, Vector: []float32{0, 1, 0}, PublishedAt: yesterday.Add(12 * time.Hour)}, 0.85, 48*time.Hour, 20)
+	require.NoError(t, err)
+
+	t.Run("zero dateFrom counts both", func(t *testing.T) {
+		counts, err := repos.Grouping.GroupingCounts(ctx, time.Time{})
+		require.NoError(t, err)
+		assert.Equal(t, 2, counts[0], "no filter → main inbox shows both beats")
+	})
+
+	t.Run("dateFrom=startOfToday counts only today's beat", func(t *testing.T) {
+		counts, err := repos.Grouping.GroupingCounts(ctx, startOfToday)
+		require.NoError(t, err)
+		assert.Equal(t, 1, counts[0], "today filter → only today's beat counts toward the inbox")
+	})
+
+	t.Run("dateFrom in the future counts zero", func(t *testing.T) {
+		counts, err := repos.Grouping.GroupingCounts(ctx, now.Add(48*time.Hour))
+		require.NoError(t, err)
+		assert.Equal(t, 0, counts[0], "future filter → main inbox count is zero")
+	})
 }
 
 func TestBeatRepository_ListBeats_GroupingFilter(t *testing.T) {

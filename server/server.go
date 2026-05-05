@@ -109,7 +109,7 @@ type Database interface {
 	DeleteGrouping(ctx context.Context, id int64) error
 	ReorderGroupings(ctx context.Context, idsInOrder []int64) error
 	// grouping counts for dropdown
-	GroupingCounts(ctx context.Context) (map[int64]int, error)
+	GroupingCounts(ctx context.Context, dateFrom time.Time) (map[int64]int, error)
 	// tag autocomplete
 	SuggestTags(ctx context.Context, prefix string, limit int) ([]string, error)
 	// timeline
