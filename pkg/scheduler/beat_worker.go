@@ -2,9 +2,12 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-pkgz/lgr"
+
+	"github.com/umputun/newscope/pkg/domain"
 )
 
 const defaultBeatBatchSize = 50
@@ -82,12 +85,17 @@ func (w *BeatWorker) processBatch(ctx context.Context) {
 	}
 
 	lgr.Printf("[DEBUG] beat_worker: assigning %d items", len(items))
-	attached, seeded, failed := 0, 0, 0
+	attached, seeded, failed, skipped := 0, 0, 0, 0
 	for _, item := range items {
 		if ctx.Err() != nil {
 			return
 		}
 		beatID, isSeeded, err := w.store.AttachOrSeed(ctx, item, w.threshold, w.window, w.maxMembers)
+		if errors.Is(err, domain.ErrItemGone) {
+			// item was cleaned up between selection and attach; skip quietly
+			skipped++
+			continue
+		}
 		if err != nil {
 			lgr.Printf("[WARN] beat_worker: attach item %d: %v", item.ItemID, err)
 			failed++
@@ -105,6 +113,6 @@ func (w *BeatWorker) processBatch(ctx context.Context) {
 			}
 		}
 	}
-	lgr.Printf("[INFO] beat_worker: processed %d items (%d new beats, %d attached, %d failed)",
-		len(items), seeded, attached, failed)
+	lgr.Printf("[INFO] beat_worker: processed %d items (%d new beats, %d attached, %d skipped, %d failed)",
+		len(items), seeded, attached, skipped, failed)
 }

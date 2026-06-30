@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/go-pkgz/lgr"
+	"github.com/go-pkgz/repeater/v2"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/umputun/newscope/pkg/content"
 	"github.com/umputun/newscope/pkg/domain"
 	"github.com/umputun/newscope/pkg/llm"
 )
@@ -135,8 +137,24 @@ func (fp *FeedProcessor) extractContent(ctx context.Context, item *domain.Item) 
 	itemID := fp.getItemIdentifier(item)
 	lgr.Printf("[DEBUG] extracting content for: %s", itemID)
 
-	// extract content
-	extracted, err := fp.extractor.Extract(ctx, item.Link)
+	// Extract content, retrying transient failures (rate limits, 5xx, timeouts)
+	// with backoff. Extraction errors are persisted permanently and never retried
+	// later (a failed item stays excluded from both extraction and classification),
+	// so a temporary blip — e.g. the 429 storms seen while the pod was OOM
+	// crash-looping — would otherwise strand articles forever. Permanent failures
+	// (4xx, unsupported content) stop immediately.
+	var extracted *content.ExtractResult
+	var err error
+	_ = repeater.NewBackoff(4, time.Second,
+		repeater.WithMaxDelay(15*time.Second),
+		repeater.WithJitter(0.1),
+	).Do(ctx, func() error {
+		extracted, err = fp.extractor.Extract(ctx, item.Link)
+		if err != nil && isTransientExtractError(err) {
+			return err // retry transient errors
+		}
+		return nil // success or permanent failure: stop retrying
+	})
 	if err != nil {
 		// check if error indicates unsupported content type (PDF, images, etc)
 		if strings.Contains(err.Error(), "unsupported content type") {
@@ -184,6 +202,30 @@ func (fp *FeedProcessor) extractContent(ctx context.Context, item *domain.Item) 
 	if err != nil {
 		lgr.Printf("[WARN] failed to update extraction for item %d after retries: %v", item.ID, err)
 	}
+}
+
+// isTransientExtractError reports whether a content-extraction error is likely
+// temporary (rate limiting, server-side errors, network timeouts) and therefore
+// worth retrying, as opposed to a permanent failure (4xx client errors,
+// unsupported content) where a retry would just waste requests.
+func isTransientExtractError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(s, "429"): // too many requests / rate limited
+		return true
+	case strings.Contains(s, "server error: 5"): // 5xx upstream errors
+		return true
+	case strings.Contains(s, "deadline exceeded"), strings.Contains(s, "timeout"):
+		return true
+	case strings.Contains(s, "connection reset"), strings.Contains(s, "connection refused"), strings.Contains(s, "no such host"):
+		return true
+	case strings.Contains(s, "temporary"):
+		return true
+	}
+	return false
 }
 
 // ProcessBatch classifies multiple items in a single API call

@@ -44,6 +44,8 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 				},
 				Schedule: struct {
 					UpdateInterval    time.Duration `yaml:"update_interval" json:"update_interval" jsonschema:"default=1m,description=Scheduler run interval"`
+					EmbedInterval     time.Duration `yaml:"embed_interval" json:"embed_interval" jsonschema:"description=Embedding worker interval; falls back to update_interval when unset. Decouple it so embeddings keep pace with feed volume without fetching feeds more often."`
+					BeatInterval      time.Duration `yaml:"beat_interval" json:"beat_interval" jsonschema:"description=Beat worker interval; falls back to update_interval when unset"`
 					MaxWorkers        int           `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
 					CleanupAge        time.Duration `yaml:"cleanup_age" json:"cleanup_age" jsonschema:"default=168h,description=Maximum age for articles with low scores (default 1 week)"`
 					CleanupMinScore   float64       `yaml:"cleanup_min_score" json:"cleanup_min_score" jsonschema:"default=5.0,description=Minimum score to keep articles regardless of age"`
@@ -125,6 +127,8 @@ func TestVerifyAgainstEmbeddedSchema(t *testing.T) {
 				},
 				Schedule: struct {
 					UpdateInterval    time.Duration `yaml:"update_interval" json:"update_interval" jsonschema:"default=1m,description=Scheduler run interval"`
+					EmbedInterval     time.Duration `yaml:"embed_interval" json:"embed_interval" jsonschema:"description=Embedding worker interval; falls back to update_interval when unset. Decouple it so embeddings keep pace with feed volume without fetching feeds more often."`
+					BeatInterval      time.Duration `yaml:"beat_interval" json:"beat_interval" jsonschema:"description=Beat worker interval; falls back to update_interval when unset"`
 					MaxWorkers        int           `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
 					CleanupAge        time.Duration `yaml:"cleanup_age" json:"cleanup_age" jsonschema:"default=168h,description=Maximum age for articles with low scores (default 1 week)"`
 					CleanupMinScore   float64       `yaml:"cleanup_min_score" json:"cleanup_min_score" jsonschema:"default=5.0,description=Minimum score to keep articles regardless of age"`
@@ -200,6 +204,8 @@ func TestValidateRequiredFields(t *testing.T) {
 				},
 				Schedule: struct {
 					UpdateInterval    time.Duration `yaml:"update_interval" json:"update_interval" jsonschema:"default=1m,description=Scheduler run interval"`
+					EmbedInterval     time.Duration `yaml:"embed_interval" json:"embed_interval" jsonschema:"description=Embedding worker interval; falls back to update_interval when unset. Decouple it so embeddings keep pace with feed volume without fetching feeds more often."`
+					BeatInterval      time.Duration `yaml:"beat_interval" json:"beat_interval" jsonschema:"description=Beat worker interval; falls back to update_interval when unset"`
 					MaxWorkers        int           `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
 					CleanupAge        time.Duration `yaml:"cleanup_age" json:"cleanup_age" jsonschema:"default=168h,description=Maximum age for articles with low scores (default 1 week)"`
 					CleanupMinScore   float64       `yaml:"cleanup_min_score" json:"cleanup_min_score" jsonschema:"default=5.0,description=Minimum score to keep articles regardless of age"`
@@ -244,6 +250,8 @@ func TestValidateRequiredFields(t *testing.T) {
 				},
 				Schedule: struct {
 					UpdateInterval    time.Duration `yaml:"update_interval" json:"update_interval" jsonschema:"default=1m,description=Scheduler run interval"`
+					EmbedInterval     time.Duration `yaml:"embed_interval" json:"embed_interval" jsonschema:"description=Embedding worker interval; falls back to update_interval when unset. Decouple it so embeddings keep pace with feed volume without fetching feeds more often."`
+					BeatInterval      time.Duration `yaml:"beat_interval" json:"beat_interval" jsonschema:"description=Beat worker interval; falls back to update_interval when unset"`
 					MaxWorkers        int           `yaml:"max_workers" json:"max_workers" jsonschema:"default=5,description=Maximum concurrent workers"`
 					CleanupAge        time.Duration `yaml:"cleanup_age" json:"cleanup_age" jsonschema:"default=168h,description=Maximum age for articles with low scores (default 1 week)"`
 					CleanupMinScore   float64       `yaml:"cleanup_min_score" json:"cleanup_min_score" jsonschema:"default=5.0,description=Minimum score to keep articles regardless of age"`

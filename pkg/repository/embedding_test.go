@@ -79,6 +79,24 @@ func TestEmbeddingRepository_PutEmbedding_CascadeDelete(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+func TestEmbeddingRepository_PutEmbedding_MissingItem(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// embedding a non-existent item (e.g. cleaned up between the embed worker
+	// selecting it and storing its vector) must be a silent no-op, not a
+	// foreign-key error.
+	err := repos.Embedding.PutEmbedding(ctx, 999999, "model", []float32{1.0, 2.0})
+	require.NoError(t, err)
+
+	var count int
+	err = repos.DB.GetContext(ctx, &count, "SELECT COUNT(*) FROM item_embeddings WHERE item_id = ?", 999999)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
 func TestFloat32sToBlob(t *testing.T) {
 	tests := []struct {
 		name string

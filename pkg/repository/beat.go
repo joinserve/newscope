@@ -137,6 +137,19 @@ func (r *BeatRepository) AttachOrSeed(ctx context.Context, item domain.BeatCandi
 		return 0, false, fmt.Errorf("check existing membership: %w", err)
 	}
 
+	// The cleanup job may delete a low-score item between the beat worker
+	// selecting it and this attach. Verify it still exists before doing any
+	// work, so we neither seed an orphan beat nor fail the beat_members ->
+	// items foreign key. ErrItemGone lets the worker skip it quietly.
+	var itemExists bool
+	if err = tx.GetContext(ctx, &itemExists,
+		`SELECT EXISTS(SELECT 1 FROM items WHERE id = ?)`, item.ItemID); err != nil {
+		return 0, false, fmt.Errorf("check item exists: %w", err)
+	}
+	if !itemExists {
+		return 0, false, domain.ErrItemGone
+	}
+
 	// rank candidate beats within the window by max member-cosine, descending;
 	// walk the list and attach to the first one under maxMembers.
 	windowStart := item.PublishedAt.Add(-window)

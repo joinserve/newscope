@@ -164,6 +164,11 @@ func run(ctx context.Context, opts Opts) error {
 		params.Embedder = embedder
 		params.EmbedStore = repos.Embedding
 		params.EmbedModel = cfg.Embedding.Model
+		// embed/beat workers fall back to UpdateInterval when these are 0 (see
+		// NewScheduler); set them so embedding/grouping can run far more often
+		// than feeds are fetched, otherwise the beats view lags behind ingestion.
+		params.EmbedInterval = cfg.Schedule.EmbedInterval
+		params.BeatInterval = cfg.Schedule.BeatInterval
 		params.BeatStore = repos.Beat
 		params.BeatThreshold = cfg.Beats.SimThreshold
 		params.BeatWindow = cfg.Beats.Window

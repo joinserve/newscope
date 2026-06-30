@@ -21,11 +21,16 @@ func NewEmbeddingRepository(db *sqlx.DB) *EmbeddingRepository {
 
 // PutEmbedding inserts or replaces the embedding vector for an item.
 func (r *EmbeddingRepository) PutEmbedding(ctx context.Context, itemID int64, model string, v []float32) error {
+	// Guard against the cleanup-vs-embed race: the cleanup job may delete a
+	// low-score item between the embed worker selecting it and storing its
+	// vector. A plain INSERT then fails the items(id) foreign key. Inserting
+	// only while the item still exists turns that race into a silent no-op
+	// instead of a noisy "FOREIGN KEY constraint failed" warning.
 	query := `
 		INSERT OR REPLACE INTO item_embeddings (item_id, model, vector)
-		VALUES (?, ?, ?)
+		SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM items WHERE id = ?)
 	`
-	_, err := r.db.ExecContext(ctx, query, itemID, model, float32sToBlob(v))
+	_, err := r.db.ExecContext(ctx, query, itemID, model, float32sToBlob(v), itemID)
 	if err != nil {
 		return fmt.Errorf("put embedding: %w", err)
 	}
