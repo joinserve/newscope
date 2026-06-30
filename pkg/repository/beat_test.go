@@ -62,6 +62,26 @@ func TestBeatRepository_AttachOrSeed_EmptyCreatesSeed(t *testing.T) {
 	assert.Equal(t, 1, n)
 }
 
+func TestBeatRepository_AttachOrSeed_MissingItemReturnsErrItemGone(t *testing.T) {
+	repos, cleanup, _ := beatTestSetup(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// item id that was never created (e.g. cleaned up before the beat worker
+	// got to it) must return ErrItemGone and must NOT seed an orphan beat.
+	_, _, err := repos.Beat.AttachOrSeed(ctx,
+		domain.BeatCandidate{ItemID: 999999, Vector: []float32{1, 0, 0}, PublishedAt: time.Now()},
+		0.85, 48*time.Hour, 20)
+	require.ErrorIs(t, err, domain.ErrItemGone)
+
+	var n int
+	require.NoError(t, repos.DB.GetContext(ctx, &n, `SELECT COUNT(*) FROM beats`))
+	assert.Equal(t, 0, n)
+	require.NoError(t, repos.DB.GetContext(ctx, &n, `SELECT COUNT(*) FROM beat_members`))
+	assert.Equal(t, 0, n)
+}
+
 func TestBeatRepository_AttachOrSeed_MatchAboveThresholdAttaches(t *testing.T) {
 	repos, cleanup, mkItem := beatTestSetup(t)
 	defer cleanup()

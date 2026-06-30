@@ -1,6 +1,16 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrItemGone signals that an item disappeared (typically deleted by the
+// cleanup job) between being selected for processing and being acted on.
+// Workers should skip such items rather than treat them as failures. It lives
+// in domain so both the scheduler (consumer) and repository (producer) can
+// reference it without importing each other.
+var ErrItemGone = errors.New("item no longer exists")
 
 // BeatCandidate is a classified item with embedding awaiting beat assignment.
 // Lives in domain so both the scheduler (consumer) and repository
