@@ -169,6 +169,7 @@ func run(ctx context.Context, opts Opts) error {
 		// than feeds are fetched, otherwise the beats view lags behind ingestion.
 		params.EmbedInterval = cfg.Schedule.EmbedInterval
 		params.BeatInterval = cfg.Schedule.BeatInterval
+		params.MergeInterval = cfg.Schedule.MergeInterval
 		params.BeatStore = repos.Beat
 		params.BeatThreshold = cfg.Beats.SimThreshold
 		params.BeatWindow = cfg.Beats.Window
