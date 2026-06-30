@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -797,4 +798,34 @@ func TestFeedProcessor_ProcessItem_NonHTMLContent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, extractor.ExtractCalls(), 1)
 	assert.Len(t, itemManager.UpdateItemExtractionCalls(), 1)
+}
+
+func TestIsTransientExtractError(t *testing.T) {
+	transient := []string{
+		"client error: 429",
+		"server error: 503",
+		"server error: 500",
+		"context deadline exceeded",
+		"Get \"https://x\": net/http: request canceled (timeout)",
+		"dial tcp: connection refused",
+		"read: connection reset by peer",
+		"lookup example.com: no such host",
+		"temporary failure",
+	}
+	for _, s := range transient {
+		assert.True(t, isTransientExtractError(errors.New(s)), "should be transient: %q", s)
+	}
+
+	permanent := []string{
+		"client error: 403",
+		"client error: 401",
+		"client error: 404",
+		"unsupported content type: application/pdf",
+		"content too short: 7 chars",
+	}
+	for _, s := range permanent {
+		assert.False(t, isTransientExtractError(errors.New(s)), "should be permanent: %q", s)
+	}
+
+	assert.False(t, isTransientExtractError(nil))
 }
